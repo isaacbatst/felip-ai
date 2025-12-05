@@ -45,6 +45,9 @@ export const startBot = async (
 	bot: Bot,
 ): Promise<void> => {
 	console.log("[DEBUG] startBot: Initiating bot startup...");
+	bot.catch((error) => {
+		console.error("[ERROR] Bot error:", error);
+	});
 	const runner = run(bot, {
 		sink: {
 			concurrency: 5,

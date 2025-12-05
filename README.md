@@ -286,7 +286,8 @@ docker stack deploy -c stack.yml felip-ai --with-registry-auth
 
 
 #### Erro: "Permission denied" ao ler service-account-key.json
-- Verifique as permissões do arquivo: `chmod 600 /home/felip-ai/service-account-key.json`
+- Verifique as permissões do arquivo no servidor: `chmod 644 /home/felip-ai/service-account-key.json`
+- Ou remova a restrição `user: "1000:1000"` do `stack.yml` (já removido na versão atual)
 - Verifique se o caminho no `stack.yml` está correto
 
 #### Bot não está respondendo
