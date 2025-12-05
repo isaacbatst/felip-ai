@@ -24,6 +24,8 @@ export const validatePurchaseRequest = (
 	if (
 		request.quantity === undefined ||
 		request.cpfCount === undefined ||
+		request.cpfCount === null ||
+		request.quantity === null ||
 		request.quantity <= 0 ||
 		request.cpfCount <= 0
 	) {
@@ -34,7 +36,7 @@ export const validatePurchaseRequest = (
 	const validated = {
 		quantity: request.quantity,
 		cpfCount: request.cpfCount,
-		airline: request.airline,
+		airline: request.airline ?? undefined,
 	};
 	console.log("[DEBUG] validation: Validation successful:", validated);
 	return validated;

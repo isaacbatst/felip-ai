@@ -1,16 +1,18 @@
 import type { Context } from "grammy";
 import type { PriceTableByCpf } from "../types/price.js";
+import type { PriceTableCache } from "../services/price-table-cache.js";
 
 /**
  * Dependências do handler de comandos
  * Permite dependency injection para testes e flexibilidade
  */
 export interface StartCommandHandlerDependencies {
-	priceTable: PriceTableByCpf;
+	priceTableCache: PriceTableCache;
 }
 
 /**
  * Formata a tabela de preços em uma string legível
+ * Função pura de formatação
  */
 const formatPriceTable = (priceTable: PriceTableByCpf): string => {
 	const lines: string[] = [];
@@ -42,11 +44,11 @@ const formatPriceTable = (priceTable: PriceTableByCpf): string => {
 
 /**
  * Handler para o comando /start
- * Função pura de formatação de mensagem
+ * Revalida o cache antes de mostrar a tabela de preços
  */
 export const createStartCommandHandler =
 	(deps: StartCommandHandlerDependencies) =>
-	(ctx: Context): void => {
+	async (ctx: Context): Promise<void> => {
 		const userId = ctx.from?.id;
 		const chatId = ctx.chat?.id;
 		console.log("[DEBUG] command-handler: /start command received", {
@@ -54,14 +56,17 @@ export const createStartCommandHandler =
 			chatId,
 		});
 
-		const priceTableFormatted = formatPriceTable(deps.priceTable);
+		// Revalida o cache antes de mostrar a tabela
+		console.log("[DEBUG] command-handler: Revalidating cache for /start command...");
+		const priceTableResult = await deps.priceTableCache.get(true);
+		const priceTableFormatted = formatPriceTable(priceTableResult.priceTable);
 		
 		const welcomeMessage =
 			"📊 Tabela de Preços:" +
 			priceTableFormatted;
 
 		console.log("[DEBUG] command-handler: Sending welcome message");
-		ctx.reply(welcomeMessage);
+		await ctx.reply(welcomeMessage);
 		console.log("[DEBUG] command-handler: Welcome message sent");
 	};
 

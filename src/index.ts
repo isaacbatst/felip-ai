@@ -1,6 +1,6 @@
 import { createBot, startBot } from "./bot/bot-factory.js";
 import { openaiClient } from "./config/openai.js";
-import { fetchPriceTableFromSheets } from "./services/google-sheets.js";
+import { createPriceTableCache } from "./services/price-table-cache.js";
 import {
 	createMessageParser,
 	DEFAULT_PARSER_CONFIG,
@@ -27,18 +27,14 @@ if (!GOOGLE_SERVICE_ACCOUNT_KEY_FILE) {
 	throw new Error("GOOGLE_SERVICE_ACCOUNT_KEY_FILE is not set");
 }
 
-console.log("[DEBUG] Fetching price table from Google Sheets...");
-const PRICE_TABLE_RESULT = await fetchPriceTableFromSheets(
-	GOOGLE_SPREADSHEET_ID,
-	GOOGLE_SERVICE_ACCOUNT_KEY_FILE,
-	GOOGLE_SPREADSHEET_RANGE,
-).catch((error) => {
-	console.error("[DEBUG] Error fetching price table from Google Sheets:", error);
-	throw error;
+console.log("[DEBUG] Creating price table cache...");
+const priceTableCache = createPriceTableCache({
+	spreadsheetId: GOOGLE_SPREADSHEET_ID,
+	keyFile: GOOGLE_SERVICE_ACCOUNT_KEY_FILE,
+	...(GOOGLE_SPREADSHEET_RANGE && { range: GOOGLE_SPREADSHEET_RANGE }),
+	ttlSeconds: 60,
 });
-console.log("[DEBUG] Price table loaded successfully");
-console.log("[DEBUG] Price table:", PRICE_TABLE_RESULT.priceTable);
-console.log("[DEBUG] Available miles:", PRICE_TABLE_RESULT.availableMiles);
+console.log("[DEBUG] Price table cache created successfully");
 
 console.log("[DEBUG] TELEGRAM_BOT_TOKEN found, creating message parser...");
 const parseMessage = createMessageParser(openaiClient, DEFAULT_PARSER_CONFIG);
@@ -52,8 +48,7 @@ const bot = createBot({
 	token: TELEGRAM_BOT_TOKEN,
 	messageHandlerDeps: {
 		parseMessage,
-		priceTable: PRICE_TABLE_RESULT.priceTable,
-		availableMiles: PRICE_TABLE_RESULT.availableMiles,
+		priceTableCache,
 	},
 });
 console.log("[DEBUG] Bot instance created successfully");

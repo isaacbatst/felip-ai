@@ -23,7 +23,7 @@ export const createBot = (config: BotConfig): Bot => {
 	// Registra handlers usando composição
 	console.log("[DEBUG] createBot: Registering /start command handler...");
 	bot.command("start", createStartCommandHandler({
-		priceTable: config.messageHandlerDeps.priceTable,
+		priceTableCache: config.messageHandlerDeps.priceTableCache,
 	}));
 	console.log("[DEBUG] createBot: Registering message:text handler...");
 	bot.on("message:text", createMessageHandler(config.messageHandlerDeps));

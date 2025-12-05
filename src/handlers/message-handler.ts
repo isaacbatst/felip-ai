@@ -1,7 +1,7 @@
 import type { Context } from "grammy";
 import { calculatePrice } from "../domain/price-calculator.js";
 import { formatQuoteResponse } from "../formatters/quote-formatter.js";
-import type { PriceTableByCpf } from "../types/price.js";
+import type { PriceTableCache } from "../services/price-table-cache.js";
 import type { PurchaseRequest } from "../types/purchase.js";
 import { validatePurchaseRequest } from "../utils/validation.js";
 
@@ -11,8 +11,7 @@ import { validatePurchaseRequest } from "../utils/validation.js";
  */
 export interface MessageHandlerDependencies {
 	parseMessage: (text: string) => Promise<PurchaseRequest | null>;
-	priceTable: PriceTableByCpf;
-	availableMiles: number | null;
+	priceTableCache: PriceTableCache;
 }
 
 export const createMessageHandler =
@@ -48,30 +47,29 @@ export const createMessageHandler =
 			return;
 		}
 
+		// Após validação, revalida o cache para garantir dados atualizados
+		console.log("[DEBUG] message-handler: Revalidating cache after request validation...");
+		const priceTableResult = await deps.priceTableCache.get(true);
+		const { priceTable, availableMiles } = priceTableResult;
+
 		// Verifica se a quantidade solicitada excede as milhas disponíveis
-		let quantityToUse = validatedRequest.quantity;
-		let quantityAdjusted = false;
-		
-		if (deps.availableMiles !== null && validatedRequest.quantity > deps.availableMiles) {
-			console.log("[DEBUG] message-handler: Requested quantity exceeds available miles", {
+		if (availableMiles !== null && validatedRequest.quantity > availableMiles) {
+			console.log("[DEBUG] message-handler: Requested quantity exceeds available miles, not responding", {
 				requested: validatedRequest.quantity,
-				available: deps.availableMiles,
+				available: availableMiles,
 			});
-			quantityToUse = deps.availableMiles;
-			quantityAdjusted = true;
+			return;
 		}
 
 		console.log("[DEBUG] message-handler: Calculating price...", {
 			requestedQuantity: validatedRequest.quantity,
-			quantityToUse,
-			quantityAdjusted,
 			cpfCount: validatedRequest.cpfCount,
 			airline: validatedRequest.airline,
 		});
 		const priceResult = calculatePrice(
-			quantityToUse,
+			validatedRequest.quantity,
 			validatedRequest.cpfCount,
-			deps.priceTable,
+			priceTable,
 		);
 		console.log("[DEBUG] message-handler: Price calculation result:", priceResult);
 
@@ -82,11 +80,10 @@ export const createMessageHandler =
 
 		console.log("[DEBUG] message-handler: Formatting response...");
 		const formattedResponse = formatQuoteResponse(
-			quantityToUse,
+			validatedRequest.quantity,
 			validatedRequest.cpfCount,
 			priceResult.price,
 			validatedRequest.airline,
-			quantityAdjusted ? validatedRequest.quantity : undefined,
 		);
 		console.log("[DEBUG] message-handler: Formatted response:", formattedResponse);
 
