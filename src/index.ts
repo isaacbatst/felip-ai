@@ -10,7 +10,7 @@ console.log("[DEBUG] Starting application initialization...");
 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const GOOGLE_SPREADSHEET_ID = process.env.GOOGLE_SPREADSHEET_ID;
-const GOOGLE_SPREADSHEET_RANGE = process.env.GOOGLE_SPREADSHEET_RANGE || "Sheet1!A:C";
+const GOOGLE_SPREADSHEET_RANGE = process.env.GOOGLE_SPREADSHEET_RANGE; // Opcional: "Sheet1" ou "Sheet1!A:C" ou deixe vazio para auto-detectar
 
 if (!TELEGRAM_BOT_TOKEN) {
 	console.error("[DEBUG] TELEGRAM_BOT_TOKEN is not set");
@@ -31,8 +31,12 @@ console.log("[DEBUG] Fetching price table from Google Sheets...");
 const PRICE_TABLE = await fetchPriceTableFromSheets(
 	GOOGLE_SPREADSHEET_ID,
 	GOOGLE_SPREADSHEET_RANGE,
-);
+).catch((error) => {
+	console.error("[DEBUG] Error fetching price table from Google Sheets:", error);
+	throw error;
+});
 console.log("[DEBUG] Price table loaded successfully");
+console.log("[DEBUG] Price table:", PRICE_TABLE);
 
 console.log("[DEBUG] TELEGRAM_BOT_TOKEN found, creating message parser...");
 const parseMessage = createMessageParser(openaiClient, DEFAULT_PARSER_CONFIG);

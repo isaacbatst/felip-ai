@@ -26,29 +26,21 @@ describe("calculatePrice", () => {
 	};
 
 	describe("quantidade abaixo do mínimo", () => {
-		it("deve escalar linearmente para cima quando quantidade é menor que o mínimo", () => {
-			// Taxa de variação entre (30, 17) e (60, 16.5): slope = (16.5 - 17) / (60 - 30) = -0.5 / 30 = -0.01667
-			// Para quantidade 20: preço = 17 + (-0.01667) * (20 - 30) = 17 + 0.1667 = 17.1667
-			// Arredondado para quarto: 17.1667 -> 17.25
+		it("deve retornar o preço mínimo fixo quando quantidade é menor que o mínimo", () => {
 			const result = calculatePrice(20, 1, testPriceTable);
 
 			expect(result.success).toBe(true);
 			if (result.success) {
-				expect(result.price).toBe(17.25); // escalado linearmente para cima
+				expect(result.price).toBe(17); // preço mínimo fixo
 			}
 		});
 
-		it('deve escalar linearmente para cima quando quantidade é menor que o mínimo e há mais de 1 CPF', () => {
-			// Para CPF 3: mínimo é 60 (preço 17), segundo ponto é 90 (preço 17 - igual)
-			// Como os dois primeiros são iguais, usa o próximo diferente: 120 (preço 16.75)
-			// Taxa de variação: slope = (16.75 - 17) / (120 - 60) = -0.25 / 60 = -0.004167
-			// Para quantidade 42: preço = 17 + (-0.004167) * (42 - 60) = 17 + 0.075 = 17.075
-			// Arredondado para quarto: 17.075 -> 17.0
+		it('deve retornar o preço mínimo fixo quando quantidade é menor que o mínimo e há mais de 1 CPF', () => {
 			const result = calculatePrice(30, 3, testPriceTable);
 
 			expect(result.success).toBe(true);
 			if (result.success) {
-				expect(result.price).toBe(17.25); // escalado linearmente usando próximo ponto diferente
+				expect(result.price).toBe(17); // preço mínimo fixo (60k = 17)
 			}
 		});
 
@@ -61,26 +53,21 @@ describe("calculatePrice", () => {
 			}
 		});
 
-		it("deve escalar linearmente para cima quando quantidade é muito menor que o mínimo", () => {
-			// Taxa de variação: slope = -0.01667
-			// Para quantidade 1: preço = 17 + (-0.01667) * (1 - 30) = 17 + 0.4833 = 17.4833
-			// Arredondado para quarto: 17.4833 -> 17.5
+		it("deve retornar o preço mínimo fixo quando quantidade é muito menor que o mínimo", () => {
 			const result = calculatePrice(1, 1, testPriceTable);
 
 			expect(result.success).toBe(true);
 			if (result.success) {
-				expect(result.price).toBe(17.5); // escalado linearmente para cima
+				expect(result.price).toBe(17); // preço mínimo fixo
 			}
 		});
 
-		it("deve escalar linearmente para cima quando quantidade está entre 0 e o mínimo", () => {
-			// Para quantidade 15: preço = 17 + (-0.01667) * (15 - 30) = 17 + 0.25 = 17.25
-			// Arredondado para quarto: 17.25
+		it("deve retornar o preço mínimo fixo quando quantidade está entre 0 e o mínimo", () => {
 			const result = calculatePrice(15, 1, testPriceTable);
 
 			expect(result.success).toBe(true);
 			if (result.success) {
-				expect(result.price).toBe(17.25);
+				expect(result.price).toBe(17); // preço mínimo fixo
 			}
 		});
 	});
@@ -140,15 +127,12 @@ describe("calculatePrice", () => {
 	});
 
 	describe("quantidade acima do máximo", () => {
-		it("deve escalar linearmente para baixo quando quantidade é maior que o máximo", () => {
-			// Taxa de variação entre (90, 16.25) e (120, 16): slope = (16 - 16.25) / (120 - 90) = -0.25 / 30 = -0.00833
-			// Para quantidade 150: preço = 16 + (-0.00833) * (150 - 120) = 16 - 0.25 = 15.75
-			// Arredondado para quarto: 15.75
+		it("deve retornar o preço máximo fixo quando quantidade é maior que o máximo", () => {
 			const result = calculatePrice(150, 1, testPriceTable);
 
 			expect(result.success).toBe(true);
 			if (result.success) {
-				expect(result.price).toBe(15.75); // escalado linearmente para baixo
+				expect(result.price).toBe(16); // preço máximo fixo
 			}
 		});
 
@@ -161,26 +145,21 @@ describe("calculatePrice", () => {
 			}
 		});
 
-		it("deve escalar linearmente para baixo quando quantidade é muito maior que o máximo", () => {
-			// Taxa de variação: slope = -0.00833
-			// Para quantidade 1000: preço = 16 + (-0.00833) * (1000 - 120) = 16 - 7.33 = 8.67
-			// Arredondado para quarto: 8.67 -> 8.75
+		it("deve retornar o preço máximo fixo quando quantidade é muito maior que o máximo", () => {
 			const result = calculatePrice(1000, 1, testPriceTable);
 
 			expect(result.success).toBe(true);
 			if (result.success) {
-				expect(result.price).toBe(8.75); // escalado linearmente para baixo
+				expect(result.price).toBe(16); // preço máximo fixo
 			}
 		});
 
-		it("deve escalar linearmente para baixo quando quantidade está acima do máximo", () => {
-			// Para quantidade 200: preço = 16 + (-0.00833) * (200 - 120) = 16 - 0.6664 = 15.3336
-			// Arredondado para quarto: 15.3336 -> 15.25
+		it("deve retornar o preço máximo fixo quando quantidade está acima do máximo", () => {
 			const result = calculatePrice(200, 1, testPriceTable);
 
 			expect(result.success).toBe(true);
 			if (result.success) {
-				expect(result.price).toBe(15.25);
+				expect(result.price).toBe(16); // preço máximo fixo
 			}
 		});
 	});

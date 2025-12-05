@@ -64,92 +64,9 @@ export const calculatePrice = (
 		requestedQuantity: quantity,
 	});
 
-	// Se a quantidade é menor que o mínimo, extrapola linearmente para cima
-	if (quantity < minQty) {
-		console.log("[DEBUG] price-calculator: Quantity < min, extrapolating linearly upward");
-		
-		if (quantities.length < 2) {
-			console.log("[DEBUG] price-calculator: Not enough points for extrapolation");
-			const minPrice = table[minQty];
-			if (minPrice === undefined) {
-				return {
-					success: false,
-					reason: "Preço mínimo não encontrado",
-				};
-			}
-			return {
-				success: true,
-				price: roundToTwoDecimals(minPrice),
-			};
-		}
-
-		// Usa os dois primeiros pontos para calcular a taxa de variação
-		// Se os dois primeiros tiverem o mesmo preço, procura o próximo ponto diferente
-		const firstQty = quantities[0];
-
-		if (firstQty === undefined) {
-			console.log("[DEBUG] price-calculator: Error getting first point for extrapolation");
-			return {
-				success: false,
-				reason: "Erro ao calcular extrapolação",
-			};
-		}
-
-		const firstPrice = table[firstQty];
-
-		if (firstPrice === undefined) {
-			console.log("[DEBUG] price-calculator: Error getting first price for extrapolation");
-			return {
-				success: false,
-				reason: "Erro ao calcular extrapolação",
-			};
-		}
-
-		// Procura o próximo ponto com preço diferente
-		let secondQty: number | undefined;
-		let secondPrice: number | undefined;
-		
-		for (let i = 1; i < quantities.length; i++) {
-			const qty = quantities[i];
-			const price = qty !== undefined ? table[qty] : undefined;
-			
-			if (qty !== undefined && price !== undefined && price !== firstPrice) {
-				secondQty = qty;
-				secondPrice = price;
-				break;
-			}
-		}
-
-		// Se todos os pontos têm o mesmo preço, retorna o preço mínimo
-		if (secondQty === undefined || secondPrice === undefined) {
-			console.log("[DEBUG] price-calculator: All points have the same price, returning minimum price");
-			return {
-				success: true,
-				price: roundToTwoDecimals(firstPrice),
-			};
-		}
-
-		// Calcula a taxa de variação (slope) entre o primeiro ponto e o próximo ponto diferente
-		// e extrapola linearmente para quantidades menores
-		const price = linearInterpolation(
-			quantity,
-			firstQty,
-			firstPrice,
-			secondQty,
-			secondPrice,
-		);
-
-		const roundedPrice = roundToQuarter(price);
-		console.log("[DEBUG] price-calculator: Extrapolated price (upward):", roundedPrice);
-		return {
-			success: true,
-			price: roundedPrice,
-		};
-	}
-
-	// Se a quantidade é igual ao mínimo, retorna o preço mínimo
-	if (quantity === minQty) {
-		console.log("[DEBUG] price-calculator: Quantity == min, using minimum price");
+	// Se a quantidade é menor ou igual ao mínimo, retorna o preço mínimo fixo
+	if (quantity <= minQty) {
+		console.log("[DEBUG] price-calculator: Quantity <= min, using minimum price");
 		const minPrice = table[minQty];
 		if (minPrice === undefined) {
 			console.log("[DEBUG] price-calculator: Minimum price not found in table");
@@ -166,92 +83,9 @@ export const calculatePrice = (
 		};
 	}
 
-	// Se a quantidade é maior que o máximo, extrapola linearmente para baixo
-	if (quantity > maxQty) {
-		console.log("[DEBUG] price-calculator: Quantity > max, extrapolating linearly downward");
-		
-		if (quantities.length < 2) {
-			console.log("[DEBUG] price-calculator: Not enough points for extrapolation");
-			const maxPrice = table[maxQty];
-			if (maxPrice === undefined) {
-				return {
-					success: false,
-					reason: "Preço máximo não encontrado",
-				};
-			}
-			return {
-				success: true,
-				price: roundToTwoDecimals(maxPrice),
-			};
-		}
-
-		// Usa os dois últimos pontos para calcular a taxa de variação
-		// Se os dois últimos tiverem o mesmo preço, procura o ponto anterior com preço diferente
-		const lastQty = quantities[quantities.length - 1];
-
-		if (lastQty === undefined) {
-			console.log("[DEBUG] price-calculator: Error getting last point for extrapolation");
-			return {
-				success: false,
-				reason: "Erro ao calcular extrapolação",
-			};
-		}
-
-		const lastPrice = table[lastQty];
-
-		if (lastPrice === undefined) {
-			console.log("[DEBUG] price-calculator: Error getting last price for extrapolation");
-			return {
-				success: false,
-				reason: "Erro ao calcular extrapolação",
-			};
-		}
-
-		// Procura o ponto anterior com preço diferente
-		let secondLastQty: number | undefined;
-		let secondLastPrice: number | undefined;
-		
-		for (let i = quantities.length - 2; i >= 0; i--) {
-			const qty = quantities[i];
-			const price = qty !== undefined ? table[qty] : undefined;
-			
-			if (qty !== undefined && price !== undefined && price !== lastPrice) {
-				secondLastQty = qty;
-				secondLastPrice = price;
-				break;
-			}
-		}
-
-		// Se todos os pontos têm o mesmo preço, retorna o preço máximo
-		if (secondLastQty === undefined || secondLastPrice === undefined) {
-			console.log("[DEBUG] price-calculator: All points have the same price, returning maximum price");
-			return {
-				success: true,
-				price: roundToTwoDecimals(lastPrice),
-			};
-		}
-
-		// Calcula a taxa de variação (slope) entre o último ponto e o ponto anterior com preço diferente
-		// e extrapola linearmente para quantidades maiores
-		const price = linearInterpolation(
-			quantity,
-			secondLastQty,
-			secondLastPrice,
-			lastQty,
-			lastPrice,
-		);
-
-		const roundedPrice = roundToQuarter(price);
-		console.log("[DEBUG] price-calculator: Extrapolated price (downward):", roundedPrice);
-		return {
-			success: true,
-			price: roundedPrice,
-		};
-	}
-
-	// Se a quantidade é igual ao máximo, retorna o preço máximo
-	if (quantity === maxQty) {
-		console.log("[DEBUG] price-calculator: Quantity == max, using maximum price");
+	// Se a quantidade é maior ou igual ao máximo, retorna o preço máximo fixo
+	if (quantity >= maxQty) {
+		console.log("[DEBUG] price-calculator: Quantity >= max, using maximum price");
 		const maxPrice = table[maxQty];
 		if (maxPrice === undefined) {
 			console.log("[DEBUG] price-calculator: Maximum price not found in table");

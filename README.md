@@ -93,7 +93,7 @@ TELEGRAM_BOT_TOKEN=seu_token_aqui
 
 # Configurações do Google Sheets
 GOOGLE_SPREADSHEET_ID=seu_spreadsheet_id_aqui
-GOOGLE_SPREADSHEET_RANGE=Sheet1!A:C
+GOOGLE_SPREADSHEET_RANGE=Sheet1
 GOOGLE_SERVICE_ACCOUNT_KEY_FILE=caminho/para/service-account-key.json
 
 # Outras configurações (se necessário)
@@ -103,9 +103,11 @@ OPENAI_API_KEY=sua_chave_openai
 **Explicação das variáveis:**
 - `TELEGRAM_BOT_TOKEN`: Token do bot obtido no BotFather do Telegram
 - `GOOGLE_SPREADSHEET_ID`: ID da planilha (obtido na etapa 4)
-- `GOOGLE_SPREADSHEET_RANGE`: Range da planilha a ser lido (padrão: `Sheet1!A:C`)
-  - Você pode ajustar se sua planilha estiver em outra aba ou colunas diferentes
-  - Formato: `NomeDaAba!ColunaInicial:ColunaFinal`
+- `GOOGLE_SPREADSHEET_RANGE`: (Opcional) Range da planilha a ser lido
+  - **Deixe vazio** para auto-detectar a primeira aba da planilha (recomendado)
+  - **Ou especifique apenas o nome da aba**: `Sheet1` (o sistema tentará ler as colunas A:C automaticamente)
+  - **Ou especifique range completo**: `Sheet1!A1:C1000` (se precisar de um range específico)
+  - O sistema tentará automaticamente diferentes formatos se o primeiro falhar
 - `GOOGLE_SERVICE_ACCOUNT_KEY_FILE`: Caminho completo para o arquivo JSON da Service Account baixado na etapa 2
 
 **Exemplo de caminho:**
@@ -169,7 +171,13 @@ type PriceTableByCpf = {
 ### Erro: "Planilha vazia ou não encontrada"
 - Verifique se o `GOOGLE_SPREADSHEET_ID` está correto
 - Verifique se a Service Account tem acesso à planilha
-- Verifique se o range (`GOOGLE_SPREADSHEET_RANGE`) está correto
+- Verifique se o range (`GOOGLE_SPREADSHEET_RANGE`) está correto ou deixe vazio para auto-detectar
+- Verifique se a planilha tem dados nas colunas A, B e C
+
+### Erro: "Unable to parse range"
+- O sistema tentará automaticamente diferentes formatos de range
+- Se o erro persistir, tente deixar `GOOGLE_SPREADSHEET_RANGE` vazio para auto-detectar
+- Ou especifique apenas o nome da aba (ex: `Sheet1`) sem o formato `!A:C`
 
 ### Erro: "GOOGLE_SERVICE_ACCOUNT_KEY_FILE is not set"
 - Verifique se a variável de ambiente está definida no arquivo `.env`

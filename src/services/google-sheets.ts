@@ -4,12 +4,12 @@ import type { PriceTableByCpf } from "../types/price.js";
 /**
  * Busca a tabela de preços do Google Sheets
  * @param spreadsheetId - ID da planilha do Google Sheets
- * @param range - Range da planilha (ex: "Sheet1!A1:D10")
+ * @param range - Range da planilha (ex: "Sheet1!A1:C1000" ou apenas "Sheet1")
  * @returns Promise com a tabela de preços no formato PriceTableByCpf
  */
 export async function fetchPriceTableFromSheets(
 	spreadsheetId: string,
-	range: string = "Sheet1!A:C",
+	range?: string,
 ): Promise<PriceTableByCpf> {
 	const auth = new google.auth.GoogleAuth({
 		keyFile: process.env.GOOGLE_SERVICE_ACCOUNT_KEY_FILE,
@@ -18,15 +18,60 @@ export async function fetchPriceTableFromSheets(
 
 	const sheets = google.sheets({ version: "v4", auth });
 
+	// Se não foi especificado um range, busca automaticamente a primeira aba
+	let sheetName = "Sheet1";
+	let rangeToUse: string;
+
+	if (range) {
+		// Se o range já contém o nome da aba e colunas, usa diretamente
+		if (range.includes("!")) {
+			rangeToUse = range;
+		} else {
+			// Se é apenas o nome da aba, adiciona as colunas A:C
+			sheetName = range;
+			rangeToUse = `${sheetName}!A:C`;
+		}
+	} else {
+		// Tenta descobrir o nome da primeira aba
+		try {
+			const spreadsheet = await sheets.spreadsheets.get({
+				spreadsheetId,
+			});
+			const firstSheet = spreadsheet.data.sheets?.[0];
+			if (firstSheet?.properties?.title) {
+				sheetName = firstSheet.properties.title;
+			}
+		} catch (error) {
+			console.warn("[DEBUG] google-sheets: Could not fetch sheet names, using default 'Sheet1'");
+		}
+		rangeToUse = `${sheetName}!A:C`;
+	}
+
 	console.log("[DEBUG] google-sheets: Fetching data from spreadsheet", {
 		spreadsheetId,
-		range,
+		range: rangeToUse,
+		sheetName,
 	});
 
-	const response = await sheets.spreadsheets.values.get({
-		spreadsheetId,
-		range,
-	});
+	let response;
+	try {
+		response = await sheets.spreadsheets.values.get({
+			spreadsheetId,
+			range: rangeToUse,
+		});
+	} catch (error: any) {
+		// Se falhar com A:C, tenta sem especificar colunas (pega toda a aba)
+		if (error?.code === 400 && rangeToUse.includes("!A:C")) {
+			console.log("[DEBUG] google-sheets: Range A:C failed, trying full sheet");
+			rangeToUse = sheetName;
+			response = await sheets.spreadsheets.values.get({
+				spreadsheetId,
+				range: rangeToUse,
+			});
+		} else {
+			throw error;
+		}
+	}
 
 	const rows = response.data.values;
 
