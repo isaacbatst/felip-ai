@@ -43,6 +43,7 @@ jobs:
       - name: Build and push Docker image for Bot
         uses: docker/build-push-action@v6
         with:
+          context: .
           push: true
           tags: |
             ghcr.io/isaacbatst/felip-ai:latest
