@@ -1,18 +1,40 @@
-import { Bot } from "grammy";
+import { createBot, startBot } from "./bot/bot-factory.js";
+import { openaiClient } from "./config/openai.js";
+import { PRICE_TABLE } from "./config/price-table.js";
+import {
+	createMessageParser,
+	DEFAULT_PARSER_CONFIG,
+} from "./services/message-parser.js";
 
-// Create an instance of the `Bot` class and pass your bot token to it.
-const bot = new Bot(""); // <-- put your bot token between the ""
+console.log("[DEBUG] Starting application initialization...");
 
-// You can now register listeners on your bot object `bot`.
-// grammY will call the listeners when users send messages to your bot.
+const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 
-// Handle the /start command.
-bot.command("start", (ctx) => ctx.reply("Welcome! Up and running."));
-// Handle other messages.
-bot.on("message", (ctx) => ctx.reply("Got another message!"));
+if (!TELEGRAM_BOT_TOKEN) {
+	console.error("[DEBUG] TELEGRAM_BOT_TOKEN is not set");
+	throw new Error("TELEGRAM_BOT_TOKEN is not set");
+}
 
-// Now that you specified how to handle messages, you can start your bot.
-// This will connect to the Telegram servers and wait for messages.
+console.log("[DEBUG] TELEGRAM_BOT_TOKEN found, creating message parser...");
+const parseMessage = createMessageParser(openaiClient, DEFAULT_PARSER_CONFIG);
+console.log("[DEBUG] Message parser created with config:", {
+	model: DEFAULT_PARSER_CONFIG.model,
+	systemPromptLength: DEFAULT_PARSER_CONFIG.systemPrompt.length,
+});
 
-// Start the bot.
-bot.start();
+console.log("[DEBUG] Creating bot instance...");
+const bot = createBot({
+	token: TELEGRAM_BOT_TOKEN,
+	messageHandlerDeps: {
+		parseMessage,
+		priceTable: PRICE_TABLE,
+	},
+});
+console.log("[DEBUG] Bot instance created successfully");
+
+console.log("[DEBUG] Starting bot...");
+startBot(bot).catch((error) => {
+	console.error("[DEBUG] Error starting bot:", error);
+	console.error(error);
+	process.exit(1);
+});

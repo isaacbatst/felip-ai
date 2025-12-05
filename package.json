@@ -7,15 +7,20 @@
   "type": "module",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "dev": "node --import tsx src/index.ts"
+    "test": "vitest",
+    "test:run": "vitest run",
+    "dev": "tsx watch --env-file=.env   src/index.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "2.3.8",
     "tsx": "^4.21.0",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.15"
   },
   "dependencies": {
-    "grammy": "^1.38.4"
+    "@openai/agents": "^0.3.4",
+    "grammy": "^1.38.4",
+    "openai": "^6.10.0",
+    "zod": "^3.25.76"
   }
 }
