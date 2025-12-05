@@ -1,10 +1,10 @@
 import { createBot, startBot } from "./bot/bot-factory.js";
 import { openaiClient } from "./config/openai.js";
-import { createPriceTableCache } from "./services/price-table-cache.js";
 import {
 	createMessageParser,
 	DEFAULT_PARSER_CONFIG,
 } from "./services/message-parser.js";
+import { createPriceTableCache } from "./services/price-table-cache.js";
 
 console.log("[DEBUG] Starting application initialization...");
 

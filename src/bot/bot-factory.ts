@@ -1,7 +1,8 @@
+import { run, sequentialize, type RunnerHandle } from "@grammyjs/runner";
 import { Bot } from "grammy";
+import { createStartCommandHandler } from "../handlers/command-handler.js";
 import type { MessageHandlerDependencies } from "../handlers/message-handler.js";
 import { createMessageHandler } from "../handlers/message-handler.js";
-import { createStartCommandHandler } from "../handlers/command-handler.js";
 
 /**
  * Configuração para criar o bot
@@ -9,8 +10,9 @@ import { createStartCommandHandler } from "../handlers/command-handler.js";
 export interface BotConfig {
 	token: string;
 	messageHandlerDeps: MessageHandlerDependencies;
-	onStart?: (botInfo: { username?: string }) => void;
 }
+
+const stopRunner = async (runner: RunnerHandle) => runner.isRunning() && runner.stop();
 
 /**
  * Cria e configura o bot usando composição
@@ -19,14 +21,18 @@ export interface BotConfig {
 export const createBot = (config: BotConfig): Bot => {
 	console.log("[DEBUG] createBot: Creating new Bot instance...");
 	const bot = new Bot(config.token);
-
+	
 	// Registra handlers usando composição
 	console.log("[DEBUG] createBot: Registering /start command handler...");
 	bot.command("start", createStartCommandHandler({
 		priceTableCache: config.messageHandlerDeps.priceTableCache,
 	}));
 	console.log("[DEBUG] createBot: Registering message:text handler...");
-	bot.on("message:text", createMessageHandler(config.messageHandlerDeps));
+	bot.on("message:text", sequentialize((ctx) => {
+		const chat = ctx.chat?.id.toString();
+		const user = ctx.from?.id.toString();
+		return [chat, user].filter((con) => con !== undefined);
+	}), createMessageHandler(config.messageHandlerDeps));
 	console.log("[DEBUG] createBot: Bot instance configured successfully");
 
 	return bot;
@@ -37,15 +43,13 @@ export const createBot = (config: BotConfig): Bot => {
  */
 export const startBot = async (
 	bot: Bot,
-	onStart?: (botInfo: { username?: string }) => void,
 ): Promise<void> => {
 	console.log("[DEBUG] startBot: Initiating bot startup...");
-	return bot
-		.start({
-			onStart(botInfo) {
-				console.log(`[DEBUG] startBot: Bot ${botInfo.username} started successfully`);
-				onStart?.(botInfo);
-			},
-		});
+	const runner = run(bot, {
+		sink: {
+			concurrency: 5,
+		}
+	});
+	process.once("SIGINT", () => stopRunner(runner));
+	process.once("SIGTERM", () => stopRunner(runner));
 };
-

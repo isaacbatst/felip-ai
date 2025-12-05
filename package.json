@@ -18,6 +18,7 @@
     "vitest": "^4.0.15"
   },
   "dependencies": {
+    "@grammyjs/runner": "^2.0.3",
     "@openai/agents": "^0.3.4",
     "googleapis": "^167.0.0",
     "grammy": "^1.38.4",
