@@ -129,12 +129,170 @@ npm install
 npm run dev
 ```
 
-### Modo Produção
+### Modo Produção (Local)
 
 ```bash
 npm run build
-node dist/index.js
+npm start
 ```
+
+Ou usando o script de build:
+
+```bash
+./build.sh
+npm start
+```
+
+## 🚢 Deploy em Produção
+
+O projeto está configurado para deploy automático usando Docker Swarm e GitHub Actions.
+
+### Pré-requisitos para Deploy
+
+1. **Repositório GitHub** configurado
+2. **GitHub Container Registry (GHCR)** habilitado
+3. **Servidor com Docker Swarm** configurado
+4. **Traefik** como reverse proxy (mesmo ambiente do fingram-bot)
+5. **SSH access** ao servidor de deploy
+
+### Configuração do GitHub Secrets
+
+Configure os seguintes secrets no repositório GitHub (Settings > Secrets and variables > Actions):
+
+#### Secrets Obrigatórios:
+
+- `TELEGRAM_BOT_TOKEN`: Token do bot Telegram obtido no BotFather
+- `GOOGLE_SPREADSHEET_ID`: ID da planilha do Google Sheets
+- `GOOGLE_SPREADSHEET_RANGE`: Range da planilha (opcional, pode deixar vazio)
+- `OPENAI_API_KEY`: Chave da API da OpenAI
+- `DEPLOY_SSH_PRIVATE_KEY`: Chave SSH privada para acesso ao servidor de deploy
+
+#### Secrets Opcionais:
+
+- `GOOGLE_SPREADSHEET_RANGE`: Se não configurado, será usado o padrão (deixe vazio para auto-detectar)
+
+### Configuração do Servidor
+
+#### 1. Criar usuário e diretórios no servidor
+
+```bash
+# Criar usuário (se ainda não existir)
+sudo useradd -m -s /bin/bash felip-ai
+
+# Criar diretório para o arquivo de service account
+sudo mkdir -p /home/felip-ai
+sudo chown felip-ai:felip-ai /home/felip-ai
+```
+
+#### 2. Copiar arquivo de Service Account
+
+```bash
+# No servidor, copie o arquivo JSON da Service Account
+sudo cp service-account-key.json /home/felip-ai/service-account-key.json
+sudo chown felip-ai:felip-ai /home/felip-ai/service-account-key.json
+sudo chmod 600 /home/felip-ai/service-account-key.json
+```
+
+#### 3. Verificar Docker Swarm
+
+Certifique-se de que o Docker Swarm está inicializado:
+
+```bash
+docker swarm init
+```
+
+### Arquivos de Deploy
+
+O projeto inclui os seguintes arquivos para deploy:
+
+- **`Dockerfile`**: Imagem Docker multi-stage para build e produção
+- **`stack.yml`**: Configuração do Docker Swarm Stack
+- **`.github/workflows/deploy.yml`**: Workflow do GitHub Actions para CI/CD
+- **`build.sh`**: Script de build local para testes
+
+### Processo de Deploy Automático
+
+1. **Push para branch `main`**: O workflow do GitHub Actions é acionado automaticamente
+2. **Testes**: Os testes são executados primeiro
+3. **Build da imagem**: A imagem Docker é construída e enviada para o GHCR
+4. **Deploy**: O stack é atualizado no servidor via SSH
+
+### Deploy Manual
+
+Se precisar fazer deploy manual:
+
+```bash
+# 1. Build local da imagem
+docker build -t ghcr.io/isaacbatst/felip-ai:local .
+
+# 2. Fazer login no GHCR
+echo $GITHUB_TOKEN | docker login ghcr.io -u USERNAME --password-stdin
+
+# 3. Push da imagem
+docker push ghcr.io/isaacbatst/felip-ai:local
+
+# 4. No servidor, criar arquivo envfile
+cat > envfile << EOF
+TELEGRAM_BOT_TOKEN=seu_token
+GOOGLE_SPREADSHEET_ID=seu_id
+GOOGLE_SPREADSHEET_RANGE=
+GOOGLE_SERVICE_ACCOUNT_KEY_FILE=/app/service-account-key.json
+OPENAI_API_KEY=sua_chave
+GIT_COMMIT_HASH=local
+EOF
+
+# 5. Deploy do stack
+docker stack deploy -c stack.yml felip-ai --with-registry-auth
+```
+
+### Verificar Status do Deploy
+
+```bash
+# Verificar serviços do stack
+docker stack services felip-ai
+
+# Ver logs do serviço
+docker service logs felip-ai_bot -f
+
+# Verificar se o serviço está rodando
+docker service ps felip-ai_bot
+```
+
+### Atualizar Configurações
+
+Para atualizar variáveis de ambiente após o deploy inicial:
+
+1. Atualize os secrets no GitHub (se necessário)
+2. Faça um novo push para `main` (o workflow criará um novo `envfile`)
+3. Ou edite manualmente o `envfile` no servidor e faça redeploy:
+
+```bash
+# No servidor
+docker stack rm felip-ai
+# Aguarde alguns segundos
+docker stack deploy -c stack.yml felip-ai --with-registry-auth
+```
+
+### Troubleshooting do Deploy
+
+#### Erro: "Image not found"
+- Verifique se a imagem foi enviada corretamente para o GHCR
+- Verifique se o usuário tem permissão para fazer pull da imagem
+- Execute `docker login ghcr.io` no servidor
+
+#### Erro: "Cannot connect to Docker daemon"
+- Verifique se o Docker Swarm está inicializado: `docker swarm init`
+- Verifique se o usuário SSH tem permissão para acessar o Docker
+
+
+#### Erro: "Permission denied" ao ler service-account-key.json
+- Verifique as permissões do arquivo: `chmod 600 /home/felip-ai/service-account-key.json`
+- Verifique se o caminho no `stack.yml` está correto
+
+#### Bot não está respondendo
+- Verifique os logs: `docker service logs felip-ai_bot -f`
+- Verifique se o `TELEGRAM_BOT_TOKEN` está correto
+- Verifique se o arquivo `service-account-key.json` está acessível
 
 ## 📝 Estrutura de Dados
 

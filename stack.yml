@@ -1,0 +1,16 @@
+version: "3.8"
+
+services:
+  bot:
+    image: ghcr.io/isaacbatst/felip-ai:${GIT_COMMIT_HASH:-latest}
+    user: "1000:1000"
+    deploy:
+      update_config:
+        order: start-first
+      restart_policy:
+        condition: on-failure
+    volumes:
+      - /home/felip-ai/service-account-key.json:/app/service-account-key.json:ro
+    env_file:
+      - envfile
+

@@ -1,0 +1,22 @@
+# Arquivo de exemplo para variáveis de ambiente
+# Copie este arquivo para envfile e preencha com os valores reais
+# NUNCA commite o arquivo envfile no repositório!
+
+# Token do Telegram Bot (obtido no BotFather)
+TELEGRAM_BOT_TOKEN=seu_token_aqui
+
+# ID da planilha do Google Sheets (extraído da URL)
+GOOGLE_SPREADSHEET_ID=seu_spreadsheet_id_aqui
+
+# Range da planilha (opcional - deixe vazio para auto-detectar)
+GOOGLE_SPREADSHEET_RANGE=
+
+# Caminho para o arquivo JSON da Service Account (no container)
+GOOGLE_SERVICE_ACCOUNT_KEY_FILE=/app/service-account-key.json
+
+# Chave da API da OpenAI
+OPENAI_API_KEY=sua_chave_openai
+
+# Hash do commit Git (gerado automaticamente pelo GitHub Actions)
+GIT_COMMIT_HASH=
+
