@@ -1,6 +1,6 @@
 import { createBot, startBot } from "./bot/bot-factory.js";
 import { openaiClient } from "./config/openai.js";
-import { PRICE_TABLE } from "./config/price-table.js";
+import { fetchPriceTableFromSheets } from "./services/google-sheets.js";
 import {
 	createMessageParser,
 	DEFAULT_PARSER_CONFIG,
@@ -9,11 +9,30 @@ import {
 console.log("[DEBUG] Starting application initialization...");
 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+const GOOGLE_SPREADSHEET_ID = process.env.GOOGLE_SPREADSHEET_ID;
+const GOOGLE_SPREADSHEET_RANGE = process.env.GOOGLE_SPREADSHEET_RANGE || "Sheet1!A:C";
 
 if (!TELEGRAM_BOT_TOKEN) {
 	console.error("[DEBUG] TELEGRAM_BOT_TOKEN is not set");
 	throw new Error("TELEGRAM_BOT_TOKEN is not set");
 }
+
+if (!GOOGLE_SPREADSHEET_ID) {
+	console.error("[DEBUG] GOOGLE_SPREADSHEET_ID is not set");
+	throw new Error("GOOGLE_SPREADSHEET_ID is not set");
+}
+
+if (!process.env.GOOGLE_SERVICE_ACCOUNT_KEY_FILE) {
+	console.error("[DEBUG] GOOGLE_SERVICE_ACCOUNT_KEY_FILE is not set");
+	throw new Error("GOOGLE_SERVICE_ACCOUNT_KEY_FILE is not set");
+}
+
+console.log("[DEBUG] Fetching price table from Google Sheets...");
+const PRICE_TABLE = await fetchPriceTableFromSheets(
+	GOOGLE_SPREADSHEET_ID,
+	GOOGLE_SPREADSHEET_RANGE,
+);
+console.log("[DEBUG] Price table loaded successfully");
 
 console.log("[DEBUG] TELEGRAM_BOT_TOKEN found, creating message parser...");
 const parseMessage = createMessageParser(openaiClient, DEFAULT_PARSER_CONFIG);
