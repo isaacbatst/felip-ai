@@ -9,10 +9,11 @@ import type { PriceTableByCpf } from "../types/price.js";
  */
 export async function fetchPriceTableFromSheets(
 	spreadsheetId: string,
+	keyFile: string,
 	range?: string,
 ): Promise<PriceTableByCpf> {
 	const auth = new google.auth.GoogleAuth({
-		keyFile: process.env.GOOGLE_SERVICE_ACCOUNT_KEY_FILE,
+		keyFile,
 		scopes: ["https://www.googleapis.com/auth/spreadsheets.readonly"],
 	});
 
@@ -53,7 +54,7 @@ export async function fetchPriceTableFromSheets(
 		sheetName,
 	});
 
-	let response;
+	let response: any;
 	try {
 		response = await sheets.spreadsheets.values.get({
 			spreadsheetId,

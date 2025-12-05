@@ -11,7 +11,7 @@ console.log("[DEBUG] Starting application initialization...");
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const GOOGLE_SPREADSHEET_ID = process.env.GOOGLE_SPREADSHEET_ID;
 const GOOGLE_SPREADSHEET_RANGE = process.env.GOOGLE_SPREADSHEET_RANGE; // Opcional: "Sheet1" ou "Sheet1!A:C" ou deixe vazio para auto-detectar
-
+const GOOGLE_SERVICE_ACCOUNT_KEY_FILE = process.env.GOOGLE_SERVICE_ACCOUNT_KEY_FILE;
 if (!TELEGRAM_BOT_TOKEN) {
 	console.error("[DEBUG] TELEGRAM_BOT_TOKEN is not set");
 	throw new Error("TELEGRAM_BOT_TOKEN is not set");
@@ -22,7 +22,7 @@ if (!GOOGLE_SPREADSHEET_ID) {
 	throw new Error("GOOGLE_SPREADSHEET_ID is not set");
 }
 
-if (!process.env.GOOGLE_SERVICE_ACCOUNT_KEY_FILE) {
+if (!GOOGLE_SERVICE_ACCOUNT_KEY_FILE) {
 	console.error("[DEBUG] GOOGLE_SERVICE_ACCOUNT_KEY_FILE is not set");
 	throw new Error("GOOGLE_SERVICE_ACCOUNT_KEY_FILE is not set");
 }
@@ -30,6 +30,7 @@ if (!process.env.GOOGLE_SERVICE_ACCOUNT_KEY_FILE) {
 console.log("[DEBUG] Fetching price table from Google Sheets...");
 const PRICE_TABLE = await fetchPriceTableFromSheets(
 	GOOGLE_SPREADSHEET_ID,
+	GOOGLE_SERVICE_ACCOUNT_KEY_FILE,
 	GOOGLE_SPREADSHEET_RANGE,
 ).catch((error) => {
 	console.error("[DEBUG] Error fetching price table from Google Sheets:", error);
