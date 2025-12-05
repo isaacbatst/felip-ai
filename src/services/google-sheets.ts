@@ -2,16 +2,24 @@ import { google } from "googleapis";
 import type { PriceTableByCpf } from "../types/price.js";
 
 /**
- * Busca a tabela de preços do Google Sheets
+ * Resultado da busca na planilha incluindo tabela de preços e milhas disponíveis
+ */
+export interface PriceTableResult {
+	priceTable: PriceTableByCpf;
+	availableMiles: number | null;
+}
+
+/**
+ * Busca a tabela de preços do Google Sheets e a quantidade de milhas disponíveis (célula E2)
  * @param spreadsheetId - ID da planilha do Google Sheets
  * @param range - Range da planilha (ex: "Sheet1!A1:C1000" ou apenas "Sheet1")
- * @returns Promise com a tabela de preços no formato PriceTableByCpf
+ * @returns Promise com a tabela de preços e milhas disponíveis
  */
 export async function fetchPriceTableFromSheets(
 	spreadsheetId: string,
 	keyFile: string,
 	range?: string,
-): Promise<PriceTableByCpf> {
+): Promise<PriceTableResult> {
 	const auth = new google.auth.GoogleAuth({
 		keyFile,
 		scopes: ["https://www.googleapis.com/auth/spreadsheets.readonly"],
@@ -123,6 +131,33 @@ export async function fetchPriceTableFromSheets(
 		),
 	});
 
-	return priceTable;
+	// Busca a quantidade de milhas disponíveis na célula E2
+	let availableMiles: number | null = null;
+	try {
+		const e2Response = await sheets.spreadsheets.values.get({
+			spreadsheetId,
+			range: `${sheetName}!E2`,
+		});
+
+		const e2Value = e2Response.data.values?.[0]?.[0];
+		if (e2Value !== undefined && e2Value !== null && e2Value !== "") {
+			const parsedValue = parseFloat(e2Value.toString().trim().replace(",", "."));
+			if (!isNaN(parsedValue) && parsedValue >= 0) {
+				availableMiles = parsedValue;
+				console.log("[DEBUG] google-sheets: Available miles found in E2:", availableMiles);
+			} else {
+				console.warn("[DEBUG] google-sheets: Invalid value in E2:", e2Value);
+			}
+		} else {
+			console.warn("[DEBUG] google-sheets: E2 cell is empty or not found");
+		}
+	} catch (error) {
+		console.warn("[DEBUG] google-sheets: Error reading E2 cell:", error);
+	}
+
+	return {
+		priceTable,
+		availableMiles,
+	};
 }
 

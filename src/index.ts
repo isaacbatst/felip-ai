@@ -28,7 +28,7 @@ if (!GOOGLE_SERVICE_ACCOUNT_KEY_FILE) {
 }
 
 console.log("[DEBUG] Fetching price table from Google Sheets...");
-const PRICE_TABLE = await fetchPriceTableFromSheets(
+const PRICE_TABLE_RESULT = await fetchPriceTableFromSheets(
 	GOOGLE_SPREADSHEET_ID,
 	GOOGLE_SERVICE_ACCOUNT_KEY_FILE,
 	GOOGLE_SPREADSHEET_RANGE,
@@ -37,7 +37,8 @@ const PRICE_TABLE = await fetchPriceTableFromSheets(
 	throw error;
 });
 console.log("[DEBUG] Price table loaded successfully");
-console.log("[DEBUG] Price table:", PRICE_TABLE);
+console.log("[DEBUG] Price table:", PRICE_TABLE_RESULT.priceTable);
+console.log("[DEBUG] Available miles:", PRICE_TABLE_RESULT.availableMiles);
 
 console.log("[DEBUG] TELEGRAM_BOT_TOKEN found, creating message parser...");
 const parseMessage = createMessageParser(openaiClient, DEFAULT_PARSER_CONFIG);
@@ -51,7 +52,8 @@ const bot = createBot({
 	token: TELEGRAM_BOT_TOKEN,
 	messageHandlerDeps: {
 		parseMessage,
-		priceTable: PRICE_TABLE,
+		priceTable: PRICE_TABLE_RESULT.priceTable,
+		availableMiles: PRICE_TABLE_RESULT.availableMiles,
 	},
 });
 console.log("[DEBUG] Bot instance created successfully");
