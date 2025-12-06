@@ -151,7 +151,7 @@ export async function fetchPriceTableV2FromSheets(
 
 	const sheets = google.sheets({ version: "v4", auth });
 	const range = "!A:B";
-	const sheetName = "Sheet2";
+	const sheetName = "Sheet1";
 	// Executa as buscas em paralelo
 	const [priceTable, availableMiles] = await Promise.all([
 		fetchPriceTable(sheets, spreadsheetId, range, sheetName),
