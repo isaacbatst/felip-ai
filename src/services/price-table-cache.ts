@@ -1,6 +1,6 @@
-import { createCache, type Cache } from "../utils/cache.js";
-import type { PriceTableResult } from "./google-sheets.js";
-import { fetchPriceTableFromSheets } from "./google-sheets.js";
+import { type Cache, createCache } from "../utils/cache.js";
+import type { PriceTableResultV2 } from "./google-sheets.js";
+import { fetchPriceTableV2FromSheets } from "./google-sheets.js";
 
 /**
  * Configuração para o cache da planilha
@@ -13,27 +13,35 @@ export interface PriceTableCacheConfig {
 }
 
 /**
- * Interface do cache da tabela de preços
- * Re-exporta a interface genérica para manter compatibilidade
+ * Interface do cache da tabela de preços v2
  */
-export type PriceTableCache = Cache<PriceTableResult>;
+export type PriceTableCacheV2 = Cache<PriceTableResultV2>;
 
 /**
- * Cria uma instância do cache da tabela de preços
+ * Configuração para o cache da planilha v2
+ */
+export interface PriceTableCacheV2Config {
+	spreadsheetId: string;
+	keyFile: string;
+	range?: string;
+	ttlSeconds?: number; // Default: 60
+}
+
+/**
+ * Cria uma instância do cache da tabela de preços v2
  * Usa o cache genérico internamente, seguindo o padrão composable
  */
-export function createPriceTableCache(
-	config: PriceTableCacheConfig,
-): PriceTableCache {
-	return createCache<PriceTableResult>({
+export function createPriceTableCacheV2(
+	config: PriceTableCacheV2Config,
+): PriceTableCacheV2 {
+	return createCache<PriceTableResultV2>({
 		fetchFn: async () => {
-			return await fetchPriceTableFromSheets(
+			return await fetchPriceTableV2FromSheets(
 				config.spreadsheetId,
 				config.keyFile,
-				config.range,
 			);
 		},
 		ttlSeconds: config.ttlSeconds ?? 60,
-		debugPrefix: "price-table-cache",
+		debugPrefix: "price-table-cache-v2",
 	});
 }

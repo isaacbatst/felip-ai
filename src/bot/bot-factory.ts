@@ -3,7 +3,7 @@ import { Bot } from "grammy";
 import { createStartCommandHandler } from "../handlers/command-handler.js";
 import type { MessageHandlerDependencies } from "../handlers/message-handler.js";
 import { createMessageHandler } from "../handlers/message-handler.js";
-import type { PriceTableCache } from "../services/price-table-cache.js";
+import type { PriceTableCacheV2 } from "../services/price-table-cache.js";
 
 /**
  * Configuração para criar o bot
@@ -11,7 +11,7 @@ import type { PriceTableCache } from "../services/price-table-cache.js";
 export interface BotConfig {
 	token: string;
 	messageHandlerDeps: MessageHandlerDependencies;
-	priceTableCache: PriceTableCache; // Still needed for command handler
+	priceTableCache: PriceTableCacheV2; // Cache v2 para command handler
 }
 
 const stopRunner = async (runner: RunnerHandle) => runner.isRunning() && runner.stop();
@@ -53,6 +53,12 @@ export const startBot = async (
 	const runner = run(bot, {
 		sink: {
 			concurrency: 5,
+			timeout: {
+				handler: (update, task) => {
+					console.error("[ERROR] Bot timeout:", update, task);
+				},
+				milliseconds: 30000,
+			}
 		}
 	});
 	process.once("SIGINT", () => stopRunner(runner));

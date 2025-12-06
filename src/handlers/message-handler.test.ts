@@ -1,26 +1,16 @@
 import type OpenAI from "openai";
 import { describe, expect, it, vi } from "vitest";
 import { MessageParserAdapter } from "../adapters/message-parser-adapter.js";
-import type { PriceTableResult } from "../services/google-sheets.js";
+import type { PriceTableResultV2 } from "../services/google-sheets.js";
 import { DEFAULT_PARSER_CONFIG } from "../services/message-parser.js";
-import type { PriceTableByCpf } from "../types/price.js";
+import type { PriceTableV2 } from "../types/price.js";
 import { createMessageHandler, type MessageContext, type MessageHandlerDependencies, type MessageParser, type PriceTableProvider } from "./message-handler.js";
 
 describe("createMessageHandler", () => {
-	// Mock price table for testing
-	const mockPriceTable: PriceTableByCpf = {
-		1: {
-			30: 17,
-			60: 16.5,
-			90: 16.25,
-			120: 16,
-		},
-		2: {
-			30: 17.5,
-			60: 17,
-			90: 16.75,
-			120: 16.25,
-		},
+	// Mock price table v2 for testing (apenas quantidade e preço, todos para 1 CPF)
+	const mockPriceTableV2: PriceTableV2 = {
+		30: 17, // 1 CPF, 30k milhas por R$ 17
+		60: 16, // 1 CPF, 60k milhas por R$ 16
 	};
 
 	it("should handle a valid purchase request and send a formatted quote response", async () => {
@@ -51,8 +41,8 @@ describe("createMessageHandler", () => {
 
 		// Mock price table provider (external service - Google Sheets)
 		const mockPriceTableProvider: PriceTableProvider = {
-			getPriceTable: vi.fn<() => Promise<PriceTableResult>>().mockResolvedValue({
-				priceTable: mockPriceTable,
+			getPriceTable: vi.fn<() => Promise<PriceTableResultV2>>().mockResolvedValue({
+				priceTable: mockPriceTableV2,
 				availableMiles: 100, // More than requested quantity
 			}),
 		};
@@ -99,7 +89,7 @@ describe("createMessageHandler", () => {
 			expect(replyCall[0]).toContain("LATAM");
 			expect(replyCall[0]).toContain("60k milhas");
 			expect(replyCall[0]).toContain("1 CPF");
-			expect(replyCall[0]).toContain("R$ 16.50"); // Price for 60k with 1 CPF
+			expect(replyCall[0]).toContain("R$ 16.00"); // Price for 60k with 1 CPF (v2: 60k = 16)
 			expect(replyCall[1]).toEqual({
 				reply_to_message_id: 123,
 			});
@@ -134,8 +124,8 @@ describe("createMessageHandler", () => {
 
 		// Mock price table provider (external service - Google Sheets)
 		const mockPriceTableProvider: PriceTableProvider = {
-			getPriceTable: vi.fn<() => Promise<PriceTableResult>>().mockResolvedValue({
-				priceTable: mockPriceTable,
+			getPriceTable: vi.fn<() => Promise<PriceTableResultV2>>().mockResolvedValue({
+				priceTable: mockPriceTableV2,
 				availableMiles: 50,
 			}),
 		};
@@ -177,7 +167,9 @@ describe("createMessageHandler", () => {
 			expect(replyCall[0]).toContain("💰 Cotação");
 			expect(replyCall[0]).toContain("30k milhas");
 			expect(replyCall[0]).toContain("2 CPFs");
-			expect(replyCall[0]).toContain("R$ 17.50"); // Price for 30k with 2 CPF
+			// 2 CPFs com 30k total = 15k por CPF
+			// 15k < 30k (mínimo), então extrapola: 17 + (-1/30) * (15 - 30) = 17 + 0.5 = 17.5
+			expect(replyCall[0]).toContain("R$ 17.50"); // Price for 30k with 2 CPFs (v2 calculation)
 			expect(replyCall[0]).not.toContain("LATAM"); // Should not contain airline
 		}
 	});

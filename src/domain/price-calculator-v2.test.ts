@@ -104,14 +104,15 @@ describe("calculatePriceV2", () => {
 		it("deve calcular preço corretamente para 3 CPFs com 30k total (10k por CPF)", () => {
 			// 3 CPF, 30k total = 10k por CPF
 			// 10k < 30k, então extrapolamos para trás
-			// Slope = -1/30, para 10k: 17 + (-1/30) * (10 - 30) = 17 + 0.666... = 17.67
+			// Slope = -1/30, para 10k: 17 + (-1/30) * (10 - 30) = 17 + 0.666... = 17.666...
+			// Arredondado para o quarto mais próximo: 17.75
 			const result = calculatePriceV2(30, 3, testPriceTableV2);
 
 			expect(result.success).toBe(true);
 			if (result.success) {
 				// 10k por CPF: 17 + (-1/30) * (10 - 30) = 17 + 2/3 = 17.666...
-				// Arredondado para 2 casas decimais: 17.67
-				expect(result.price).toBeCloseTo(17.67, 2);
+				// Arredondado para o quarto mais próximo (00, 25, 50, 75): 17.75
+				expect(result.price).toBe(17.75);
 			}
 		});
 
@@ -246,6 +247,58 @@ describe("calculatePriceV2", () => {
 			if (result.success) {
 				expect(result.price).toBeGreaterThanOrEqual(16);
 				expect(result.price).toBe(16); // deve ser exatamente 16 (piso)
+			}
+		});
+	});
+
+	describe("arredondamento para quartos (00, 25, 50, 75)", () => {
+		it("deve arredondar preços interpolados para o quarto mais próximo", () => {
+			// Casos que resultam em valores que precisam ser arredondados
+			// 1 CPF, 35k está entre 30k (17) e 60k (16)
+			// Interpolação: 17 + (16 - 17) * ((35 - 30) / (60 - 30)) = 17 - 1/6 = 16.833...
+			// Arredondado para quarto: 16.75
+			const result = calculatePriceV2(35, 1, testPriceTableV2);
+
+			expect(result.success).toBe(true);
+			if (result.success) {
+				expect(result.price).toBe(16.75);
+			}
+		});
+
+		it("deve arredondar preços extrapolados para o quarto mais próximo", () => {
+			// 2 CPF, 20k total = 10k por CPF
+			// Extrapolação: 17 + (-1/30) * (10 - 30) = 17 + 2/3 = 17.666...
+			// Arredondado para quarto: 17.75
+			const result = calculatePriceV2(20, 2, testPriceTableV2);
+
+			expect(result.success).toBe(true);
+			if (result.success) {
+				expect(result.price).toBe(17.75);
+			}
+		});
+
+		it("deve manter valores que já são quartos exatos", () => {
+			// Valores que já são quartos (16.5, 17.5, etc.) devem permanecer iguais
+			const result1 = calculatePriceV2(45, 1, testPriceTableV2); // 16.5
+			const result2 = calculatePriceV2(30, 2, testPriceTableV2); // 17.5
+
+			expect(result1.success).toBe(true);
+			expect(result2.success).toBe(true);
+			if (result1.success && result2.success) {
+				expect(result1.price).toBe(16.5);
+				expect(result2.price).toBe(17.5);
+			}
+		});
+
+		it("deve arredondar valores próximos de quartos corretamente", () => {
+			// Testa vários casos de arredondamento
+			// 1 CPF, 40k: 17 + (16 - 17) * ((40 - 30) / (60 - 30)) = 17 - 1/3 = 16.666...
+			// Arredondado: 16.75
+			const result = calculatePriceV2(40, 1, testPriceTableV2);
+
+			expect(result.success).toBe(true);
+			if (result.success) {
+				expect(result.price).toBe(16.75);
 			}
 		});
 	});

@@ -238,7 +238,7 @@ export const calculatePriceV2 = (
 	if (quantityPerCpf < minQty) {
 		// Se for 1 CPF, retorna preço mínimo fixo (não extrapola)
 		if (cpfCount === 1) {
-			const roundedPrice = roundToTwoDecimals(minPrice);
+			const roundedPrice = roundToQuarter(minPrice);
 			return {
 				success: true,
 				price: roundedPrice,
@@ -258,7 +258,7 @@ export const calculatePriceV2 = (
 				pricePerCpf = minPrice + defaultSlope * (quantityPerCpf - minQty);
 			} else {
 				// Apenas 2 pontos iguais, retorna o preço diretamente
-				const roundedPrice = roundToTwoDecimals(minPrice);
+				const roundedPrice = roundToQuarter(minPrice);
 				return {
 					success: true,
 					price: roundedPrice,
@@ -286,7 +286,7 @@ export const calculatePriceV2 = (
 
 		// Garante que o preço nunca fique abaixo do menor valor da tabela (piso mínimo)
 		const finalPrice = Math.max(pricePerCpf, maxPrice);
-		const roundedPrice = roundToTwoDecimals(finalPrice);
+		const roundedPrice = roundToQuarter(finalPrice);
 		return {
 			success: true,
 			price: roundedPrice,
@@ -295,7 +295,7 @@ export const calculatePriceV2 = (
 
 	// Se quantidade por CPF está acima do máximo, usa preço máximo
 	if (quantityPerCpf >= maxQty) {
-		const roundedPrice = roundToTwoDecimals(maxPrice);
+		const roundedPrice = roundToQuarter(maxPrice);
 		return {
 			success: true,
 			price: roundedPrice,
@@ -324,7 +324,7 @@ export const calculatePriceV2 = (
 
 	// Se os preços são iguais, retorna o preço diretamente
 	if (lowerPrice === upperPrice) {
-		const roundedPrice = roundToTwoDecimals(lowerPrice);
+		const roundedPrice = roundToQuarter(lowerPrice);
 		return {
 			success: true,
 			price: roundedPrice,
@@ -342,7 +342,7 @@ export const calculatePriceV2 = (
 
 	// Garante que o preço nunca fique abaixo do menor valor da tabela (piso mínimo)
 	const finalPrice = Math.max(pricePerCpf, maxPrice);
-	const roundedPrice = roundToTwoDecimals(finalPrice);
+	const roundedPrice = roundToQuarter(finalPrice);
 	return {
 		success: true,
 		price: roundedPrice,

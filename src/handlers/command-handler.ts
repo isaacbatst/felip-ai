@@ -1,41 +1,33 @@
 import type { Context } from "grammy";
-import type { PriceTableByCpf } from "../types/price.js";
-import type { PriceTableCache } from "../services/price-table-cache.js";
+import type { PriceTableV2 } from "../types/price.js";
+import type { PriceTableCacheV2 } from "../services/price-table-cache.js";
 
 /**
  * Dependências do handler de comandos
  * Permite dependency injection para testes e flexibilidade
  */
 export interface StartCommandHandlerDependencies {
-	priceTableCache: PriceTableCache;
+	priceTableCache: PriceTableCacheV2;
 }
 
 /**
- * Formata a tabela de preços em uma string legível
+ * Formata a tabela de preços v2 em uma string legível
  * Função pura de formatação
+ * Todos os registros são para 1 CPF
  */
-const formatPriceTable = (priceTable: PriceTableByCpf): string => {
+const formatPriceTableV2 = (priceTable: PriceTableV2): string => {
 	const lines: string[] = [];
 	
-	const cpfCounts = Object.keys(priceTable)
+	const quantities = Object.keys(priceTable)
 		.map(Number)
 		.sort((a, b) => a - b);
 	
-	for (const cpfCount of cpfCounts) {
-		const table = priceTable[cpfCount];
-		if (!table) continue;
-		
-		lines.push(`\n${cpfCount} CPF:`);
-		
-		const quantities = Object.keys(table)
-			.map(Number)
-			.sort((a, b) => a - b);
-		
-		for (const qty of quantities) {
-			const price = table[qty];
-			if (price !== undefined) {
-				lines.push(`  ${qty}k milhas: R$ ${price.toFixed(2)}`);
-			}
+	lines.push("\n1 CPF:");
+	
+	for (const qty of quantities) {
+		const price = priceTable[qty];
+		if (price !== undefined) {
+			lines.push(`  ${qty}k milhas: R$ ${price.toFixed(2)}`);
 		}
 	}
 	
@@ -57,12 +49,12 @@ export const createStartCommandHandler =
 		});
 
 		// Revalida o cache antes de mostrar a tabela
-		console.log("[DEBUG] command-handler: Revalidating cache for /start command...");
+		console.log("[DEBUG] command-handler: Revalidating cache v2 for /start command...");
 		const priceTableResult = await deps.priceTableCache.get(true);
-		const priceTableFormatted = formatPriceTable(priceTableResult.priceTable);
+		const priceTableFormatted = formatPriceTableV2(priceTableResult.priceTable);
 		
 		const welcomeMessage =
-			"📊 Tabela de Preços:" +
+			"📊 Tabela de Preços (1 CPF):" +
 			priceTableFormatted;
 
 		console.log("[DEBUG] command-handler: Sending welcome message");

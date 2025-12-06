@@ -1,6 +1,6 @@
-import { calculatePrice } from "../domain/price-calculator.js";
+import { calculatePriceV2 } from "../domain/price-calculator.js";
 import { formatQuoteResponse } from "../formatters/quote-formatter.js";
-import type { PriceTableResult } from "../services/google-sheets.js";
+import type { PriceTableResultV2 } from "../services/google-sheets.js";
 import type { PurchaseRequest } from "../types/purchase.js";
 import { validatePurchaseRequest } from "../utils/validation.js";
 
@@ -13,11 +13,11 @@ export interface MessageParser {
 }
 
 /**
- * Minimal interface for getting price table data (ISP - Interface Segregation Principle)
+ * Minimal interface for getting price table data v2 (ISP - Interface Segregation Principle)
  * Only exposes what the handler needs, not the full cache interface
  */
 export interface PriceTableProvider {
-	getPriceTable(): Promise<PriceTableResult>;
+	getPriceTable(): Promise<PriceTableResultV2>;
 }
 
 /**
@@ -81,7 +81,7 @@ export const createMessageHandler =
 		}
 
 		// Após validação, revalida para garantir dados atualizados
-		console.log("[DEBUG] message-handler: Getting price table data...");
+		console.log("[DEBUG] message-handler: Getting price table data v2...");
 		const priceTableResult = await deps.priceTableProvider.getPriceTable();
 		const { priceTable, availableMiles } = priceTableResult;
 
@@ -94,12 +94,12 @@ export const createMessageHandler =
 			return;
 		}
 
-		console.log("[DEBUG] message-handler: Calculating price...", {
+		console.log("[DEBUG] message-handler: Calculating price v2...", {
 			requestedQuantity: validatedRequest.quantity,
 			cpfCount: validatedRequest.cpfCount,
 			airline: validatedRequest.airline,
 		});
-		const priceResult = calculatePrice(
+		const priceResult = calculatePriceV2(
 			validatedRequest.quantity,
 			validatedRequest.cpfCount,
 			priceTable,
