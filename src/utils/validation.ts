@@ -1,4 +1,5 @@
 import type { PurchaseRequest, ValidatedPurchaseRequest } from "../types/purchase.js";
+import { normalizeMilesProgram } from "./miles-programs.js";
 
 /**
  * Valida se uma PurchaseRequest tem os dados necessários para calcular preço
@@ -19,6 +20,7 @@ export const validatePurchaseRequest = (
 		hasCpfCount: request.cpfCount !== undefined,
 		quantity: request.quantity,
 		cpfCount: request.cpfCount,
+		airline: request.airline,
 	});
 
 	if (
@@ -33,10 +35,18 @@ export const validatePurchaseRequest = (
 		return null;
 	}
 
+	// Normaliza o programa de milhas mencionado
+	const milesProgram = normalizeMilesProgram(request.airline ?? null);
+	console.log("[DEBUG] validation: Normalized miles program:", {
+		original: request.airline,
+		normalized: milesProgram,
+	});
+
 	const validated = {
 		quantity: request.quantity,
 		cpfCount: request.cpfCount,
 		airline: request.airline ?? undefined,
+		milesProgram,
 	};
 	console.log("[DEBUG] validation: Validation successful:", validated);
 	return validated;

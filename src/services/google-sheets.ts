@@ -1,12 +1,16 @@
 import { google } from "googleapis";
 import type { PriceTableV2 } from "../types/price.js";
+import {
+	BRAZILIAN_MILES_PROGRAMS,
+	type MilesProgram,
+} from "../utils/miles-programs.js";
 
 /**
- * Resultado da busca na planilha v2 incluindo tabela de preços v2 e milhas disponíveis
+ * Resultado da busca na planilha v2 incluindo tabela de preços v2 e milhas disponíveis por programa
  */
 export interface PriceTableResultV2 {
 	priceTable: PriceTableV2;
-	availableMiles: number | null;
+	availableMiles: Record<MilesProgram, number | null>;
 }
 
 /**
@@ -26,22 +30,28 @@ async function fetchPriceTable(
 ): Promise<PriceTableV2> {
 	// Constrói o range completo combinando o nome da aba com o range
 	const fullRange = `${sheetName}${range}`;
-	console.log("[DEBUG] google-sheets-v2: Fetching price table from spreadsheet", {
-		spreadsheetId,
-		range: fullRange,
-		sheetName,
-	});
+	console.log(
+		"[DEBUG] google-sheets-v2: Fetching price table from spreadsheet",
+		{
+			spreadsheetId,
+			range: fullRange,
+			sheetName,
+		},
+	);
 
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	let response: any;
 	try {
 		response = await sheets.spreadsheets.values.get({
 			spreadsheetId,
 			range: fullRange,
 		});
-	} catch (error: any) {
+	} catch (error: unknown) {
 		// Se falhar com A:B, tenta sem especificar colunas (pega toda a aba)
-		if (error?.code === 400 && range.includes("!A:B")) {
-			console.log("[DEBUG] google-sheets-v2: Range A:B failed, trying full sheet");
+		if ((error as { code?: number })?.code === 400 && range.includes("!A:B")) {
+			console.log(
+				"[DEBUG] google-sheets-v2: Range A:B failed, trying full sheet",
+			);
 			const fallbackRange = sheetName;
 			response = await sheets.spreadsheets.values.get({
 				spreadsheetId,
@@ -69,18 +79,24 @@ async function fetchPriceTable(
 	for (let i = 1; i < rows.length; i++) {
 		const row = rows[i];
 		if (!row || row.length < 2) {
-			console.warn(`[DEBUG] google-sheets-v2: Skipping invalid row ${i + 1}:`, row);
+			console.warn(
+				`[DEBUG] google-sheets-v2: Skipping invalid row ${i + 1}:`,
+				row,
+			);
 			continue;
 		}
 
 		const quantity = parseInt(row[0]?.toString().trim() || "", 10);
 		const price = parseFloat(row[1]?.toString().trim().replace(",", ".") || "");
 
-		if (isNaN(quantity) || isNaN(price)) {
-			console.warn(`[DEBUG] google-sheets-v2: Skipping row ${i + 1} with invalid data:`, {
-				quantity,
-				price,
-			});
+		if (Number.isNaN(quantity) || Number.isNaN(price)) {
+			console.warn(
+				`[DEBUG] google-sheets-v2: Skipping row ${i + 1} with invalid data:`,
+				{
+					quantity,
+					price,
+				},
+			);
 			continue;
 		}
 
@@ -96,49 +112,95 @@ async function fetchPriceTable(
 }
 
 /**
- * Busca a quantidade de milhas disponíveis na célula E2
+ * Busca milhas disponíveis para todos os programas em uma única requisição
+ * Estrutura esperada na planilha: Tabela nas colunas D e E
+ * - Coluna D: nome do programa
+ * - Coluna E: milhas disponíveis
+ *
  * @param sheets - Cliente do Google Sheets API
  * @param spreadsheetId - ID da planilha do Google Sheets
  * @param sheetName - Nome da aba
- * @returns Promise com a quantidade de milhas disponíveis ou null
+ * @returns Promise com objeto contendo milhas disponíveis por programa
  */
-async function fetchAvailableMiles(
+async function fetchAllAvailableMiles(
 	sheets: ReturnType<typeof google.sheets>,
 	spreadsheetId: string,
 	sheetName: string,
-): Promise<number | null> {
-	try {
-		const e2Response = await sheets.spreadsheets.values.get({
-			spreadsheetId,
-			range: `${sheetName}!E2`,
-		});
+): Promise<Record<MilesProgram, number | null>> {
+	const availableMiles: Record<MilesProgram, number | null> = {} as Record<
+		MilesProgram,
+		number | null
+	>;
 
-		const e2Value = e2Response.data.values?.[0]?.[0];
-		if (e2Value !== undefined && e2Value !== null && e2Value !== "") {
-			const parsedValue = parseFloat(e2Value.toString().trim().replace(",", "."));
-			if (!isNaN(parsedValue) && parsedValue >= 0) {
-				console.log("[DEBUG] google-sheets-v2: Available miles found in E2:", parsedValue);
-				return parsedValue;
-			} else {
-				console.warn("[DEBUG] google-sheets-v2: Invalid value in E2:", e2Value);
-			}
-		} else {
-			console.warn("[DEBUG] google-sheets-v2: E2 cell is empty or not found");
-		}
-	} catch (error) {
-		console.warn("[DEBUG] google-sheets-v2: Error reading E2 cell:", error);
+	// Inicializa todos os programas com null
+	for (const program of BRAZILIAN_MILES_PROGRAMS) {
+		availableMiles[program] = null;
 	}
 
-	return null;
+	try {
+		// Busca da tabela de programas (coluna D: programa, coluna E: milhas)
+		const programsRange = `${sheetName}!D:E`;
+		const programsResponse = await sheets.spreadsheets.values.get({
+			spreadsheetId,
+			range: programsRange,
+		});
+
+		const rows = programsResponse.data.values;
+		if (rows && rows.length > 0) {
+			// Parseia todos os programas da tabela de uma vez
+			for (const row of rows) {
+				if (!row || row.length < 2) {
+					continue;
+				}
+				const programName = row[0]?.toString().trim().toUpperCase();
+				const milesValue = row[1]?.toString().trim();
+				if (!programName || !milesValue) {
+					continue;
+				}
+
+				// Tenta encontrar o programa correspondente
+				for (const program of BRAZILIAN_MILES_PROGRAMS) {
+					if (programName === program) {
+						const parsedValue = parseFloat(milesValue.replace(",", "."));
+						if (!Number.isNaN(parsedValue) && parsedValue >= 0) {
+							availableMiles[program] = parsedValue;
+							console.log(
+								`[DEBUG] google-sheets-v2: Available miles found for ${program} in table:`,
+								parsedValue,
+							);
+							break; // Encontrou o programa, pode sair do loop interno
+						} else {
+							console.log(
+								`[DEBUG] google-sheets-v2: Parsed miles value is NaN or negative for ${program}:`,
+								{
+									program,
+									rawValue: milesValue,
+									parsedValue,
+								},
+							);
+						}
+					}
+				}
+			}
+		}
+	} catch (error) {
+		console.warn(
+			`[DEBUG] google-sheets-v2: Error reading programs table:`,
+			error,
+		);
+	}
+
+	return availableMiles;
 }
 
 /**
- * Busca a tabela de preços v2 do Google Sheets e a quantidade de milhas disponíveis (célula E2)
+ * Busca a tabela de preços v2 do Google Sheets e a quantidade de milhas disponíveis
  * Formato v2: apenas Quantidade e Preço (todos os registros são para 1 CPF)
+ * Milhas disponíveis são buscadas da tabela nas colunas D (programa) e E (milhas)
+ *
  * @param spreadsheetId - ID da planilha do Google Sheets
  * @param keyFile - Caminho para o arquivo de chave da service account
- * @param range - Range da planilha (ex: "Sheet2!A1:B1000" ou apenas "Sheet2")
- * @returns Promise com a tabela de preços v2 e milhas disponíveis
+ * @returns Promise com a tabela de preços v2 e milhas disponíveis por programa
  */
 export async function fetchPriceTableV2FromSheets(
 	spreadsheetId: string,
@@ -155,7 +217,7 @@ export async function fetchPriceTableV2FromSheets(
 	// Executa as buscas em paralelo
 	const [priceTable, availableMiles] = await Promise.all([
 		fetchPriceTable(sheets, spreadsheetId, range, sheetName),
-		fetchAvailableMiles(sheets, spreadsheetId, sheetName),
+		fetchAllAvailableMiles(sheets, spreadsheetId, sheetName),
 	]);
 
 	return {
@@ -163,4 +225,3 @@ export async function fetchPriceTableV2FromSheets(
 		availableMiles,
 	};
 }
-

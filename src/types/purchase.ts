@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { MilesProgram } from "../utils/miles-programs.js";
 
 /**
  * Schema Zod para validação da proposta de compra
@@ -21,7 +22,7 @@ export const PurchaseRequestSchema = z.object({
 	airline: z
 		.string()
 		.nullable()
-		.describe("Nome da companhia aérea mencionada (ex: LATAM)"),
+		.describe("Nome da companhia aérea ou programa de milhas mencionado (ex: LATAM, SMILES, TUDO AZUL)"),
 });
 
 export type PurchaseRequest = z.infer<typeof PurchaseRequestSchema>;
@@ -33,6 +34,7 @@ export interface ValidatedPurchaseRequest {
 	quantity: number;
 	cpfCount: number;
 	airline: string | undefined;
+	milesProgram: MilesProgram | null;
 }
 
 /**

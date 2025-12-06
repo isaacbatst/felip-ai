@@ -2,6 +2,7 @@ import { calculatePriceV2 } from "../domain/price-calculator.js";
 import { formatQuoteResponse } from "../formatters/quote-formatter.js";
 import type { PriceTableResultV2 } from "../services/google-sheets.js";
 import type { PurchaseRequest } from "../types/purchase.js";
+import type { MilesProgram } from "../utils/miles-programs.js";
 import { validatePurchaseRequest } from "../utils/validation.js";
 
 /**
@@ -35,7 +36,10 @@ export interface MessageContext {
 	chat?: {
 		id?: number;
 	} | null;
-	reply(text: string, options?: { reply_to_message_id?: number }): Promise<unknown>;
+	reply(
+		text: string,
+		options?: { reply_to_message_id?: number },
+	): Promise<unknown>;
 }
 
 /**
@@ -63,7 +67,9 @@ export const createMessageHandler =
 		});
 
 		if (!text) {
-			console.log("[DEBUG] message-handler: No text found in message, skipping");
+			console.log(
+				"[DEBUG] message-handler: No text found in message, skipping",
+			);
 			return;
 		}
 
@@ -73,10 +79,15 @@ export const createMessageHandler =
 
 		console.log("[DEBUG] message-handler: Validating purchase request...");
 		const validatedRequest = validatePurchaseRequest(purchaseRequest);
-		console.log("[DEBUG] message-handler: Validation result:", validatedRequest);
+		console.log(
+			"[DEBUG] message-handler: Validation result:",
+			validatedRequest,
+		);
 
 		if (!validatedRequest) {
-			console.log("[DEBUG] message-handler: Validation failed, not a purchase request or missing data");
+			console.log(
+				"[DEBUG] message-handler: Validation failed, not a purchase request or missing data",
+			);
 			return;
 		}
 
@@ -85,12 +96,31 @@ export const createMessageHandler =
 		const priceTableResult = await deps.priceTableProvider.getPriceTable();
 		const { priceTable, availableMiles } = priceTableResult;
 
-		// Verifica se a quantidade solicitada excede as milhas disponíveis
-		if (availableMiles !== null && validatedRequest.quantity > availableMiles) {
-			console.log("[DEBUG] message-handler: Requested quantity exceeds available miles, not responding", {
-				requested: validatedRequest.quantity,
-				available: availableMiles,
-			});
+		// Verifica se há um programa de milhas especificado
+		const milesProgram = validatedRequest.milesProgram ?? getHighestAvailableMilesProgram(availableMiles)[0]
+
+		const programAvailableMiles = availableMiles[milesProgram]
+		// Se não houver milhas registradas ou disponíveis para o programa, não responde
+		if (programAvailableMiles === null || programAvailableMiles === undefined) {
+			console.log(
+				"[DEBUG] message-handler: No miles registered for program, not responding",
+				{
+					program: milesProgram,
+				},
+			);
+			return;
+		}
+
+		// Verifica se a quantidade solicitada excede as milhas disponíveis para o programa
+		if (validatedRequest.quantity > programAvailableMiles) {
+			console.log(
+				"[DEBUG] message-handler: Requested quantity exceeds available miles for program, not responding",
+				{
+					program: milesProgram,
+					requested: validatedRequest.quantity,
+					available: programAvailableMiles,
+				},
+			);
 			return;
 		}
 
@@ -104,10 +134,16 @@ export const createMessageHandler =
 			validatedRequest.cpfCount,
 			priceTable,
 		);
-		console.log("[DEBUG] message-handler: Price calculation result:", priceResult);
+		console.log(
+			"[DEBUG] message-handler: Price calculation result:",
+			priceResult,
+		);
 
 		if (!priceResult.success) {
-			console.log("[DEBUG] message-handler: Price calculation failed:", priceResult.reason);
+			console.log(
+				"[DEBUG] message-handler: Price calculation failed:",
+				priceResult.reason,
+			);
 			return;
 		}
 
@@ -116,9 +152,12 @@ export const createMessageHandler =
 			validatedRequest.quantity,
 			validatedRequest.cpfCount,
 			priceResult.price,
-			validatedRequest.airline,
+			milesProgram,
 		);
-		console.log("[DEBUG] message-handler: Formatted response:", formattedResponse);
+		console.log(
+			"[DEBUG] message-handler: Formatted response:",
+			formattedResponse,
+		);
 
 		console.log("[DEBUG] message-handler: Sending reply to user...");
 		const replyOptions = ctx.message?.message_id
@@ -127,3 +166,20 @@ export const createMessageHandler =
 		await ctx.reply(formattedResponse, replyOptions);
 		console.log("[DEBUG] message-handler: Reply sent successfully");
 	};
+
+const getHighestAvailableMilesProgram = (
+	availableMiles: Record<MilesProgram, number | null>,
+): [MilesProgram, number] => {
+	let highestAvailableMiles: [MilesProgram, number] = ["LATAM_PASS", 0];
+	for (const [program, miles] of Object.entries(availableMiles)) {
+		if (miles && miles > highestAvailableMiles[1]) {
+			highestAvailableMiles = [program as MilesProgram, miles];
+		}
+	}
+
+	console.log(
+		"[DEBUG] message-handler: Highest available miles:",
+		highestAvailableMiles,
+	);
+	return highestAvailableMiles;
+};

@@ -31,7 +31,7 @@ const priceTableCacheV2 = createPriceTableCacheV2({
 	spreadsheetId: GOOGLE_SPREADSHEET_ID,
 	keyFile: GOOGLE_SERVICE_ACCOUNT_KEY_FILE,
 	...(GOOGLE_SPREADSHEET_RANGE_V2 && { range: GOOGLE_SPREADSHEET_RANGE_V2 }),
-	ttlSeconds: 60,
+	ttlSeconds: 10,
 });
 console.log("[DEBUG] Price table cache v2 created successfully");
 
