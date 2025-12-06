@@ -1,4 +1,4 @@
-import { calculatePriceV2 } from "../domain/price-calculator.js";
+import { calculatePrice } from "../domain/price-calculator.js";
 import { formatQuoteResponse } from "../formatters/quote-formatter.js";
 import type { PriceTableResultV2 } from "../services/google-sheets.js";
 import type { PurchaseRequest } from "../types/purchase.js";
@@ -129,7 +129,7 @@ export const createMessageHandler =
 			cpfCount: validatedRequest.cpfCount,
 			airline: validatedRequest.airline,
 		});
-		const priceResult = calculatePriceV2(
+		const priceResult = calculatePrice(
 			validatedRequest.quantity,
 			validatedRequest.cpfCount,
 			priceTable,

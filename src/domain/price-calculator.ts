@@ -1,4 +1,4 @@
-import type { PriceTableByCpf, PriceTableV2 } from "../types/price.js";
+import type { PriceTableV2 } from "../types/price.js";
 import type { PriceCalculationResult } from "../types/purchase.js";
 import {
 	extractSortedQuantities,
@@ -7,170 +7,274 @@ import {
 } from "../utils/interpolation.js";
 
 /**
- * Calcula o preço usando interpolação linear baseado na tabela de preços
- * Função pura e testável - recebe todas as dependências como parâmetros
+ * Opções para cálculo de preço
  */
-export const calculatePrice = (
+export interface CalculatePriceOptions {
+	/**
+	 * Preço máximo customizado. Quando fornecido, o preço calculado não pode exceder este valor.
+	 * Para casos com mais de 1 CPF, respeita tanto o máximo padrão quanto o customizado.
+	 */
+	customMaxPrice?: number;
+}
+
+/**
+ * Dados extraídos da tabela de preços para cálculos
+ */
+interface PriceTableData {
+	quantities: number[];
+	minQty: number;
+	maxQty: number;
+	maxPrice: number;
+	minPrice: number;
+	allPricesSame: boolean;
+}
+
+/**
+ * Slope padrão usado quando não há dados suficientes para calcular
+ */
+const DEFAULT_SLOPE = -1 / 30;
+
+/**
+ * Arredonda um número para o quarto mais próximo (0.00, 0.25, 0.50, 0.75)
+ */
+const roundToQuarter = (value: number): number => Math.round(value * 4) / 4;
+
+/**
+ * Cria um resultado de sucesso com preço arredondado
+ */
+const successResult = (price: number): PriceCalculationResult => ({
+	success: true,
+	price: roundToQuarter(price),
+});
+
+/**
+ * Cria um resultado de erro
+ */
+const errorResult = (reason: string): PriceCalculationResult => ({
+	success: false,
+	reason,
+});
+
+/**
+ * Valida os parâmetros de entrada
+ */
+const validateInputs = (
 	quantity: number,
 	cpfCount: number,
-	priceTable: PriceTableByCpf,
-): PriceCalculationResult => {
-	console.log("[DEBUG] price-calculator: Starting price calculation", {
-		quantity,
-		cpfCount,
-		availableCpfCounts: Object.keys(priceTable),
-	});
-
-	const table = priceTable[cpfCount];
-
-	if (!table) {
-		console.log("[DEBUG] price-calculator: CPF count not found in price table:", cpfCount);
-		return {
-			success: false,
-			reason: `Número de CPF não suportado: ${cpfCount}`,
-		};
+	priceTable: PriceTableV2,
+): PriceCalculationResult | null => {
+	if (quantity <= 0) {
+		return errorResult("Quantidade deve ser maior que zero");
 	}
-
-	console.log("[DEBUG] price-calculator: Found price table for CPF count:", {
-		cpfCount,
-		tableEntries: Object.keys(table).length,
-	});
-
-	const quantities = extractSortedQuantities(table);
-	console.log("[DEBUG] price-calculator: Extracted sorted quantities:", quantities);
-
+	if (cpfCount <= 0) {
+		return errorResult("Número de CPF deve ser maior que zero");
+	}
+	const quantities = extractSortedQuantities(priceTable);
 	if (quantities.length === 0) {
-		console.log("[DEBUG] price-calculator: Price table is empty");
-		return {
-			success: false,
-			reason: "Tabela de preços vazia",
-		};
+		return errorResult("Tabela de preços vazia");
 	}
+	return null;
+};
 
+/**
+ * Extrai e valida dados da tabela de preços
+ */
+const extractPriceTableData = (
+	priceTable: PriceTableV2,
+): PriceTableData | PriceCalculationResult => {
+	const quantities = extractSortedQuantities(priceTable);
 	const minQty = quantities[0];
 	const maxQty = quantities[quantities.length - 1];
 
 	if (minQty === undefined || maxQty === undefined) {
-		console.log("[DEBUG] price-calculator: Error extracting min/max quantities");
-		return {
-			success: false,
-			reason: "Erro ao processar tabela de preços",
-		};
+		return errorResult("Erro ao processar tabela de preços");
 	}
 
-	console.log("[DEBUG] price-calculator: Quantity range:", {
+	const maxPrice = priceTable[minQty];
+	const minPrice = priceTable[maxQty];
+
+	if (minPrice === undefined || maxPrice === undefined) {
+		return errorResult("Preços mínimo ou máximo não encontrados");
+	}
+
+	const allPricesSame = quantities.every((qty) => priceTable[qty] === maxPrice);
+
+	return {
+		quantities,
 		minQty,
 		maxQty,
-		requestedQuantity: quantity,
-	});
+		maxPrice,
+		minPrice,
+		allPricesSame,
+	};
+};
 
-	// Se a quantidade é menor ou igual ao mínimo, retorna o preço mínimo fixo
-	if (quantity <= minQty) {
-		console.log("[DEBUG] price-calculator: Quantity <= min, using minimum price");
-		const minPrice = table[minQty];
-		if (minPrice === undefined) {
-			console.log("[DEBUG] price-calculator: Minimum price not found in table");
-			return {
-				success: false,
-				reason: "Preço mínimo não encontrado",
-			};
-		}
-		const roundedPrice = roundToTwoDecimals(minPrice);
-		console.log("[DEBUG] price-calculator: Returning minimum price:", roundedPrice);
-		return {
-			success: true,
-			price: roundedPrice,
-		};
+/**
+ * Calcula o slope (inclinação) entre os dois primeiros pontos da tabela
+ */
+const calculateSlope = (
+	priceTable: PriceTableV2,
+	quantities: number[],
+): number | null => {
+	if (quantities.length < 2) return null;
+
+	const minQty = quantities[0];
+	const secondQty = quantities[1];
+
+	if (minQty === undefined || secondQty === undefined) {
+		return null;
 	}
 
-	// Se a quantidade é maior ou igual ao máximo, retorna o preço máximo fixo
-	if (quantity >= maxQty) {
-		console.log("[DEBUG] price-calculator: Quantity >= max, using maximum price");
-		const maxPrice = table[maxQty];
-		if (maxPrice === undefined) {
-			console.log("[DEBUG] price-calculator: Maximum price not found in table");
-			return {
-				success: false,
-				reason: "Preço máximo não encontrado",
-			};
-		}
-		const roundedPrice = roundToTwoDecimals(maxPrice);
-		console.log("[DEBUG] price-calculator: Returning maximum price:", roundedPrice);
-		return {
-			success: true,
-			price: roundedPrice,
-		};
+	const maxPrice = priceTable[minQty];
+	const secondPrice = priceTable[secondQty];
+
+	if (maxPrice === undefined || secondPrice === undefined) {
+		return null;
 	}
 
-	console.log("[DEBUG] price-calculator: Quantity is within range, finding interpolation points...");
-	const points = findInterpolationPoints(quantity, quantities);
+	return (secondPrice - maxPrice) / (secondQty - minQty);
+};
 
+/**
+ * Calcula o slope a ser usado na extrapolação
+ */
+const getExtrapolationSlope = (
+	priceTable: PriceTableV2,
+	quantities: number[],
+	allPricesSame: boolean,
+): number => {
+	if (allPricesSame && quantities.length >= 3) {
+		return DEFAULT_SLOPE;
+	}
+	return calculateSlope(priceTable, quantities) ?? DEFAULT_SLOPE;
+};
+
+/**
+ * Calcula o preço usando extrapolação linear para quantidades abaixo do mínimo
+ */
+const extrapolatePrice = (
+	quantityPerCpf: number,
+	minQty: number,
+	maxPrice: number,
+	priceTable: PriceTableV2,
+	quantities: number[],
+	allPricesSame: boolean,
+): number => {
+	const slope = getExtrapolationSlope(priceTable, quantities, allPricesSame);
+	return maxPrice + slope * (quantityPerCpf - minQty);
+};
+
+/**
+ * Aplica limites de preço para múltiplos CPFs sem customMaxPrice
+ */
+const applyPriceLimits = (
+	price: number,
+	maxPrice: number,
+	minPrice: number,
+): number => {
+	return Math.max(Math.min(price, maxPrice), minPrice);
+};
+
+/**
+ * Calcula preço quando quantidade está exatamente no mínimo
+ */
+const calculatePriceAtMinimum = (
+	maxPrice: number,
+	customMaxPrice?: number,
+): PriceCalculationResult => {
+	const finalPrice =
+		customMaxPrice !== undefined ? Math.min(maxPrice, customMaxPrice) : maxPrice;
+	return successResult(finalPrice);
+};
+
+/**
+ * Calcula preço quando quantidade está abaixo do mínimo (extrapolação)
+ */
+const calculatePriceBelowMinimum = (
+	quantityPerCpf: number,
+	cpfCount: number,
+	tableData: PriceTableData,
+	priceTable: PriceTableV2,
+	customMaxPrice?: number,
+): PriceCalculationResult => {
+	const { minQty, maxPrice, minPrice, quantities, allPricesSame } = tableData;
+
+	// Caso especial: preços iguais com apenas 2 pontos e sem customMaxPrice
+	if (allPricesSame && quantities.length === 2 && customMaxPrice === undefined) {
+		return successResult(maxPrice);
+	}
+
+	const extrapolatedPrice = extrapolatePrice(
+		quantityPerCpf,
+		minQty,
+		maxPrice,
+		priceTable,
+		quantities,
+		allPricesSame,
+	);
+
+	// Com customMaxPrice, aplica limite customizado
+	if (customMaxPrice !== undefined) {
+		return successResult(Math.min(extrapolatedPrice, customMaxPrice));
+	}
+
+	// Para 1 CPF, retorna teto fixo (não extrapola)
+	if (cpfCount === 1) {
+		return successResult(maxPrice);
+	}
+
+	// Para múltiplos CPFs, aplica limites padrão
+	const finalPrice = applyPriceLimits(extrapolatedPrice, maxPrice, minPrice);
+	return successResult(finalPrice);
+};
+
+/**
+ * Calcula preço quando quantidade está acima do máximo
+ */
+const calculatePriceAboveMaximum = (
+	minPrice: number,
+): PriceCalculationResult => {
+	return successResult(minPrice);
+};
+
+/**
+ * Calcula preço quando quantidade está dentro do intervalo (interpolação)
+ */
+const calculatePriceInRange = (
+	quantityPerCpf: number,
+	quantities: number[],
+	priceTable: PriceTableV2,
+	minPrice: number,
+): PriceCalculationResult => {
+	const points = findInterpolationPoints(quantityPerCpf, quantities);
 	if (!points) {
-		console.log("[DEBUG] price-calculator: Could not find interpolation points");
-		return {
-			success: false,
-			reason: "Não foi possível encontrar pontos para interpolação",
-		};
+		return errorResult("Não foi possível encontrar pontos para interpolação");
 	}
 
-	console.log("[DEBUG] price-calculator: Interpolation points found:", points);
-
-	const lowerPrice = table[points.lower];
-	const upperPrice = table[points.upper];
+	const lowerPrice = priceTable[points.lower];
+	const upperPrice = priceTable[points.upper];
 
 	if (lowerPrice === undefined || upperPrice === undefined) {
-		console.log("[DEBUG] price-calculator: Prices not found for interpolation points", {
-			lower: points.lower,
-			upper: points.upper,
-			lowerPrice,
-			upperPrice,
-		});
-		return {
-			success: false,
-			reason: "Preços para interpolação não encontrados",
-		};
+		return errorResult("Preços para interpolação não encontrados");
 	}
 
-	console.log("[DEBUG] price-calculator: Performing linear interpolation", {
-		quantity,
-		lowerQty: points.lower,
-		lowerPrice,
-		upperQty: points.upper,
-		upperPrice,
-	});
+	// Se os preços são iguais, retorna diretamente
+	if (lowerPrice === upperPrice) {
+		return successResult(lowerPrice);
+	}
 
-	const price = linearInterpolation(
-		quantity,
+	// Interpolação linear normal
+	const interpolatedPrice = linearInterpolation(
+		quantityPerCpf,
 		points.lower,
 		lowerPrice,
 		points.upper,
 		upperPrice,
 	);
 
-	console.log("[DEBUG] price-calculator: Price before quarter rounding:", price);
-	const roundedPrice = roundToQuarter(price);
-	console.log("[DEBUG] price-calculator: Interpolation complete, calculated price (rounded to quarter):", roundedPrice);
-
-	return {
-		success: true,
-		price: roundedPrice,
-	};
-};
-
-/**
- * Arredonda um número para 2 casas decimais
- * Função pura utilitária
- */
-const roundToTwoDecimals = (value: number): number => {
-	return Math.round(value * 100) / 100;
-};
-
-/**
- * Arredonda um número para o quarto mais próximo (0.00, 0.25, 0.50, 0.75)
- * Usado para valores interpolados
- */
-const roundToQuarter = (value: number): number => {
-	return Math.round(value * 4) / 4;
+	// Garante que nunca fique abaixo do piso mínimo
+	const finalPrice = Math.max(interpolatedPrice, minPrice);
+	return successResult(finalPrice);
 };
 
 /**
@@ -179,173 +283,56 @@ const roundToQuarter = (value: number): number => {
  * usando interpolação linear inversa (preço é inversamente proporcional à quantidade)
  * Função pura e testável - recebe todas as dependências como parâmetros
  */
-export const calculatePriceV2 = (
+export const calculatePrice = (
 	quantity: number,
 	cpfCount: number,
 	priceTable: PriceTableV2,
+	options?: CalculatePriceOptions,
 ): PriceCalculationResult => {
 	// Validações básicas
-	if (quantity <= 0) {
-		return {
-			success: false,
-			reason: "Quantidade deve ser maior que zero",
-		};
+	const validationError = validateInputs(quantity, cpfCount, priceTable);
+	if (validationError) {
+		return validationError;
 	}
 
-	if (cpfCount <= 0) {
-		return {
-			success: false,
-			reason: "Número de CPF deve ser maior que zero",
-		};
+	// Extrai dados da tabela
+	const tableDataOrError = extractPriceTableData(priceTable);
+	if (!("quantities" in tableDataOrError)) {
+		return tableDataOrError;
 	}
+	const tableData = tableDataOrError;
 
-	const quantities = extractSortedQuantities(priceTable);
-
-	if (quantities.length === 0) {
-		return {
-			success: false,
-			reason: "Tabela de preços vazia",
-		};
-	}
-
-	// Calcula quantidade por CPF
 	const quantityPerCpf = quantity / cpfCount;
+	const { minQty, maxQty, minPrice } = tableData;
 
-	const minQty = quantities[0];
-	const maxQty = quantities[quantities.length - 1];
-
-	if (minQty === undefined || maxQty === undefined) {
-		return {
-			success: false,
-			reason: "Erro ao processar tabela de preços",
-		};
+	// Caso 1: Quantidade exatamente no mínimo
+	if (quantityPerCpf === minQty) {
+		return calculatePriceAtMinimum(tableData.maxPrice, options?.customMaxPrice);
 	}
 
-	const minPrice = priceTable[minQty];
-	const maxPrice = priceTable[maxQty];
-
-	if (minPrice === undefined || maxPrice === undefined) {
-		return {
-			success: false,
-			reason: "Preços mínimo ou máximo não encontrados",
-		};
-	}
-
-	// Verifica se todos os preços são iguais para usar variância padrão
-	const allPricesSame = quantities.every((qty) => priceTable[qty] === minPrice);
-
-	// Se quantidade por CPF está abaixo do mínimo
+	// Caso 2: Quantidade abaixo do mínimo (extrapolação)
 	if (quantityPerCpf < minQty) {
-		// Se for 1 CPF, retorna preço mínimo fixo (não extrapola)
-		if (cpfCount === 1) {
-			const roundedPrice = roundToQuarter(minPrice);
-			return {
-				success: true,
-				price: roundedPrice,
-			};
-		}
-
-		// Para múltiplos CPFs, extrapola para trás usando interpolação inversa
-		let pricePerCpf: number;
-
-		if (allPricesSame) {
-			// Se todos os preços são iguais:
-			// - Com 3+ pontos: usa variância padrão para extrapolação
-			// - Com apenas 2 pontos: retorna o preço diretamente (não há dados suficientes para variância)
-			if (quantities.length >= 3) {
-				// Variância padrão: assume slope de -1/30 (similar ao exemplo 30k->17, 60k->16)
-				const defaultSlope = -1 / 30;
-				pricePerCpf = minPrice + defaultSlope * (quantityPerCpf - minQty);
-			} else {
-				// Apenas 2 pontos iguais, retorna o preço diretamente
-				const roundedPrice = roundToQuarter(minPrice);
-				return {
-					success: true,
-					price: roundedPrice,
-				};
-			}
-		} else {
-			// Calcula slope usando os dois primeiros pontos
-			const secondQty = quantities[1];
-			if (secondQty === undefined) {
-				// Apenas um ponto, usa variância padrão
-				const defaultSlope = -1 / 30;
-				pricePerCpf = minPrice + defaultSlope * (quantityPerCpf - minQty);
-			} else {
-				const secondPrice = priceTable[secondQty];
-				if (secondPrice === undefined) {
-					const defaultSlope = -1 / 30;
-					pricePerCpf = minPrice + defaultSlope * (quantityPerCpf - minQty);
-				} else {
-					// Calcula slope entre primeiro e segundo ponto
-					const slope = (secondPrice - minPrice) / (secondQty - minQty);
-					pricePerCpf = minPrice + slope * (quantityPerCpf - minQty);
-				}
-			}
-		}
-
-		// Garante que o preço nunca fique abaixo do menor valor da tabela (piso mínimo)
-		const finalPrice = Math.max(pricePerCpf, maxPrice);
-		const roundedPrice = roundToQuarter(finalPrice);
-		return {
-			success: true,
-			price: roundedPrice,
-		};
+		return calculatePriceBelowMinimum(
+			quantityPerCpf,
+			cpfCount,
+			tableData,
+			priceTable,
+			options?.customMaxPrice,
+		);
 	}
 
-	// Se quantidade por CPF está acima do máximo, usa preço máximo
+	// Caso 3: Quantidade acima do máximo (usa piso)
 	if (quantityPerCpf >= maxQty) {
-		const roundedPrice = roundToQuarter(maxPrice);
-		return {
-			success: true,
-			price: roundedPrice,
-		};
+		return calculatePriceAboveMaximum(minPrice);
 	}
 
-	// Quantidade por CPF está dentro do intervalo, interpola
-	const points = findInterpolationPoints(quantityPerCpf, quantities);
-
-	if (!points) {
-		return {
-			success: false,
-			reason: "Não foi possível encontrar pontos para interpolação",
-		};
-	}
-
-	const lowerPrice = priceTable[points.lower];
-	const upperPrice = priceTable[points.upper];
-
-	if (lowerPrice === undefined || upperPrice === undefined) {
-		return {
-			success: false,
-			reason: "Preços para interpolação não encontrados",
-		};
-	}
-
-	// Se os preços são iguais, retorna o preço diretamente
-	if (lowerPrice === upperPrice) {
-		const roundedPrice = roundToQuarter(lowerPrice);
-		return {
-			success: true,
-			price: roundedPrice,
-		};
-	}
-
-	// Interpolação linear normal
-	const pricePerCpf = linearInterpolation(
+	// Caso 4: Quantidade dentro do intervalo (interpolação)
+	return calculatePriceInRange(
 		quantityPerCpf,
-		points.lower,
-		lowerPrice,
-		points.upper,
-		upperPrice,
+		tableData.quantities,
+		priceTable,
+		minPrice,
 	);
-
-	// Garante que o preço nunca fique abaixo do menor valor da tabela (piso mínimo)
-	const finalPrice = Math.max(pricePerCpf, maxPrice);
-	const roundedPrice = roundToQuarter(finalPrice);
-	return {
-		success: true,
-		price: roundedPrice,
-	};
 };
+
 
