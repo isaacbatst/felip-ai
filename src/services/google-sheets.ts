@@ -15,7 +15,7 @@ export interface PriceTableResultV2 {
 	 * Preço máximo customizado opcional lido da célula C2
 	 * Quando fornecido, o preço calculado não pode exceder este valor
 	 */
-	customMaxPrice?: number;
+	customMaxPrice?: number | undefined;
 }
 
 /**
