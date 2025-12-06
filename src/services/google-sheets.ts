@@ -11,6 +11,11 @@ import {
 export interface PriceTableResultV2 {
 	priceTable: PriceTableV2;
 	availableMiles: Record<MilesProgram, number | null>;
+	/**
+	 * Preço máximo customizado opcional lido da célula C2
+	 * Quando fornecido, o preço calculado não pode exceder este valor
+	 */
+	customMaxPrice?: number;
 }
 
 /**
@@ -109,6 +114,64 @@ async function fetchPriceTable(
 	});
 
 	return priceTable;
+}
+
+/**
+ * Busca o preço máximo customizado da célula C2
+ * @param sheets - Cliente do Google Sheets API
+ * @param spreadsheetId - ID da planilha do Google Sheets
+ * @param sheetName - Nome da aba
+ * @returns Promise com o preço máximo customizado ou undefined se não encontrado/inválido
+ */
+async function fetchCustomMaxPrice(
+	sheets: ReturnType<typeof google.sheets>,
+	spreadsheetId: string,
+	sheetName: string,
+): Promise<number | undefined> {
+	try {
+		const cellRange = `${sheetName}!C2`;
+		const response = await sheets.spreadsheets.values.get({
+			spreadsheetId,
+			range: cellRange,
+		});
+
+		const rows = response.data.values;
+		if (!rows || rows.length === 0 || !rows[0] || rows[0].length === 0) {
+			console.log(
+				"[DEBUG] google-sheets-v2: C2 cell is empty, no customMaxPrice",
+			);
+			return undefined;
+		}
+
+		const cellValue = rows[0][0]?.toString().trim();
+		if (!cellValue) {
+			console.log(
+				"[DEBUG] google-sheets-v2: C2 cell is empty, no customMaxPrice",
+			);
+			return undefined;
+		}
+
+		const parsedValue = parseFloat(cellValue.replace(",", "."));
+		if (Number.isNaN(parsedValue) || parsedValue <= 0) {
+			console.log(
+				"[DEBUG] google-sheets-v2: C2 cell contains invalid value, ignoring customMaxPrice",
+				{ cellValue, parsedValue },
+			);
+			return undefined;
+		}
+
+		console.log(
+			"[DEBUG] google-sheets-v2: Custom max price found in C2:",
+			parsedValue,
+		);
+		return parsedValue;
+	} catch (error) {
+		console.warn(
+			"[DEBUG] google-sheets-v2: Error reading C2 cell for customMaxPrice:",
+			error,
+		);
+		return undefined;
+	}
 }
 
 /**
@@ -215,13 +278,15 @@ export async function fetchPriceTableV2FromSheets(
 	const range = "!A:B";
 	const sheetName = "Sheet1";
 	// Executa as buscas em paralelo
-	const [priceTable, availableMiles] = await Promise.all([
+	const [priceTable, availableMiles, customMaxPrice] = await Promise.all([
 		fetchPriceTable(sheets, spreadsheetId, range, sheetName),
 		fetchAllAvailableMiles(sheets, spreadsheetId, sheetName),
+		fetchCustomMaxPrice(sheets, spreadsheetId, sheetName),
 	]);
 
 	return {
 		priceTable,
 		availableMiles,
+		customMaxPrice,
 	};
 }

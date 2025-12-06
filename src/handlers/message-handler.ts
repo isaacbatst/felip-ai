@@ -94,7 +94,7 @@ export const createMessageHandler =
 		// Após validação, revalida para garantir dados atualizados
 		console.log("[DEBUG] message-handler: Getting price table data v2...");
 		const priceTableResult = await deps.priceTableProvider.getPriceTable();
-		const { priceTable, availableMiles } = priceTableResult;
+		const { priceTable, availableMiles, customMaxPrice } = priceTableResult;
 
 		// Verifica se há um programa de milhas especificado
 		const milesProgram = validatedRequest.milesProgram ?? getHighestAvailableMilesProgram(availableMiles)[0]
@@ -128,11 +128,13 @@ export const createMessageHandler =
 			requestedQuantity: validatedRequest.quantity,
 			cpfCount: validatedRequest.cpfCount,
 			airline: validatedRequest.airline,
+			customMaxPrice,
 		});
 		const priceResult = calculatePrice(
 			validatedRequest.quantity,
 			validatedRequest.cpfCount,
 			priceTable,
+			customMaxPrice !== undefined ? { customMaxPrice } : undefined,
 		);
 		console.log(
 			"[DEBUG] message-handler: Price calculation result:",

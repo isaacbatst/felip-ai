@@ -30,20 +30,17 @@ describe("createMessageHandler", () => {
 		return { ...defaultMiles, ...overrides };
 	};
 
-	it("should handle a valid purchase request and send a formatted quote response", async () => {
-		// Mock purchase request
-		const mockPurchaseRequest = {
-			isPurchaseProposal: true,
-			quantity: 60,
-			cpfCount: 1,
-			airline: "LATAM",
-		};
-
-		// Mock OpenAI client (external service)
-		const mockOpenAIClient = {
+	// Factory functions to reduce code duplication
+	const createMockOpenAIClient = (purchaseRequest: {
+		isPurchaseProposal: boolean;
+		quantity: number;
+		cpfCount: number;
+		airline: string;
+	}): OpenAI => {
+		return {
 			responses: {
 				parse: vi.fn().mockResolvedValue({
-					output_parsed: mockPurchaseRequest,
+					output_parsed: purchaseRequest,
 					usage: {
 						input_tokens: 10,
 						output_tokens: 5,
@@ -52,39 +49,64 @@ describe("createMessageHandler", () => {
 				}),
 			},
 		} as unknown as OpenAI;
+	};
 
-		// Create real message parser adapter with mocked OpenAI client
-		const messageParser: MessageParser = new MessageParserAdapter(mockOpenAIClient, DEFAULT_PARSER_CONFIG);
+	const createMessageParser = (openAIClient: OpenAI): MessageParser => {
+		return new MessageParserAdapter(openAIClient, DEFAULT_PARSER_CONFIG);
+	};
 
-		// Mock price table provider (external service - Google Sheets)
-		const mockPriceTableProvider: PriceTableProvider = {
+	const createMockPriceTableProvider = (
+		overrides: Partial<PriceTableResultV2> = {},
+	): PriceTableProvider => {
+		return {
 			getPriceTable: vi.fn<() => Promise<PriceTableResultV2>>().mockResolvedValue({
 				priceTable: mockPriceTableV2,
-				availableMiles: createMockAvailableMiles({
-					LATAM_PASS: 100, // More than requested quantity (LATAM será normalizado para LATAM_PASS)
-				}),
+				availableMiles: createMockAvailableMiles(),
+				...overrides,
 			}),
 		};
+	};
 
-		// Mock ctx.reply
+	const createMockContext = (
+		text: string,
+		messageId: number = 123,
+		userId: number = 456,
+		chatId: number = 789,
+	): { ctx: MessageContext; mockReply: ReturnType<typeof vi.fn> } => {
 		const mockReply = vi.fn().mockResolvedValue(undefined);
-
-		// Mock MessageContext (minimal interface)
-		const mockCtx: MessageContext = {
+		const ctx: MessageContext = {
 			message: {
-				text: "Quero comprar 60k milhas LATAM para 1 CPF",
-				message_id: 123,
+				text,
+				message_id: messageId,
 			},
 			from: {
-				id: 456,
+				id: userId,
 			},
 			chat: {
-				id: 789,
+				id: chatId,
 			},
 			reply: mockReply,
 		};
+		return { ctx, mockReply };
+	};
 
-		// Create handler with real dependencies (only external services mocked)
+	const createHandler = (
+		purchaseRequest: {
+			isPurchaseProposal: boolean;
+			quantity: number;
+			cpfCount: number;
+			airline: string;
+		},
+		priceTableOverrides: Partial<PriceTableResultV2> = {},
+	): {
+		handler: ReturnType<typeof createMessageHandler>;
+		mockOpenAIClient: OpenAI;
+		mockPriceTableProvider: PriceTableProvider;
+	} => {
+		const mockOpenAIClient = createMockOpenAIClient(purchaseRequest);
+		const messageParser = createMessageParser(mockOpenAIClient);
+		const mockPriceTableProvider = createMockPriceTableProvider(priceTableOverrides);
+
 		const dependencies: MessageHandlerDependencies = {
 			messageParser,
 			priceTableProvider: mockPriceTableProvider,
@@ -92,8 +114,38 @@ describe("createMessageHandler", () => {
 
 		const handler = createMessageHandler(dependencies);
 
-		// Execute handler
-		await handler(mockCtx);
+		return {
+			handler,
+			mockOpenAIClient,
+			mockPriceTableProvider,
+		};
+	};
+
+	it("should handle a valid purchase request and send a formatted quote response", async () => {
+		const purchaseRequest = {
+			isPurchaseProposal: true,
+			quantity: 60,
+			cpfCount: 1,
+			airline: "LATAM",
+		};
+
+		const { handler, mockOpenAIClient, mockPriceTableProvider } = createHandler(
+			purchaseRequest,
+			{
+				availableMiles: createMockAvailableMiles({
+					LATAM_PASS: 100, // More than requested quantity (LATAM será normalizado para LATAM_PASS)
+				}),
+			},
+		);
+
+		const { ctx, mockReply } = createMockContext(
+			"Quero comprar 60k milhas LATAM para 1 CPF",
+			123,
+			456,
+			789,
+		);
+
+		await handler(ctx);
 
 		// Assertions
 		expect(mockOpenAIClient.responses.parse).toHaveBeenCalledOnce();
@@ -116,70 +168,28 @@ describe("createMessageHandler", () => {
 	});
 
 	it("should not respond when no miles are available for the requested program", async () => {
-		// Mock purchase request with SMILES
-		const mockPurchaseRequest = {
+		const purchaseRequest = {
 			isPurchaseProposal: true,
 			quantity: 30,
 			cpfCount: 1,
 			airline: "SMILES",
 		};
 
-		// Mock OpenAI client (external service)
-		const mockOpenAIClient = {
-			responses: {
-				parse: vi.fn().mockResolvedValue({
-					output_parsed: mockPurchaseRequest,
-					usage: {
-						input_tokens: 10,
-						output_tokens: 5,
-						total_tokens: 15,
-					},
-				}),
-			},
-		} as unknown as OpenAI;
-
-		// Create real message parser adapter with mocked OpenAI client
-		const messageParser: MessageParser = new MessageParserAdapter(mockOpenAIClient, DEFAULT_PARSER_CONFIG);
-
-		// Mock price table provider - SMILES has no miles available (null)
-		const mockPriceTableProvider: PriceTableProvider = {
-			getPriceTable: vi.fn<() => Promise<PriceTableResultV2>>().mockResolvedValue({
-				priceTable: mockPriceTableV2,
-				availableMiles: createMockAvailableMiles({
-					LATAM_PASS: 100,
-					SMILES: null, // No miles available
-				}),
+		const { handler, mockPriceTableProvider } = createHandler(purchaseRequest, {
+			availableMiles: createMockAvailableMiles({
+				LATAM_PASS: 100,
+				SMILES: null, // No miles available
 			}),
-		};
+		});
 
-		// Mock ctx.reply
-		const mockReply = vi.fn().mockResolvedValue(undefined);
+		const { ctx, mockReply } = createMockContext(
+			"Quero 30k milhas SMILES para 1 CPF",
+			789,
+			101112,
+			131415,
+		);
 
-		// Mock MessageContext (minimal interface)
-		const mockCtx: MessageContext = {
-			message: {
-				text: "Quero 30k milhas SMILES para 1 CPF",
-				message_id: 789,
-			},
-			from: {
-				id: 101112,
-			},
-			chat: {
-				id: 131415,
-			},
-			reply: mockReply,
-		};
-
-		// Create handler with real dependencies (only external services mocked)
-		const dependencies: MessageHandlerDependencies = {
-			messageParser,
-			priceTableProvider: mockPriceTableProvider,
-		};
-
-		const handler = createMessageHandler(dependencies);
-
-		// Execute handler
-		await handler(mockCtx);
+		await handler(ctx);
 
 		// Assertions - should not respond when no miles available for program
 		expect(mockPriceTableProvider.getPriceTable).toHaveBeenCalledOnce();
@@ -187,69 +197,27 @@ describe("createMessageHandler", () => {
 	});
 
 	it("should not respond when requested quantity exceeds available miles for the program", async () => {
-		// Mock purchase request with LATAM
-		const mockPurchaseRequest = {
+		const purchaseRequest = {
 			isPurchaseProposal: true,
 			quantity: 100, // More than available
 			cpfCount: 1,
 			airline: "LATAM",
 		};
 
-		// Mock OpenAI client (external service)
-		const mockOpenAIClient = {
-			responses: {
-				parse: vi.fn().mockResolvedValue({
-					output_parsed: mockPurchaseRequest,
-					usage: {
-						input_tokens: 10,
-						output_tokens: 5,
-						total_tokens: 15,
-					},
-				}),
-			},
-		} as unknown as OpenAI;
-
-		// Create real message parser adapter with mocked OpenAI client
-		const messageParser: MessageParser = new MessageParserAdapter(mockOpenAIClient, DEFAULT_PARSER_CONFIG);
-
-		// Mock price table provider - LATAM has only 50k available
-		const mockPriceTableProvider: PriceTableProvider = {
-			getPriceTable: vi.fn<() => Promise<PriceTableResultV2>>().mockResolvedValue({
-				priceTable: mockPriceTableV2,
-				availableMiles: createMockAvailableMiles({
-					LATAM_PASS: 50, // Less than requested (100)
-				}),
+		const { handler, mockPriceTableProvider } = createHandler(purchaseRequest, {
+			availableMiles: createMockAvailableMiles({
+				LATAM_PASS: 50, // Less than requested (100)
 			}),
-		};
+		});
 
-		// Mock ctx.reply
-		const mockReply = vi.fn().mockResolvedValue(undefined);
+		const { ctx, mockReply } = createMockContext(
+			"Quero 100k milhas LATAM para 1 CPF",
+			999,
+			111,
+			222,
+		);
 
-		// Mock MessageContext (minimal interface)
-		const mockCtx: MessageContext = {
-			message: {
-				text: "Quero 100k milhas LATAM para 1 CPF",
-				message_id: 999,
-			},
-			from: {
-				id: 111,
-			},
-			chat: {
-				id: 222,
-			},
-			reply: mockReply,
-		};
-
-		// Create handler with real dependencies (only external services mocked)
-		const dependencies: MessageHandlerDependencies = {
-			messageParser,
-			priceTableProvider: mockPriceTableProvider,
-		};
-
-		const handler = createMessageHandler(dependencies);
-
-		// Execute handler
-		await handler(mockCtx);
+		await handler(ctx);
 
 		// Assertions - should not respond when quantity exceeds available
 		expect(mockPriceTableProvider.getPriceTable).toHaveBeenCalledOnce();
@@ -257,69 +225,27 @@ describe("createMessageHandler", () => {
 	});
 
 	it("should handle different miles programs correctly", async () => {
-		// Mock purchase request with SMILES
-		const mockPurchaseRequest = {
+		const purchaseRequest = {
 			isPurchaseProposal: true,
 			quantity: 30,
 			cpfCount: 1,
 			airline: "SMILES",
 		};
 
-		// Mock OpenAI client (external service)
-		const mockOpenAIClient = {
-			responses: {
-				parse: vi.fn().mockResolvedValue({
-					output_parsed: mockPurchaseRequest,
-					usage: {
-						input_tokens: 10,
-						output_tokens: 5,
-						total_tokens: 15,
-					},
-				}),
-			},
-		} as unknown as OpenAI;
-
-		// Create real message parser adapter with mocked OpenAI client
-		const messageParser: MessageParser = new MessageParserAdapter(mockOpenAIClient, DEFAULT_PARSER_CONFIG);
-
-		// Mock price table provider - SMILES has miles available
-		const mockPriceTableProvider: PriceTableProvider = {
-			getPriceTable: vi.fn<() => Promise<PriceTableResultV2>>().mockResolvedValue({
-				priceTable: mockPriceTableV2,
-				availableMiles: createMockAvailableMiles({
-					SMILES: 100, // More than requested
-				}),
+		const { handler, mockPriceTableProvider } = createHandler(purchaseRequest, {
+			availableMiles: createMockAvailableMiles({
+				SMILES: 100, // More than requested
 			}),
-		};
+		});
 
-		// Mock ctx.reply
-		const mockReply = vi.fn().mockResolvedValue(undefined);
+		const { ctx, mockReply } = createMockContext(
+			"Quero 30k milhas SMILES para 1 CPF",
+			333,
+			444,
+			555,
+		);
 
-		// Mock MessageContext (minimal interface)
-		const mockCtx: MessageContext = {
-			message: {
-				text: "Quero 30k milhas SMILES para 1 CPF",
-				message_id: 333,
-			},
-			from: {
-				id: 444,
-			},
-			chat: {
-				id: 555,
-			},
-			reply: mockReply,
-		};
-
-		// Create handler with real dependencies (only external services mocked)
-		const dependencies: MessageHandlerDependencies = {
-			messageParser,
-			priceTableProvider: mockPriceTableProvider,
-		};
-
-		const handler = createMessageHandler(dependencies);
-
-		// Execute handler
-		await handler(mockCtx);
+		await handler(ctx);
 
 		// Assertions - should respond when program has available miles
 		expect(mockPriceTableProvider.getPriceTable).toHaveBeenCalledOnce();
@@ -330,6 +256,84 @@ describe("createMessageHandler", () => {
 			expect(replyCall[0]).toContain("💰 Cotação");
 			expect(replyCall[0]).toContain("SMILES");
 			expect(replyCall[0]).toContain("30k milhas");
+		}
+	});
+
+	it("should apply customMaxPrice from C2 cell when provided", async () => {
+		// Quantity below minimum (15k < 30k minimum) will trigger extrapolation,
+		// and customMaxPrice should limit it
+		const purchaseRequest = {
+			isPurchaseProposal: true,
+			quantity: 15,
+			cpfCount: 1,
+			airline: "LATAM",
+		};
+
+		const { handler, mockPriceTableProvider } = createHandler(purchaseRequest, {
+			availableMiles: createMockAvailableMiles({
+				LATAM_PASS: 100,
+			}),
+			customMaxPrice: 17.25, // Custom max price from C2 cell
+		});
+
+		const { ctx, mockReply } = createMockContext(
+			"Quero comprar 15k milhas LATAM para 1 CPF",
+			777,
+			888,
+			999,
+		);
+
+		await handler(ctx);
+
+		// Assertions - should respond and apply customMaxPrice
+		expect(mockPriceTableProvider.getPriceTable).toHaveBeenCalledOnce();
+		expect(mockReply).toHaveBeenCalledOnce();
+		const replyCall = mockReply.mock.calls[0];
+		expect(replyCall).toBeDefined();
+		if (replyCall) {
+			expect(replyCall[0]).toContain("💰 Cotação");
+			expect(replyCall[0]).toContain("LATAM");
+			expect(replyCall[0]).toContain("15k milhas");
+			// Price should be limited by customMaxPrice (17.25)
+			// Since 15k < 30k minimum, it would extrapolate above 17, but customMaxPrice limits it to 17.25
+			expect(replyCall[0]).toContain("R$ 17.25");
+		}
+	});
+
+	it("should work without customMaxPrice when C2 cell is empty", async () => {
+		const purchaseRequest = {
+			isPurchaseProposal: true,
+			quantity: 60,
+			cpfCount: 1,
+			airline: "LATAM",
+		};
+
+		const { handler, mockPriceTableProvider } = createHandler(purchaseRequest, {
+			availableMiles: createMockAvailableMiles({
+				LATAM_PASS: 100,
+			}),
+			// customMaxPrice is undefined (not provided)
+		});
+
+		const { ctx, mockReply } = createMockContext(
+			"Quero comprar 60k milhas LATAM para 1 CPF",
+			1111,
+			2222,
+			3333,
+		);
+
+		await handler(ctx);
+
+		// Assertions - should work normally without customMaxPrice
+		expect(mockPriceTableProvider.getPriceTable).toHaveBeenCalledOnce();
+		expect(mockReply).toHaveBeenCalledOnce();
+		const replyCall = mockReply.mock.calls[0];
+		expect(replyCall).toBeDefined();
+		if (replyCall) {
+			expect(replyCall[0]).toContain("💰 Cotação");
+			expect(replyCall[0]).toContain("LATAM");
+			expect(replyCall[0]).toContain("60k milhas");
+			expect(replyCall[0]).toContain("R$ 16.00"); // Normal price calculation
 		}
 	});
 });
