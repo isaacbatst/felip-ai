@@ -1,9 +1,8 @@
+import { MessageParserAdapter } from "./adapters/message-parser-adapter.js";
+import { PriceTableProviderAdapter } from "./adapters/price-table-provider-adapter.js";
 import { createBot, startBot } from "./bot/bot-factory.js";
 import { openaiClient } from "./config/openai.js";
-import {
-	createMessageParser,
-	DEFAULT_PARSER_CONFIG,
-} from "./services/message-parser.js";
+import { DEFAULT_PARSER_CONFIG } from "./services/message-parser.js";
 import { createPriceTableCache } from "./services/price-table-cache.js";
 
 console.log("[DEBUG] Starting application initialization...");
@@ -36,20 +35,25 @@ const priceTableCache = createPriceTableCache({
 });
 console.log("[DEBUG] Price table cache created successfully");
 
-console.log("[DEBUG] TELEGRAM_BOT_TOKEN found, creating message parser...");
-const parseMessage = createMessageParser(openaiClient, DEFAULT_PARSER_CONFIG);
-console.log("[DEBUG] Message parser created with config:", {
+console.log("[DEBUG] TELEGRAM_BOT_TOKEN found, creating message parser adapter...");
+const messageParser = new MessageParserAdapter(openaiClient, DEFAULT_PARSER_CONFIG);
+console.log("[DEBUG] Message parser adapter created with config:", {
 	model: DEFAULT_PARSER_CONFIG.model,
 	systemPromptLength: DEFAULT_PARSER_CONFIG.systemPrompt.length,
 });
+
+console.log("[DEBUG] Creating price table provider adapter...");
+const priceTableProvider = new PriceTableProviderAdapter(priceTableCache);
+console.log("[DEBUG] Price table provider adapter created successfully");
 
 console.log("[DEBUG] Creating bot instance...");
 const bot = createBot({
 	token: TELEGRAM_BOT_TOKEN,
 	messageHandlerDeps: {
-		parseMessage,
-		priceTableCache,
+		messageParser,
+		priceTableProvider,
 	},
+	priceTableCache, // Still needed for command handler
 });
 console.log("[DEBUG] Bot instance created successfully");
 

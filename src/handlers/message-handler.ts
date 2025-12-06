@@ -1,22 +1,55 @@
-import type { Context } from "grammy";
 import { calculatePrice } from "../domain/price-calculator.js";
 import { formatQuoteResponse } from "../formatters/quote-formatter.js";
-import type { PriceTableCache } from "../services/price-table-cache.js";
+import type { PriceTableResult } from "../services/google-sheets.js";
 import type { PurchaseRequest } from "../types/purchase.js";
 import { validatePurchaseRequest } from "../utils/validation.js";
 
 /**
- * Dependências do handler de mensagens
- * Permite dependency injection para testes e flexibilidade
+ * Minimal interface for parsing messages (ISP - Interface Segregation Principle)
+ * Only exposes what the handler needs
+ */
+export interface MessageParser {
+	parse(text: string): Promise<PurchaseRequest | null>;
+}
+
+/**
+ * Minimal interface for getting price table data (ISP - Interface Segregation Principle)
+ * Only exposes what the handler needs, not the full cache interface
+ */
+export interface PriceTableProvider {
+	getPriceTable(): Promise<PriceTableResult>;
+}
+
+/**
+ * Minimal interface for message context (ISP - Interface Segregation Principle)
+ * Only exposes what the handler needs from the Telegram context
+ */
+export interface MessageContext {
+	message?: {
+		text?: string;
+		message_id: number;
+	} | null;
+	from?: {
+		id?: number;
+	} | null;
+	chat?: {
+		id?: number;
+	} | null;
+	reply(text: string, options?: { reply_to_message_id?: number }): Promise<unknown>;
+}
+
+/**
+ * Dependências do handler de mensagens (DIP - Dependency Inversion Principle)
+ * Depende de abstrações (interfaces), não de implementações concretas
  */
 export interface MessageHandlerDependencies {
-	parseMessage: (text: string) => Promise<PurchaseRequest | null>;
-	priceTableCache: PriceTableCache;
+	messageParser: MessageParser;
+	priceTableProvider: PriceTableProvider;
 }
 
 export const createMessageHandler =
 	(deps: MessageHandlerDependencies) =>
-	async (ctx: Context): Promise<void> => {
+	async (ctx: MessageContext): Promise<void> => {
 		console.log("[DEBUG] message-handler: Received message event");
 		const text = ctx.message?.text;
 		const userId = ctx.from?.id;
@@ -34,8 +67,8 @@ export const createMessageHandler =
 			return;
 		}
 
-		console.log("[DEBUG] message-handler: Parsing message with OpenAI...");
-		const purchaseRequest = await deps.parseMessage(text);
+		console.log("[DEBUG] message-handler: Parsing message...");
+		const purchaseRequest = await deps.messageParser.parse(text);
 		console.log("[DEBUG] message-handler: Parse result:", purchaseRequest);
 
 		console.log("[DEBUG] message-handler: Validating purchase request...");
@@ -47,9 +80,9 @@ export const createMessageHandler =
 			return;
 		}
 
-		// Após validação, revalida o cache para garantir dados atualizados
-		console.log("[DEBUG] message-handler: Revalidating cache after request validation...");
-		const priceTableResult = await deps.priceTableCache.get(true);
+		// Após validação, revalida para garantir dados atualizados
+		console.log("[DEBUG] message-handler: Getting price table data...");
+		const priceTableResult = await deps.priceTableProvider.getPriceTable();
 		const { priceTable, availableMiles } = priceTableResult;
 
 		// Verifica se a quantidade solicitada excede as milhas disponíveis
@@ -88,9 +121,9 @@ export const createMessageHandler =
 		console.log("[DEBUG] message-handler: Formatted response:", formattedResponse);
 
 		console.log("[DEBUG] message-handler: Sending reply to user...");
-		await ctx.reply(formattedResponse, {
-			reply_to_message_id: ctx.message.message_id,
-		});
+		const replyOptions = ctx.message?.message_id
+			? { reply_to_message_id: ctx.message.message_id }
+			: undefined;
+		await ctx.reply(formattedResponse, replyOptions);
 		console.log("[DEBUG] message-handler: Reply sent successfully");
 	};
-

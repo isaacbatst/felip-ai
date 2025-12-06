@@ -1,8 +1,9 @@
-import { run, sequentialize, type RunnerHandle } from "@grammyjs/runner";
+import { type RunnerHandle, run, sequentialize } from "@grammyjs/runner";
 import { Bot } from "grammy";
 import { createStartCommandHandler } from "../handlers/command-handler.js";
 import type { MessageHandlerDependencies } from "../handlers/message-handler.js";
 import { createMessageHandler } from "../handlers/message-handler.js";
+import type { PriceTableCache } from "../services/price-table-cache.js";
 
 /**
  * Configuração para criar o bot
@@ -10,6 +11,7 @@ import { createMessageHandler } from "../handlers/message-handler.js";
 export interface BotConfig {
 	token: string;
 	messageHandlerDeps: MessageHandlerDependencies;
+	priceTableCache: PriceTableCache; // Still needed for command handler
 }
 
 const stopRunner = async (runner: RunnerHandle) => runner.isRunning() && runner.stop();
@@ -25,7 +27,7 @@ export const createBot = (config: BotConfig): Bot => {
 	// Registra handlers usando composição
 	console.log("[DEBUG] createBot: Registering /start command handler...");
 	bot.command("start", createStartCommandHandler({
-		priceTableCache: config.messageHandlerDeps.priceTableCache,
+		priceTableCache: config.priceTableCache,
 	}));
 	console.log("[DEBUG] createBot: Registering message:text handler...");
 	bot.on("message:text", sequentialize((ctx) => {
