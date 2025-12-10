@@ -14,8 +14,6 @@ export interface BotConfig {
 	priceTableCache: PriceTableCacheV2; // Cache v2 para command handler
 }
 
-const stopRunner = async (runner: RunnerHandle) => runner.isRunning() && runner.stop();
-
 /**
  * Cria e configura o bot usando composição
  * Função factory que permite fácil configuração e teste
@@ -42,10 +40,11 @@ export const createBot = (config: BotConfig): Bot => {
 
 /**
  * Inicia o bot com tratamento de erros
+ * Retorna o runner handle para permitir shutdown coordenado
  */
 export const startBot = async (
 	bot: Bot,
-): Promise<void> => {
+): Promise<RunnerHandle> => {
 	console.log("[DEBUG] startBot: Initiating bot startup...");
 	bot.catch((error) => {
 		console.error("[ERROR] Bot error:", error);
@@ -61,6 +60,6 @@ export const startBot = async (
 			}
 		}
 	});
-	process.once("SIGINT", () => stopRunner(runner));
-	process.once("SIGTERM", () => stopRunner(runner));
+	// Note: Signal handlers are now managed in index.ts for coordinated shutdown
+	return runner;
 };

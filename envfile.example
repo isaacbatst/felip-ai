@@ -20,3 +20,9 @@ OPENAI_API_KEY=sua_chave_openai
 # Hash do commit Git (gerado automaticamente pelo GitHub Actions)
 GIT_COMMIT_HASH=
 
+# Telegram User Client (POC)
+# Obtenha em https://my.telegram.org/apps
+TELEGRAM_API_ID=seu_api_id_aqui
+TELEGRAM_API_HASH=seu_api_hash_aqui
+TELEGRAM_PHONE=+1234567890
+
