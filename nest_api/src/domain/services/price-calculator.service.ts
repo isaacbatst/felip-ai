@@ -303,3 +303,4 @@ export class PriceCalculatorService {
     return this.calculatePriceInRange(quantityPerCpf, tableData.quantities, priceTable, minPrice);
   }
 }
+

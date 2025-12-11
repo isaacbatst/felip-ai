@@ -14,3 +14,4 @@ export const BRAZILIAN_MILES_PROGRAMS = [
 ] as const;
 
 export type MilesProgram = (typeof BRAZILIAN_MILES_PROGRAMS)[number];
+

@@ -13,3 +13,4 @@ export interface PriceTableResultV2 {
    */
   customMaxPrice?: number | undefined;
 }
+

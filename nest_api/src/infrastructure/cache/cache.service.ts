@@ -87,3 +87,4 @@ export abstract class CacheService<T> {
  */
 @Injectable()
 export abstract class AbstractPriceTableCache extends CacheService<PriceTableResultV2> {}
+

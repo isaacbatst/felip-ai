@@ -47,3 +47,4 @@ export class TelegramCommandHandler {
     await ctx.reply(message);
   }
 }
+

@@ -33,3 +33,4 @@ export interface ValidatedPurchaseRequest {
 export type PriceCalculationResult =
   | { success: true; price: number }
   | { success: false; reason: string };
+

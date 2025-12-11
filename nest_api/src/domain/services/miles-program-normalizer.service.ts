@@ -109,3 +109,4 @@ export class MilesProgramNormalizerService {
     return BRAZILIAN_MILES_PROGRAMS.includes(program as MilesProgram);
   }
 }
+

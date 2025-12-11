@@ -61,3 +61,4 @@ export class QuoteFormatterService {
     return lines.join('\n');
   }
 }
+

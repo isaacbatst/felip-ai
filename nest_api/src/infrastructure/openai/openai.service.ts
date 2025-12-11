@@ -19,3 +19,4 @@ export class OpenAIService {
     return this.client;
   }
 }
+

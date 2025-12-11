@@ -10,3 +10,4 @@ import type { PurchaseRequest } from '../types/purchase.types';
 export abstract class MessageParser {
   abstract parse(text: string): Promise<PurchaseRequest | null>;
 }
+

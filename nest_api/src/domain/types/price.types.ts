@@ -12,3 +12,4 @@ export type PriceTableByCpf = Record<number, PriceTable>;
  * Tabela de preços v2: apenas quantidade e preço, todos os registros são para 1 CPF
  */
 export type PriceTableV2 = Record<number, number>;
+

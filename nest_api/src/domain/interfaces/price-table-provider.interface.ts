@@ -10,3 +10,4 @@ import type { PriceTableResultV2 } from '../types/google-sheets.types';
 export abstract class PriceTableProvider {
   abstract getPriceTable(): Promise<PriceTableResultV2>;
 }
+

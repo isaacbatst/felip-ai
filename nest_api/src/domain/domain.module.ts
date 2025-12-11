@@ -23,3 +23,4 @@ import { QuoteFormatterService } from './services/quote-formatter.service';
   ],
 })
 export class DomainModule {}
+
