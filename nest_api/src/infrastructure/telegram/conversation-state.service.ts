@@ -6,6 +6,7 @@ import { Injectable } from '@nestjs/common';
 export enum ConversationState {
   IDLE = 'idle',
   WAITING_PHONE_NUMBER = 'waiting_phone_number',
+  WAITING_AUTH_CODE = 'waiting_auth_code',
 }
 
 /**

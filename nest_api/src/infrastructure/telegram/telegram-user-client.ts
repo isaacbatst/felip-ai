@@ -70,6 +70,30 @@ export class TelegramUserClient implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * Gets the current user's ID (bot's own user ID)
+   * Fetches directly from the API each time
+   */
+  async getUserId(): Promise<number | null> {
+    if (!this.client) {
+      return null;
+    }
+
+    try {
+      const me = await this.client.invoke({
+        _: 'getMe',
+      });
+      if (me && typeof me === 'object' && 'id' in me) {
+        const userInfo = me as { id: number };
+        return userInfo.id;
+      }
+    } catch (error) {
+      console.log('[DEBUG] Could not fetch user ID:', error);
+    }
+
+    return null;
+  }
+
+  /**
    * Verifica se o usuário já está logado
    */
   private async checkLoginStatus(): Promise<void> {

@@ -1,8 +1,7 @@
 import { Injectable, type OnModuleInit, type OnModuleDestroy } from '@nestjs/common';
 import { TelegramPurchaseHandler } from './handlers/telegram-purchase.handler';
 import { TelegramUserClient } from './telegram-user-client';
-import { Queue } from './interfaces/queue.interface';
-import { MessageQueueProcessor } from './message-queue-processor.service';
+import { QueueProcessor } from './queue-processor.service';
 
 /**
  * Message data structure for queue processing
@@ -18,11 +17,10 @@ export interface QueuedMessage {
  */
 @Injectable()
 export class TelegramUserMessageHandler implements OnModuleInit, OnModuleDestroy {
-  private queueProcessor: MessageQueueProcessor<QueuedMessage>
+  private queueProcessor: QueueProcessor<QueuedMessage>
 
   constructor(
     private readonly client: TelegramUserClient,
-    private readonly messageQueue: Queue<QueuedMessage>,
     private readonly purchaseHandler: TelegramPurchaseHandler,
   ) {}
 
@@ -44,7 +42,7 @@ export class TelegramUserMessageHandler implements OnModuleInit, OnModuleDestroy
     const processor = async (item: QueuedMessage): Promise<void> => {
       await this.processMessage(item);
     };
-    this.queueProcessor = new MessageQueueProcessor(this.messageQueue, processor);
+    this.queueProcessor = new QueueProcessor(processor);
     this.queueProcessor.start();
   }
 
@@ -75,7 +73,7 @@ export class TelegramUserMessageHandler implements OnModuleInit, OnModuleDestroy
    * Processes a queued message update
    * This method is called by the queue processor synchronously
    */
-  async processMessage(queuedMessage: QueuedMessage): Promise<void> {
+  private async processMessage(queuedMessage: QueuedMessage): Promise<void> {
     const { update } = queuedMessage;
     try {
       const messageUpdate = update as {
@@ -108,6 +106,12 @@ export class TelegramUserMessageHandler implements OnModuleInit, OnModuleDestroy
       const date = message.date;
       const content = message.content;
 
+      // Ignore self messages (messages sent by the bot itself)
+      const botUserId = await this.client.getUserId();
+      if (botUserId !== null && senderId === botUserId) {
+        return;
+      }
+
       // Extract text content
       let text = '';
       let contentType = 'unknown';
@@ -131,7 +135,8 @@ export class TelegramUserMessageHandler implements OnModuleInit, OnModuleDestroy
         logData.text = text;
         // Handle text message with purchase handler
         if (chatId && messageId !== undefined) {
-          await this.purchaseHandler.handlePurchase(chatId, messageId, text);
+          console.log('disable purchase handler', chatId, messageId, text);
+          // await this.purchaseHandler.handlePurchase(chatId, messageId, text);
         }
       } else {
         logData.content = '(non-text message)';

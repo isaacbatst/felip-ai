@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import type { Context } from 'grammy';
-import { ConversationStateService } from '../conversation-state.service';
-import { TelegramLoginOrchestratorService } from '../telegram-login-orchestrator.service';
+import { ConversationState, ConversationStateService } from '../conversation-state.service';
+import { TelegramUserLoginHandler } from '../telegram-user-login-handler';
 
 /**
  * Handler responsável por processar entrada de número de telefone durante o fluxo de login
@@ -12,7 +12,7 @@ import { TelegramLoginOrchestratorService } from '../telegram-login-orchestrator
 export class TelegramPhoneNumberHandler {
   constructor(
     private readonly conversationState: ConversationStateService,
-    private readonly loginOrchestrator: TelegramLoginOrchestratorService,
+    private readonly loginHandler: TelegramUserLoginHandler,
   ) {}
 
   async handlePhoneNumberInput(
@@ -31,7 +31,7 @@ export class TelegramPhoneNumberHandler {
     }
 
     // Check if phone number is in whitelist
-    if (!this.loginOrchestrator.isPhoneNumberAllowed(normalizedPhone)) {
+    if (!this.loginHandler.isPhoneNumberAllowed(normalizedPhone)) {
       this.conversationState.clearState(userId);
       await ctx.reply(
         '❌ Seu número não está autorizado.\n\n' +
@@ -40,15 +40,22 @@ export class TelegramPhoneNumberHandler {
       return;
     }
 
-    // Clear conversation state
-    this.conversationState.clearState(userId);
+    // Set conversation state to waiting for auth code
+    this.conversationState.setState(userId, ConversationState.WAITING_AUTH_CODE);
 
-    // Inform user that login is starting
-    await ctx.reply('🔄 Iniciando processo de login...');
+    // Inform user that login is starting and ask for auth code
+    await ctx.reply(
+      '🔄 Iniciando processo de login...\n\n' +
+        '🔐 Por favor, envie o código de autenticação que você recebeu no Telegram.\n\n' +
+        'O código geralmente tem 5 dígitos.',
+    );
 
     try {
-      // Perform login
-      const userInfo = await this.loginOrchestrator.performLogin(normalizedPhone);
+      // Perform login (this will wait for auth code via message)
+      const userInfo = await this.loginHandler.login(normalizedPhone, userId);
+
+      // Clear conversation state after successful login
+      this.conversationState.clearState(userId);
 
       // Send success message
       const successMessage =
@@ -63,6 +70,8 @@ export class TelegramPhoneNumberHandler {
       await ctx.reply(successMessage);
     } catch (error) {
       console.error('[ERROR] Login failed:', error);
+      // Clear conversation state on error
+      this.conversationState.clearState(userId);
       await ctx.reply(
         '❌ Erro ao realizar login. Por favor, tente novamente mais tarde ou entre em contato com o suporte.',
       );

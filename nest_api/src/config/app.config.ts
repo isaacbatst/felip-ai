@@ -80,8 +80,8 @@ export class AppConfigService {
     return value;
   }
 
-  getTelegramPhone(): string {
-    return this.configService.get<string>('TELEGRAM_PHONE', '+5584987287398');
+  getTelegramPhones(): string[] {
+    return this.configService.get<string>('TELEGRAM_PHONE', '+5584987287398,+5584994531473').split(',');
   }
 
   getGoogleSpreadsheetRangeV2(): string | undefined {

@@ -151,5 +151,40 @@ export class TelegramCommandHandler {
       await ctx.reply('❌ Erro ao buscar lista de grupos. Por favor, tente novamente mais tarde.');
     }
   }
+
+  async handleLogout(ctx: Context): Promise<void> {
+    const client = this.telegramUserClient.getClient();
+    if (!client) {
+      await ctx.reply('❌ Cliente Telegram não está disponível ou já foi desconectado.');
+      return;
+    }
+
+    try {
+      // Check if user is logged in before attempting logout
+      const authState = await client.invoke({
+        _: 'getAuthorizationState',
+      });
+
+      if (
+        typeof authState === 'object' &&
+        authState !== null &&
+        '_' in authState &&
+        (authState as { _: string })._ !== 'authorizationStateReady'
+      ) {
+        await ctx.reply('❌ Você não está logado no momento.');
+        return;
+      }
+
+      // Perform logout
+      await client.invoke({
+        _: 'logOut',
+      });
+
+      await ctx.reply('✅ Logout realizado com sucesso! Você foi desconectado do cliente Telegram.');
+    } catch (error) {
+      console.error('[ERROR] Error during logout:', error);
+      await ctx.reply('❌ Erro ao realizar logout. Por favor, tente novamente mais tarde.');
+    }
+  }
 }
 

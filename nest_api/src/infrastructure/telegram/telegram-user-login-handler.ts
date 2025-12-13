@@ -2,6 +2,8 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { Injectable } from '@nestjs/common';
 import { TelegramUserClient } from './telegram-user-client';
+import { AuthCodeService } from './auth-code.service';
+import { PhoneWhitelistService } from './phone-whitelist.service';
 
 /**
  * Informações do usuário retornadas pelo getMe
@@ -23,21 +25,35 @@ export interface TelegramUserInfo {
  */
 @Injectable()
 export class TelegramUserLoginHandler {
-  constructor(private readonly client: TelegramUserClient) {}
+  constructor(
+    private readonly client: TelegramUserClient,
+    private readonly authCodeService: AuthCodeService,
+    private readonly phoneWhitelist: PhoneWhitelistService,
+  ) {}
 
   /**
-   * Realiza login com um número de telefone
-   * @param phone Número de telefone em formato internacional
-   * @returns Informações do usuário após login bem-sucedido
+   * Valida se um número de telefone está na whitelist
+   * @param phoneNumber Número de telefone em formato internacional
+   * @returns true se está na whitelist, false caso contrário
    */
-  async login(phone: string): Promise<TelegramUserInfo> {
-    const clientInstance = this.client.getClient();
-    if (!clientInstance) {
-      throw new Error('Client not initialized');
-    }
+  isPhoneNumberAllowed(phoneNumber: string): boolean {
+    return this.phoneWhitelist.isAllowed(phoneNumber);
+  }
 
-    await clientInstance.login({
-      type: 'user',
+  /**
+   * Cria a configuração de login para o cliente Telegram
+   * @param phone Número de telefone em formato internacional
+   * @param userId ID do usuário do bot (para receber o auth code via mensagem)
+   * @param isRetry Indica se é uma tentativa após expiração do código
+   * @returns Configuração de login
+   */
+  private createLoginConfig(
+    phone: string,
+    userId: number,
+    isRetry = false,
+  ) {
+    return {
+      type: 'user' as const,
       getPhoneNumber: async () => {
         console.log(`[DEBUG] 📱 Providing phone number: ${phone}`);
         return phone;
@@ -46,42 +62,15 @@ export class TelegramUserLoginHandler {
         if (retry) {
           console.log('[DEBUG] 🔐 Retrying auth code...');
         } else {
-          console.log('[DEBUG] 🔐 Waiting for authentication code...');
+          console.log(
+            isRetry
+              ? '[DEBUG] 🔐 Waiting for new authentication code...'
+              : '[DEBUG] 🔐 Waiting for authentication code...',
+          );
         }
 
-        const authCodeFile = path.join(process.cwd(), '.telegram-auth-code.txt');
-
-        if (fs.existsSync(authCodeFile)) {
-          fs.unlinkSync(authCodeFile);
-        }
-
-        console.log(`[DEBUG] 🔐 Please write the authentication code to: ${authCodeFile}`);
-        console.log(`[DEBUG] 🔐 You can do this by running: echo "YOUR_CODE" > ${authCodeFile}`);
-
-        return new Promise<string>((resolve) => {
-          const checkFile = () => {
-            if (fs.existsSync(authCodeFile)) {
-              try {
-                const code = fs.readFileSync(authCodeFile, 'utf-8').trim();
-                if (code) {
-                  console.log('[DEBUG] 🔐 Code read from file');
-                  try {
-                    fs.unlinkSync(authCodeFile);
-                  } catch (_e) {
-                    // Ignore cleanup errors
-                  }
-                  resolve(code);
-                  return;
-                }
-              } catch (_error) {
-                // File might be being written, try again
-              }
-            }
-            setTimeout(checkFile, 500);
-          };
-
-          checkFile();
-        });
+        // Espera o código via mensagem do bot
+        return await this.authCodeService.waitForAuthCode(userId);
       },
       getPassword: async (passwordHint: string, retry?: boolean) => {
         if (retry) {
@@ -126,7 +115,55 @@ export class TelegramUserLoginHandler {
           checkFile();
         });
       },
-    });
+    };
+  }
+
+  /**
+   * Realiza login com um número de telefone
+   * @param phone Número de telefone em formato internacional
+   * @param userId ID do usuário do bot (para receber o auth code via mensagem)
+   * @returns Informações do usuário após login bem-sucedido
+   * @throws Error se o número não está na whitelist ou se o login falhar
+   */
+  async login(phone: string, userId: number): Promise<TelegramUserInfo> {
+    // Validate phone number is in whitelist
+    if (!this.isPhoneNumberAllowed(phone)) {
+      throw new Error('Phone number not in whitelist');
+    }
+    const clientInstance = this.client.getClient();
+    if (!clientInstance) {
+      throw new Error('Client not initialized');
+    }
+
+    try {
+      await clientInstance.login(this.createLoginConfig(phone, userId));
+    } catch (error) {
+      // Check if error is PHONE_CODE_EXPIRED
+      if (
+        error instanceof Error &&
+        (error.message.includes('PHONE_CODE_EXPIRED') ||
+          error.message.includes('phone code expired'))
+      ) {
+        console.log('[DEBUG] ⏰ Auth code expired, resending authentication code...');
+        try {
+          await clientInstance.invoke({
+            _: 'resendAuthenticationCode',
+          });
+          console.log('[DEBUG] ✅ Authentication code resent successfully');
+
+          // Retry login after resending code
+          await clientInstance.login(
+            this.createLoginConfig(phone, userId, true),
+          );
+        } catch (retryError) {
+          console.error('[ERROR] Failed to resend authentication code:', retryError);
+          throw retryError;
+        }
+      } else {
+        // Re-throw if it's not a PHONE_CODE_EXPIRED error
+        throw error;
+      }
+    }
 
     console.log('[DEBUG] ✅ Login successful, fetching user info...');
 

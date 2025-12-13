@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import type { Context } from 'grammy';
 import { ConversationState, ConversationStateService } from '../conversation-state.service';
 import { TelegramPhoneNumberHandler } from './telegram-phone-number.handler';
+import { TelegramAuthCodeHandler } from './telegram-auth-code.handler';
 
 /**
  * Handler responsável por processar mensagens de texto do Telegram Bot
@@ -13,9 +14,11 @@ export class TelegramMessageHandler {
   constructor(
     private readonly conversationState: ConversationStateService,
     private readonly phoneNumberHandler: TelegramPhoneNumberHandler,
+    private readonly authCodeHandler: TelegramAuthCodeHandler,
   ) {}
 
   async handleMessage(ctx: Context): Promise<void> {
+    console.log('[DEBUG] TelegramMessageHandler: Handling message');
     const text = ctx.message?.text;
     const userId = ctx.from?.id;
 
@@ -23,7 +26,13 @@ export class TelegramMessageHandler {
       return;
     }
 
-    // Check if user is in login flow
+    // Check if user is waiting for auth code
+    if (this.conversationState.isInState(userId, ConversationState.WAITING_AUTH_CODE)) {
+      await this.authCodeHandler.handleAuthCodeInput(ctx, text, userId);
+      return;
+    }
+
+    // Check if user is in login flow (waiting for phone number)
     if (this.conversationState.isInState(userId, ConversationState.WAITING_PHONE_NUMBER)) {
       await this.phoneNumberHandler.handlePhoneNumberInput(ctx, text, userId);
       return;

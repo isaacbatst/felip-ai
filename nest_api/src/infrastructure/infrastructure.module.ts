@@ -7,7 +7,9 @@ import { GoogleSheetsCacheService } from './cache/google-sheets-cache.service';
 import { GoogleSheetsService } from './google-sheets/google-sheets.service';
 import { MessageParserService } from './openai/message-parser.service';
 import { OpenAIService } from './openai/openai.service';
+import { AuthCodeService } from './telegram/auth-code.service';
 import { ConversationStateService } from './telegram/conversation-state.service';
+import { TelegramAuthCodeHandler } from './telegram/handlers/telegram-auth-code.handler';
 import { TelegramCommandHandler } from './telegram/handlers/telegram-command.handler';
 import { TelegramMessageHandler } from './telegram/handlers/telegram-message.handler';
 import { TelegramPhoneNumberHandler } from './telegram/handlers/telegram-phone-number.handler';
@@ -17,7 +19,6 @@ import { TelegramMessageSender } from './telegram/interfaces/telegram-message-se
 import { QueueInMemory } from './telegram/queue-in-memory';
 import { PhoneWhitelistService } from './telegram/phone-whitelist.service';
 import { TelegramBotService } from './telegram/telegram-bot.service';
-import { TelegramLoginOrchestratorService } from './telegram/telegram-login-orchestrator.service';
 import { TelegramUserClient } from './telegram/telegram-user-client';
 import { TelegramUserLoginHandler } from './telegram/telegram-user-login-handler';
 import { TelegramUserMessageHandler } from './telegram/telegram-user-message-handler';
@@ -56,16 +57,11 @@ import { TelegramUserMessageSender } from './telegram/telegram-user-message-send
       provide: TelegramMessageSender,
       useClass: TelegramUserMessageSender,
     },
-    {
-      provide: Queue,
-      useFactory: (config: AppConfigService) => {
-        return new QueueInMemory(config.getQueueMaxItems());
-      },
-      inject: [AppConfigService],
-    },
     TelegramMessageHandler,
     TelegramPhoneNumberHandler,
+    TelegramAuthCodeHandler,
     TelegramCommandHandler,
+    AuthCodeService,
     TelegramBotService,
     TelegramUserClient,
     TelegramPurchaseHandler,
@@ -74,7 +70,6 @@ import { TelegramUserMessageSender } from './telegram/telegram-user-message-send
     TelegramUserLoginHandler,
     PhoneWhitelistService,
     ConversationStateService,
-    TelegramLoginOrchestratorService,
   ],
   exports: [
     MessageParser,
@@ -83,7 +78,6 @@ import { TelegramUserMessageSender } from './telegram/telegram-user-message-send
     TelegramMessageSender,
     PhoneWhitelistService,
     ConversationStateService,
-    TelegramLoginOrchestratorService,
   ],
 })
 export class InfrastructureModule {}

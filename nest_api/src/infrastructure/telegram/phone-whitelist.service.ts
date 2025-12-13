@@ -11,8 +11,8 @@ export class PhoneWhitelistService {
 
   constructor(private readonly appConfig: AppConfigService) {
     // Initialize whitelist with the phone number from config
-    const defaultPhone = this.appConfig.getTelegramPhone();
-    this.whitelist = new Set([defaultPhone]);
+    const defaultPhones = this.appConfig.getTelegramPhones();
+    this.whitelist = new Set(defaultPhones);
   }
 
   /**
