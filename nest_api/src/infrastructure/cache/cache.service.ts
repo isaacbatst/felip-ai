@@ -1,5 +1,6 @@
-import { Injectable, InjectionToken } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import type { PriceTableResultV2 } from '../../domain/types/google-sheets.types';
+import { PriceTableProvider } from '../../domain/interfaces/price-table-provider.interface';
 
 /**
  * Cache entry com timestamp
@@ -45,6 +46,7 @@ export abstract class CacheService<T> {
    * Obtém os dados do cache, revalidando se necessário
    */
   async get(forceRefresh: boolean = false): Promise<T> {
+    console.log(`[DEBUG] Getting cache for ${this.debugPrefix}`, { forceRefresh, cache: this.cache });
     if (forceRefresh || !this.isCacheValid(this.cache)) {
       const data = await this.fetch();
 
@@ -84,7 +86,19 @@ export abstract class CacheService<T> {
 /**
  * Classe abstrata específica para CacheService<PriceTableResultV2>
  * Permite usar a classe abstrata diretamente como token de injeção
+ * Implementa PriceTableProvider para compatibilidade com a interface
  */
 @Injectable()
-export abstract class AbstractPriceTableCache extends CacheService<PriceTableResultV2> {}
+export abstract class AbstractPriceTableCache
+  extends CacheService<PriceTableResultV2>
+  implements PriceTableProvider
+{
+  /**
+   * Implementa o método da interface PriceTableProvider
+   * Delega para o método get() da classe base
+   */
+  async getPriceTable(): Promise<PriceTableResultV2> {
+    return await this.get();
+  }
+}
 

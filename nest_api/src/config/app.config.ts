@@ -32,6 +32,14 @@ export class AppConfigService {
     }
   }
 
+  getQueueMaxItems(): number {
+    const value = this.configService.get<string>('QUEUE_MAX_ITEMS', '1000');
+    if (!value) {
+      throw new Error('QUEUE_MAX_ITEMS is not set');
+    }
+    return Number.parseInt(value, 10);
+  }
+
   getTelegramBotToken(): string {
     const value = this.configService.get<string>('TELEGRAM_BOT_TOKEN');
     if (!value) {

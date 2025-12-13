@@ -13,6 +13,12 @@ export const PurchaseRequestSchema = z.object({
     .describe(
       'Nome da companhia aérea ou programa de milhas mencionado (ex: LATAM, SMILES, TUDO AZUL)',
     ),
+  acceptedPrices: z
+    .array(z.number().positive())
+    .default([])
+    .describe(
+      'Lista de valores que o usuário aceita pagar. Se não mencionado na mensagem, retorne array vazio.',
+    ),
 });
 
 export type PurchaseRequest = z.infer<typeof PurchaseRequestSchema>;
@@ -24,7 +30,7 @@ export interface ValidatedPurchaseRequest {
   quantity: number;
   cpfCount: number;
   airline: string | undefined;
-  milesProgram: string | null;
+  acceptedPrices: number[];
 }
 
 /**

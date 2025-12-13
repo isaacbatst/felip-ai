@@ -49,7 +49,10 @@ export class TelegramUserClient implements OnModuleInit, OnModuleDestroy {
 
     this.setupBasicEventHandlers();
 
-    console.log('[DEBUG] ✅ Telegram User Client initialized (waiting for login command)');
+    // Check if user is already logged in
+    await this.checkLoginStatus();
+
+    console.log('[DEBUG] ✅ Telegram User Client initialized');
   }
 
   /**
@@ -64,6 +67,55 @@ export class TelegramUserClient implements OnModuleInit, OnModuleDestroy {
    */
   isShuttingDownState(): boolean {
     return this.isShuttingDown;
+  }
+
+  /**
+   * Verifica se o usuário já está logado
+   */
+  private async checkLoginStatus(): Promise<void> {
+    if (!this.client) return;
+
+    try {
+      // Wait a bit for the client to initialize and connect
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+
+      // Check authorization state
+      const authState = await this.client.invoke({
+        _: 'getAuthorizationState',
+      });
+
+      if (
+        typeof authState === 'object' &&
+        authState !== null &&
+        '_' in authState &&
+        (authState as { _: string })._ === 'authorizationStateReady'
+      ) {
+        console.log('[DEBUG] ✅ User is already logged in');
+        
+        // Fetch user info to confirm
+        try {
+          const me = await this.client.invoke({
+            _: 'getMe',
+          });
+          if (me && typeof me === 'object' && 'id' in me) {
+            const userInfo = me as { id: number; first_name?: string; username?: string };
+            console.log(
+              `[DEBUG] ✅ Logged in as: ${userInfo.first_name || 'Unknown'} (ID: ${userInfo.id})`,
+            );
+          }
+        } catch (error) {
+          console.log('[DEBUG] Could not fetch user info:', error);
+        }
+      } else {
+        const stateType =
+          typeof authState === 'object' && authState !== null && '_' in authState
+            ? (authState as { _: string })._
+            : 'unknown';
+        console.log(`[DEBUG] User is not logged in (state: ${stateType})`);
+      }
+    } catch (error) {
+      console.log('[DEBUG] Could not check login status:', error);
+    }
   }
 
   /**

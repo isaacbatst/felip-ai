@@ -1,6 +1,5 @@
 import { Injectable } from '@nestjs/common';
 import type { PurchaseRequest, ValidatedPurchaseRequest } from '../types/purchase.types';
-import { MilesProgramNormalizerService } from './miles-program-normalizer.service';
 
 /**
  * Service responsável por validar propostas de compra
@@ -8,13 +7,12 @@ import { MilesProgramNormalizerService } from './miles-program-normalizer.servic
  */
 @Injectable()
 export class PurchaseValidatorService {
-  constructor(private readonly milesProgramNormalizer: MilesProgramNormalizerService) {}
-
   /**
    * Valida se uma PurchaseRequest tem os dados necessários para calcular preço
    */
   validate(request: PurchaseRequest | null): ValidatedPurchaseRequest | null {
     if (!request) {
+      console.warn('No purchase request received');
       return null;
     }
 
@@ -26,16 +24,15 @@ export class PurchaseValidatorService {
       request.quantity <= 0 ||
       request.cpfCount <= 0
     ) {
+      console.warn('Invalid purchase request', request);
       return null;
     }
-
-    const milesProgram = this.milesProgramNormalizer.normalize(request.airline ?? null);
 
     return {
       quantity: request.quantity,
       cpfCount: request.cpfCount,
       airline: request.airline ?? undefined,
-      milesProgram,
+      acceptedPrices: request.acceptedPrices ?? [],
     };
   }
 }

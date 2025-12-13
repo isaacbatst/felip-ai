@@ -1,20 +1,51 @@
-import { Injectable, type OnModuleInit } from '@nestjs/common';
+import { Injectable, type OnModuleInit, type OnModuleDestroy } from '@nestjs/common';
 import { TelegramPurchaseHandler } from './handlers/telegram-purchase.handler';
 import { TelegramUserClient } from './telegram-user-client';
+import { Queue } from './interfaces/queue.interface';
+import { MessageQueueProcessor } from './message-queue-processor.service';
+
+/**
+ * Message data structure for queue processing
+ * Contains the full update object to be processed
+ */
+export interface QueuedMessage {
+  update: unknown;
+}
 
 /**
  * Handler responsável por processar mensagens recebidas do Telegram User Client
  * Single Responsibility: apenas processamento de mensagens recebidas
  */
 @Injectable()
-export class TelegramUserMessageHandler implements OnModuleInit {
+export class TelegramUserMessageHandler implements OnModuleInit, OnModuleDestroy {
+  private queueProcessor: MessageQueueProcessor<QueuedMessage>
+
   constructor(
     private readonly client: TelegramUserClient,
+    private readonly messageQueue: Queue<QueuedMessage>,
     private readonly purchaseHandler: TelegramPurchaseHandler,
   ) {}
 
   async onModuleInit(): Promise<void> {
     this.setupMessageHandlers();
+    this.setupQueueProcessor();
+  }
+
+  async onModuleDestroy(): Promise<void> {
+    if (this.queueProcessor) {
+      await this.queueProcessor.stop();
+    }
+  }
+
+  /**
+   * Sets up the queue processor to process messages synchronously
+   */
+  private setupQueueProcessor(): void {
+    const processor = async (item: QueuedMessage): Promise<void> => {
+      await this.processMessage(item);
+    };
+    this.queueProcessor = new MessageQueueProcessor(this.messageQueue, processor);
+    this.queueProcessor.start();
   }
 
   /**
@@ -32,6 +63,20 @@ export class TelegramUserMessageHandler implements OnModuleInit {
   }
 
   private handleNewMessage(update: unknown): void {
+    // Enqueue the full update for processing through the processor
+    if (this.queueProcessor) {
+      this.queueProcessor.enqueue({ update }).catch((error: unknown) => {
+        console.error('[ERROR] Error enqueueing message:', error);
+      });
+    }
+  }
+
+  /**
+   * Processes a queued message update
+   * This method is called by the queue processor synchronously
+   */
+  async processMessage(queuedMessage: QueuedMessage): Promise<void> {
+    const { update } = queuedMessage;
     try {
       const messageUpdate = update as {
         message?: {
@@ -86,10 +131,7 @@ export class TelegramUserMessageHandler implements OnModuleInit {
         logData.text = text;
         // Handle text message with purchase handler
         if (chatId && messageId !== undefined) {
-          // Call purchase handler asynchronously (don't await to avoid blocking)
-          this.purchaseHandler.handlePurchase(chatId, messageId, text).catch((error: unknown) => {
-            console.error('[ERROR] Error in purchase handler:', error);
-          });
+          await this.purchaseHandler.handlePurchase(chatId, messageId, text);
         }
       } else {
         logData.content = '(non-text message)';

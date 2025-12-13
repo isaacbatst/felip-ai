@@ -3,8 +3,7 @@ import { MessageParser } from '../../../domain/interfaces/message-parser.interfa
 import { PriceTableProvider } from '../../../domain/interfaces/price-table-provider.interface';
 import { PriceCalculatorService } from '../../../domain/services/price-calculator.service';
 import { PurchaseValidatorService } from '../../../domain/services/purchase-validator.service';
-import { QuoteFormatterService } from '../../../domain/services/quote-formatter.service';
-import type { MilesProgram } from '../../../domain/types/miles-program.types';
+import type { Provider } from '../../../domain/types/provider.types';
 import { TelegramMessageSender } from '../interfaces/telegram-message-sender.interface';
 
 /**
@@ -19,66 +18,127 @@ export class TelegramPurchaseHandler {
     private readonly priceTableProvider: PriceTableProvider,
     private readonly purchaseValidator: PurchaseValidatorService,
     private readonly priceCalculator: PriceCalculatorService,
-    private readonly quoteFormatter: QuoteFormatterService,
     private readonly messageSender: TelegramMessageSender,
   ) {}
 
   async handlePurchase(chatId: number, messageId: number | undefined, text: string): Promise<void> {
-    const purchaseRequest = await this.messageParser.parse(text);
+    // Busca providers disponíveis primeiro para passar ao parser
+    const priceTableResult = await this.priceTableProvider.getPriceTable();
+    const { priceTables, customMaxPrice } = priceTableResult;
+    const providers = Object.keys(priceTables) as Provider[];
+
+    // Passa os providers como contexto para ajudar o modelo a reconhecer melhor
+    const purchaseRequest = await this.messageParser.parse(text, providers);
+
+    console.log('Purchase request', purchaseRequest);
 
     const validatedRequest = this.purchaseValidator.validate(purchaseRequest);
+
+    console.log('Validated request', validatedRequest);
 
     if (!validatedRequest) {
       return;
     }
 
-    const priceTableResult = await this.priceTableProvider.getPriceTable();
-    const { priceTable, availableMiles, customMaxPrice } = priceTableResult;
+    const availableProviders = Object.keys(priceTables).filter(
+      (provider) => priceTables[provider] && Object.keys(priceTables[provider]).length > 0,
+    ) as Provider[];
 
-    const milesProgram =
-      validatedRequest.milesProgram ?? this.getHighestAvailableMilesProgram(availableMiles)[0];
+    // Encontra o provider correspondente ao programa mencionado usando comparação case-insensitive
+    let selectedProvider: Provider | null = null;
 
-    const programAvailableMiles = availableMiles[milesProgram];
+    if (validatedRequest.airline) {
+      console.log('Finding provider for airline', validatedRequest.airline);
+      selectedProvider = this.findProviderByName(validatedRequest.airline, availableProviders);
+    }
 
-    if (programAvailableMiles === null || programAvailableMiles === undefined) {
+    console.log('Selected provider', selectedProvider);
+
+    if (!selectedProvider) {
+      console.warn('No provider found for the requested airline');
       return;
     }
 
-    if (validatedRequest.quantity > programAvailableMiles) {
+    const priceTable = priceTables[selectedProvider];
+
+    if (!priceTable || Object.keys(priceTable).length === 0) {
+      console.warn('No price table found for the selected provider');
       return;
     }
 
+    const options = customMaxPrice !== undefined ? { customMaxPrice } : undefined;
+
+    console.log(
+      'Calculating price',
+      validatedRequest.quantity,
+      validatedRequest.cpfCount,
+      priceTable,
+      options,
+    );
     const priceResult = this.priceCalculator.calculate(
       validatedRequest.quantity,
       validatedRequest.cpfCount,
       priceTable,
-      customMaxPrice !== undefined ? { customMaxPrice } : undefined,
+      options,
     );
+
+    console.log('Price result', priceResult);
 
     if (!priceResult.success) {
       return;
     }
 
-    const formattedResponse = this.quoteFormatter.formatQuoteResponse(
-      validatedRequest.quantity,
-      validatedRequest.cpfCount,
-      priceResult.price,
-      milesProgram,
-    );
-
-    await this.messageSender.sendMessage(chatId, formattedResponse, messageId);
-  }
-
-  private getHighestAvailableMilesProgram(
-    availableMiles: Record<MilesProgram, number | null>,
-  ): [MilesProgram, number] {
-    let highestAvailableMiles: [MilesProgram, number] = ['LATAM_PASS', 0];
-    for (const [program, miles] of Object.entries(availableMiles)) {
-      if (miles && miles > highestAvailableMiles[1]) {
-        highestAvailableMiles = [program as MilesProgram, miles];
+    // Verifica se o usuário forneceu valores aceitos e se o menor valor aceito é maior que o preço calculado
+    if (validatedRequest.acceptedPrices.length > 0 && priceResult.success) {
+      const minAcceptedPrice = Math.min(...validatedRequest.acceptedPrices);
+      if (minAcceptedPrice > priceResult.price) {
+        // O usuário aceita pagar mais que nosso preço - responder com mensagem customizada
+        await this.messageSender.sendMessage(chatId, 'Vamos!', messageId);
+        return;
       }
     }
-    return highestAvailableMiles;
+
+    await this.messageSender.sendMessage(
+      chatId,
+      Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(priceResult.price),
+      messageId,
+    );
+  }
+
+  /**
+   * Encontra o provider correspondente ao programa mencionado usando comparação case-insensitive
+   * Retorna o provider exato da lista de providers disponíveis
+   */
+  private findProviderByName(
+    mentionedProvider: string | null | undefined,
+    availableProviders: Provider[],
+  ): Provider | null {
+    if (!mentionedProvider) {
+      return null;
+    }
+
+    const normalizedMentioned = mentionedProvider.trim().toUpperCase();
+
+    // Primeiro tenta correspondência exata (case-insensitive)
+    for (const provider of availableProviders) {
+      if (provider.trim().toUpperCase() === normalizedMentioned) {
+        return provider;
+      }
+    }
+
+    // Depois tenta correspondência parcial (case-insensitive)
+    for (const provider of availableProviders) {
+      const normalizedProvider = provider.trim().toUpperCase();
+
+      // Verifica se um contém o outro
+      if (
+        normalizedProvider.includes(normalizedMentioned) ||
+        normalizedMentioned.includes(normalizedProvider)
+      ) {
+        return provider;
+      }
+    }
+
+    return null;
   }
 }
-

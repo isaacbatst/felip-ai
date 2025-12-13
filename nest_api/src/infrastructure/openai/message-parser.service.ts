@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { zodTextFormat } from 'openai/helpers/zod';
 import { MessageParser } from '../../domain/interfaces/message-parser.interface';
+import type { Provider } from '../../domain/types/provider.types';
 import { type PurchaseRequest, PurchaseRequestSchema } from '../../domain/types/purchase.types';
 import { OpenAIService } from './openai.service';
 
@@ -28,21 +29,40 @@ export class MessageParserService extends MessageParser {
       systemPrompt:
         'Você é um assistente que identifica mensagens de compra de milhas aéreas. ' +
         'Analise a mensagem e identifique se é uma proposta de compra. ' +
-        'Se for, extraia a quantidade (em milhares), número de CPFs e companhia aérea. ' +
-        "Exemplos de mensagens de compra: 'COMPRO LATAM 27k 2CPF', 'compro 42.6k 1cpf', 'quero comprar 60k latam 3cpf'. " +
+        'Se for, extraia a quantidade (em milhares), número de CPFs, companhia aérea/programa de milhas e valores que o usuário aceita pagar (se mencionados). ' +
+        "Exemplos de mensagens de compra: 'COMPRO LATAM 27k 2CPF', 'compro 42.6k 1cpf', 'quero comprar 60k latam 3cpf', 'compro 50k aceito até 1.50'. " +
+        'Se o usuário mencionar valores que aceita pagar (ex: "aceito até 1.50", "aceito 1.20 ou 1.30"), extraia esses valores no campo acceptedPrices. ' +
         'Se não for uma proposta de compra, retorne isPurchaseProposal: false.',
     };
   }
 
-  async parse(text: string): Promise<PurchaseRequest | null> {
+  /**
+   * Gera o system prompt incluindo os providers disponíveis como contexto para reconhecimento
+   */
+  private buildSystemPrompt(availableProviders?: Provider[]): string {
+    let prompt = this.config.systemPrompt;
+
+    if (availableProviders && availableProviders.length > 0) {
+      const providersList = availableProviders.join(', ');
+      prompt +=
+        `\n\nContexto: Os seguintes programas/providers podem ser mencionados nas mensagens: ${providersList}. ` +
+        'Reconheça e extraia o nome do programa/provider mencionado na mensagem, se for um dos programas/providers fornecidos acima, retorne o texto como está na lista de providers fornecida acima.';
+    }
+
+    return prompt;
+  }
+
+  async parse(text: string, availableProviders?: Provider[]): Promise<PurchaseRequest | null> {
     try {
       const client = this.openaiService.getClient();
+      const systemPrompt = this.buildSystemPrompt(availableProviders);
+      
       const response = await client.responses.parse({
         model: this.config.model,
         input: [
           {
             role: 'system',
-            content: this.config.systemPrompt,
+            content: systemPrompt,
           },
           {
             role: 'user',

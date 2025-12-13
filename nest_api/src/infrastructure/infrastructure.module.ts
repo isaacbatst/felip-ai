@@ -12,10 +12,12 @@ import { TelegramCommandHandler } from './telegram/handlers/telegram-command.han
 import { TelegramMessageHandler } from './telegram/handlers/telegram-message.handler';
 import { TelegramPhoneNumberHandler } from './telegram/handlers/telegram-phone-number.handler';
 import { TelegramPurchaseHandler } from './telegram/handlers/telegram-purchase.handler';
+import { Queue } from './telegram/interfaces/queue.interface';
+import { TelegramMessageSender } from './telegram/interfaces/telegram-message-sender.interface';
+import { QueueInMemory } from './telegram/queue-in-memory';
 import { PhoneWhitelistService } from './telegram/phone-whitelist.service';
 import { TelegramBotService } from './telegram/telegram-bot.service';
 import { TelegramLoginOrchestratorService } from './telegram/telegram-login-orchestrator.service';
-import { TelegramMessageSender } from './telegram/interfaces/telegram-message-sender.interface';
 import { TelegramUserClient } from './telegram/telegram-user-client';
 import { TelegramUserLoginHandler } from './telegram/telegram-user-login-handler';
 import { TelegramUserMessageHandler } from './telegram/telegram-user-message-handler';
@@ -54,15 +56,22 @@ import { TelegramUserMessageSender } from './telegram/telegram-user-message-send
       provide: TelegramMessageSender,
       useClass: TelegramUserMessageSender,
     },
+    {
+      provide: Queue,
+      useFactory: (config: AppConfigService) => {
+        return new QueueInMemory(config.getQueueMaxItems());
+      },
+      inject: [AppConfigService],
+    },
     TelegramMessageHandler,
     TelegramPhoneNumberHandler,
     TelegramCommandHandler,
     TelegramBotService,
     TelegramUserClient,
+    TelegramPurchaseHandler,
     TelegramUserMessageHandler,
     TelegramUserMessageSender,
     TelegramUserLoginHandler,
-    TelegramPurchaseHandler,
     PhoneWhitelistService,
     ConversationStateService,
     TelegramLoginOrchestratorService,
