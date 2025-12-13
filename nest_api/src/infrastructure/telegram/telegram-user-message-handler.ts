@@ -1,7 +1,7 @@
-import { Injectable, type OnModuleInit, type OnModuleDestroy } from '@nestjs/common';
+import { Injectable, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
 import { TelegramPurchaseHandler } from './handlers/telegram-purchase.handler';
-import { TelegramUserClient } from './telegram-user-client';
 import { QueueProcessor } from './queue-processor.service';
+import { TelegramUserClient } from './telegram-user-client';
 
 /**
  * Message data structure for queue processing
@@ -109,6 +109,7 @@ export class TelegramUserMessageHandler implements OnModuleInit, OnModuleDestroy
       // Ignore self messages (messages sent by the bot itself)
       const botUserId = await this.client.getUserId();
       if (botUserId !== null && senderId === botUserId) {
+        console.log('[MESSAGE] Self message received, ignoring...');
         return;
       }
 
