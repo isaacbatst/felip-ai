@@ -1,20 +1,22 @@
-import { QueueInMemory } from 'src/infrastructure/telegram/queue-in-memory';
+import { Queue } from './interfaces/queue.interface';
 
 /**
  * Processor class that processes queue items with support for parallel queues by key
  * Single Responsibility: processing of queue items with key-based parallelization
  * Items with the same key are processed sequentially, while items with different keys
  * can be processed in parallel
+ * Queue-agnostic: accepts a Queue instance via constructor, allowing different implementations
  */
 export class QueueProcessor<T> {
   private shouldStop = false;
-  private queue = new QueueInMemory<T>();
+  private readonly queue: Queue<T>;
   private processor: (item: T) => Promise<void>;
   private keyExtractor?: (item: T) => string | undefined;
   private processingKeys: Set<string> = new Set();
   private readonly maxConcurrency?: number;
 
   /**
+   * @param queue The queue instance to process items from
    * @param processor Function to process each queue item
    * @param keyExtractor Optional function to extract a key from an item for parallel processing.
    *                     Items with the same key are processed sequentially.
@@ -23,10 +25,12 @@ export class QueueProcessor<T> {
    *                       If not provided, there is no limit (unlimited concurrency).
    */
   constructor(
+    queue: Queue<T>,
     processor: (item: T) => Promise<void>,
     keyExtractor?: (item: T) => string | undefined,
     maxConcurrency?: number,
   ) {
+    this.queue = queue;
     this.processor = processor;
     this.keyExtractor = keyExtractor;
     this.maxConcurrency = maxConcurrency;
@@ -109,10 +113,19 @@ export class QueueProcessor<T> {
 
   /**
    * Computes and returns keys that have items but aren't being processed
+   * Note: This only works if the queue implementation supports getKeysWithItems()
+   * For queues that don't support this, key-based parallelization won't work
    */
   private getPendingKeys(): string[] {
-    const keysWithItems = this.queue.getKeysWithItems();
-    return keysWithItems.filter((key) => !this.processingKeys.has(key));
+    // Check if queue has getKeysWithItems method (not part of base interface)
+    const queueWithKeys = this.queue as unknown as { getKeysWithItems?: () => string[] };
+    if (queueWithKeys.getKeysWithItems) {
+      const keysWithItems = queueWithKeys.getKeysWithItems();
+      return keysWithItems.filter((key) => !this.processingKeys.has(key));
+    }
+    // If queue doesn't support getKeysWithItems, return empty array
+    // Key-based parallelization won't work, but basic processing will still work
+    return [];
   }
 
   /**

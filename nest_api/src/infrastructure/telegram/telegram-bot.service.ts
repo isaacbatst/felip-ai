@@ -5,6 +5,7 @@ import { AppConfigService } from 'src/config/app.config';
 import { TelegramCommandHandler } from './handlers/telegram-command.handler';
 import { TelegramMessageHandler } from './handlers/telegram-message.handler';
 import { QueueProcessor } from 'src/infrastructure/telegram/queue-processor.service';
+import { QueueInMemory } from './queue-in-memory';
 
 /**
  * Service responsável por gerenciar o bot do Telegram
@@ -28,12 +29,13 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
   }
 
   private setupQueueProcessor(): void {
+    const queue = new QueueInMemory<Context>();
     const processor = async (item: Context): Promise<void> => {
       this.messageHandler.handleMessage(item).catch((error: unknown) => {
         console.error('[ERROR] Error handling message:', error);
       });
     };
-    this.queueProcessor = new QueueProcessor(processor);
+    this.queueProcessor = new QueueProcessor(queue, processor);
     this.queueProcessor.start();
   }
 
