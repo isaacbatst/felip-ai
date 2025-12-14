@@ -3,40 +3,27 @@ import { Injectable, type OnModuleDestroy, type OnModuleInit } from '@nestjs/com
 import { Bot, type Context } from 'grammy';
 import { AppConfigService } from 'src/config/app.config';
 import { TelegramCommandHandler } from './handlers/telegram-command.handler';
-import { TelegramMessageHandler } from './handlers/telegram-message.handler';
-import { QueueProcessor } from 'src/infrastructure/telegram/queue-processor.service';
-import { QueueInMemory } from './queue-in-memory';
+import { TelegramBotQueueProcessor } from './telegram-bot-queue-processor.service';
 
 /**
  * Service responsável por gerenciar o bot do Telegram
  * Single Responsibility: apenas gerenciamento do bot
  * Composition: usa handlers para processar mensagens e comandos
+ * Uses QueueProcessor service ready via DI - no setup needed
  */
 @Injectable()
 export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
   private bot: Bot;
   private runner: RunnerHandle | null = null;
-  private queueProcessor: QueueProcessor<Context> | null = null;
 
   constructor(
-    private readonly messageHandler: TelegramMessageHandler,
     private readonly commandHandler: TelegramCommandHandler,
     private readonly config: AppConfigService,
+    private readonly queueProcessor: TelegramBotQueueProcessor,
   ) {
     const token = this.config.getTelegramBotToken();
     this.bot = new Bot(token);
     this.setupHandlers();
-  }
-
-  private setupQueueProcessor(): void {
-    const queue = new QueueInMemory<Context>();
-    const processor = async (item: Context): Promise<void> => {
-      this.messageHandler.handleMessage(item).catch((error: unknown) => {
-        console.error('[ERROR] Error handling message:', error);
-      });
-    };
-    this.queueProcessor = new QueueProcessor(queue, processor);
-    this.queueProcessor.start();
   }
 
   private setupHandlers(): void {
@@ -69,11 +56,9 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
         return [chat, user].filter((con) => con !== undefined);
       }),
       async (ctx: Context) => {
-        if (this.queueProcessor) {
-          this.queueProcessor.enqueue(ctx).catch((error: unknown) => {
-            console.error('[ERROR] Error enqueueing message:', error);
-          });
-        }
+        this.queueProcessor.enqueue(ctx).catch((error: unknown) => {
+          console.error('[ERROR] Error enqueueing message:', error);
+        });
       },
     );
 
@@ -96,7 +81,6 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
         },
       },
     });
-    this.setupQueueProcessor();
     console.log('[DEBUG] Telegram bot started successfully');
   }
 

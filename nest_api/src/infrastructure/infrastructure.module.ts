@@ -1,4 +1,6 @@
 import { Module } from '@nestjs/common';
+import { Context } from 'grammy';
+import { QueuedMessage } from 'src/infrastructure/telegram/telegram-user-message-handler';
 import { AppConfigService } from '../config/app.config';
 import { DomainModule } from '../domain/domain.module';
 import { MessageParser } from '../domain/interfaces/message-parser.interface';
@@ -15,15 +17,17 @@ import { TelegramMessageHandler } from './telegram/handlers/telegram-message.han
 import { TelegramPhoneNumberHandler } from './telegram/handlers/telegram-phone-number.handler';
 import { TelegramPurchaseHandler } from './telegram/handlers/telegram-purchase.handler';
 import { TelegramMessageSender } from './telegram/interfaces/telegram-message-sender.interface';
-import { QueueInMemory } from './telegram/queue-in-memory';
 import { PhoneWhitelistService } from './telegram/phone-whitelist.service';
+import { QueueInMemory } from './telegram/queue-in-memory';
 import { TelegramBotService } from './telegram/telegram-bot.service';
+import { TelegramBotMessageQueue } from './telegram/telegram-bot-message-queue.token';
+import { TelegramBotQueueProcessor } from './telegram/telegram-bot-queue-processor.service';
+import { TelegramQueueProcessor } from './telegram/telegram-queue-processor.service';
 import { TelegramUserClient } from './telegram/telegram-user-client';
-import { TelegramUserLoginHandler } from './telegram/telegram-user-login-handler';
 import { TelegramUserHandler } from './telegram/telegram-user-handler';
+import { TelegramUserLoginHandler } from './telegram/telegram-user-login-handler';
 import { TelegramUserMessageProcessor } from './telegram/telegram-user-message-processor';
 import { TelegramUserMessageQueue } from './telegram/telegram-user-message-queue.token';
-import { TelegramQueueProcessor } from './telegram/telegram-queue-processor.service';
 import { TelegramUserMessageSender } from './telegram/telegram-user-message-sender';
 
 /**
@@ -62,7 +66,13 @@ import { TelegramUserMessageSender } from './telegram/telegram-user-message-send
     {
       provide: TelegramUserMessageQueue,
       useFactory: (): TelegramUserMessageQueue => {
-        return new QueueInMemory<import('./telegram/telegram-user-message-handler').QueuedMessage>();
+        return new QueueInMemory<QueuedMessage>();
+      },
+    },
+    {
+      provide: TelegramBotMessageQueue,
+      useFactory: (): TelegramBotMessageQueue => {
+        return new QueueInMemory<Context>();
       },
     },
     TelegramMessageHandler,
@@ -71,6 +81,7 @@ import { TelegramUserMessageSender } from './telegram/telegram-user-message-send
     TelegramCommandHandler,
     AuthCodeService,
     TelegramBotService,
+    TelegramBotQueueProcessor,
     TelegramUserClient,
     TelegramPurchaseHandler,
     TelegramUserHandler,
