@@ -82,8 +82,6 @@ export class TelegramPurchaseHandler {
       options,
     );
 
-    console.log('Price result', priceResult);
-
     if (!priceResult.success) {
       return;
     }

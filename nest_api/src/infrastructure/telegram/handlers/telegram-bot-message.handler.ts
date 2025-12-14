@@ -1,8 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import type { Context } from 'grammy';
 import { ConversationState, ConversationStateService } from '../conversation-state.service';
-import { TelegramPhoneNumberHandler } from './telegram-phone-number.handler';
-import { TelegramAuthCodeHandler } from './telegram-auth-code.handler';
+import { TelegramPhoneNumberHandler } from './telegram-bot-phone-number.handler';
+import { TelegramAuthCodeHandler } from './telegram-bot-auth-code.handler';
 
 /**
  * Handler responsável por processar mensagens de texto do Telegram Bot

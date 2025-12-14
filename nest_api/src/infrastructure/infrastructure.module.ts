@@ -11,11 +11,11 @@ import { MessageParserService } from './openai/message-parser.service';
 import { OpenAIService } from './openai/openai.service';
 import { AuthCodeService } from './telegram/auth-code.service';
 import { ConversationStateService } from './telegram/conversation-state.service';
-import { TelegramAuthCodeHandler } from './telegram/handlers/telegram-auth-code.handler';
-import { TelegramCommandHandler } from './telegram/handlers/telegram-command.handler';
-import { TelegramMessageHandler } from './telegram/handlers/telegram-message.handler';
-import { TelegramPhoneNumberHandler } from './telegram/handlers/telegram-phone-number.handler';
-import { TelegramPurchaseHandler } from './telegram/handlers/telegram-purchase.handler';
+import { TelegramAuthCodeHandler } from './telegram/handlers/telegram-bot-auth-code.handler';
+import { TelegramCommandHandler } from './telegram/handlers/telegram-bot-command.handler';
+import { TelegramMessageHandler } from './telegram/handlers/telegram-bot-message.handler';
+import { TelegramPhoneNumberHandler } from './telegram/handlers/telegram-bot-phone-number.handler';
+import { TelegramPurchaseHandler } from './telegram/handlers/telegram-user-purchase.handler';
 import { TelegramMessageSender } from './telegram/interfaces/telegram-message-sender.interface';
 import { PhoneWhitelistService } from './telegram/phone-whitelist.service';
 import { QueueInMemory } from './telegram/queue-in-memory';
@@ -29,13 +29,14 @@ import { TelegramUserLoginHandler } from './telegram/telegram-user-login-handler
 import { TelegramUserMessageProcessor } from './telegram/telegram-user-message-processor';
 import { TelegramUserMessageQueue } from './telegram/telegram-user-message-queue.token';
 import { TelegramUserMessageSender } from './telegram/telegram-user-message-sender';
+import { PersistenceModule } from 'src/infrastructure/persistence/persistence.module';
 
 /**
  * Module responsável por serviços de infraestrutura
  * Agrupa serviços relacionados a integrações externas
  */
 @Module({
-  imports: [DomainModule],
+  imports: [DomainModule, PersistenceModule],
   providers: [
     AppConfigService,
     GoogleSheetsService,

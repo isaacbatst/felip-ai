@@ -2,7 +2,7 @@ import { type RunnerHandle, run, sequentialize } from '@grammyjs/runner';
 import { Injectable, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
 import { Bot, type Context } from 'grammy';
 import { AppConfigService } from 'src/config/app.config';
-import { TelegramCommandHandler } from './handlers/telegram-command.handler';
+import { TelegramCommandHandler } from './handlers/telegram-bot-command.handler';
 import { TelegramBotQueueProcessor } from './telegram-bot-queue-processor.service';
 
 /**
@@ -45,6 +45,21 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
     // Register /logout command handler
     this.bot.command('logout', async (ctx: Context) => {
       await this.commandHandler.handleLogout(ctx);
+    });
+
+    // Register /ativar command handler
+    this.bot.command('ativar', async (ctx: Context) => {
+      await this.commandHandler.handleAtivar(ctx);
+    });
+
+    // Register /desativar command handler
+    this.bot.command('desativar', async (ctx: Context) => {
+      await this.commandHandler.handleDesativar(ctx);
+    });
+
+    // Register /gruposativos command handler
+    this.bot.command('gruposativos', async (ctx: Context) => {
+      await this.commandHandler.handleGruposAtivos(ctx);
     });
 
     // Register message:text handler with sequentialization (only for login flow now)

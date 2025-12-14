@@ -2,7 +2,7 @@ import { Injectable, type OnModuleDestroy, type OnModuleInit } from '@nestjs/com
 import type { Context } from 'grammy';
 import { QueueProcessor } from './queue-processor.service';
 import { TelegramBotMessageQueue } from './telegram-bot-message-queue.token';
-import { TelegramMessageHandler } from './handlers/telegram-message.handler';
+import { TelegramMessageHandler } from './handlers/telegram-bot-message.handler';
 
 /**
  * Service that manages QueueProcessor for Telegram bot messages
