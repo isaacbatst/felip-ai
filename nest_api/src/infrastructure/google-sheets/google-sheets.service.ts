@@ -51,12 +51,16 @@ export class GoogleSheetsService {
    * Busca todas as tabelas de preços v2 por provedor do Google Sheets
    * Novo formato: lê valores por CPF de múltiplas colunas, uma para cada provedor
    * Detecta providers dinamicamente da planilha
+   * Também retorna os PREÇO TETO por provider encontrados na planilha
    */
   private async fetchPriceTables(
     sheets: ReturnType<typeof google.sheets>,
     spreadsheetId: string,
     sheetName: string,
-  ): Promise<Record<Provider, PriceTableV2>> {
+  ): Promise<{
+    priceTables: Record<Provider, PriceTableV2>;
+    customMaxPrices: Record<Provider, number | undefined>;
+  }> {
     // Lê toda a planilha para processar o novo formato
     const fullRange = sheetName;
 
@@ -92,6 +96,7 @@ export class GoogleSheetsService {
 
     // Tabelas de preços dinâmicas - detectadas da planilha
     const priceTables: Record<Provider, PriceTableV2> = {};
+    const customMaxPrices: Record<Provider, number | undefined> = {};
     const providerColumns: Array<{ provider: Provider; quantityCol: number; valueCol: number }> = [];
 
     // Procura pela linha que contém os nomes dos provedores
@@ -167,6 +172,7 @@ export class GoogleSheetsService {
       // Encontra a linha de início dos dados para este provedor
       // Procura pela linha de cabeçalho QUANTIDADE/CPF correspondente
       let dataStartRow = 0;
+      let priceTetoRow = -1;
       for (let i = 0; i < rows.length - 1; i++) {
         const row = rows[i];
         const nextRow = rows[i + 1];
@@ -177,9 +183,63 @@ export class GoogleSheetsService {
           Array.isArray(nextRow) &&
           nextRow[quantityCol]?.toString().toUpperCase().trim().includes('QUANTIDADE/CPF')
         ) {
+          // Verifica se a linha seguinte contém PREÇO TETO
+          // O texto "PREÇO TETO" pode estar na coluna quantityCol ou valueCol-1
+          // O valor numérico está na coluna valueCol
+          const priceTetoCellQuantity = nextRow[quantityCol]?.toString().toUpperCase().trim() || '';
+          const priceTetoCellValue = nextRow[valueCol]?.toString().toUpperCase().trim() || '';
+          const hasPriceTeto = priceTetoCellQuantity.includes('PREÇO TETO') || priceTetoCellValue.includes('PREÇO TETO');
+          
+          if (hasPriceTeto) {
+            priceTetoRow = i + 1;
+            // O valor numérico do PREÇO TETO está na coluna valueCol
+            const priceTetoValue = nextRow[valueCol]?.toString().trim() || '';
+            if (priceTetoValue) {
+              // Extrai número da string (remove texto "PREÇO TETO:" etc se houver)
+              const numberMatch = priceTetoValue.match(/(\d+[.,]?\d*)/);
+              if (numberMatch) {
+                const cleanValue = numberMatch[1].replace(',', '.');
+                const parsedValue = parseFloat(cleanValue);
+                if (!Number.isNaN(parsedValue) && parsedValue > 0) {
+                  customMaxPrices[provider] = parsedValue;
+                }
+              }
+            }
+          }
           // A linha de dados começa 2 linhas depois do cabeçalho (pula PREÇO TETO se existir)
           dataStartRow = i + 2;
           break;
+        }
+      }
+      
+      // Se não encontrou PREÇO TETO na primeira busca, procura em qualquer linha que contém "PREÇO TETO"
+      // nas colunas relacionadas a este provider (quantityCol ou valueCol)
+      if (priceTetoRow === -1) {
+        for (let i = 0; i < rows.length; i++) {
+          const row = rows[i];
+          if (!row || !Array.isArray(row)) {
+            continue;
+          }
+          const cellQuantity = row[quantityCol]?.toString().toUpperCase().trim() || '';
+          const cellValue = row[valueCol]?.toString().toUpperCase().trim() || '';
+          const hasPriceTeto = cellQuantity.includes('PREÇO TETO') || cellValue.includes('PREÇO TETO');
+          
+          if (hasPriceTeto) {
+            // O valor numérico está na coluna valueCol
+            const priceTetoValue = row[valueCol]?.toString().trim() || '';
+            if (priceTetoValue) {
+              // Extrai número da string
+              const numberMatch = priceTetoValue.match(/(\d+[.,]?\d*)/);
+              if (numberMatch) {
+                const cleanValue = numberMatch[1].replace(',', '.');
+                const parsedValue = parseFloat(cleanValue);
+                if (!Number.isNaN(parsedValue) && parsedValue > 0) {
+                  customMaxPrices[provider] = parsedValue;
+                  break;
+                }
+              }
+            }
+          }
         }
       }
 
@@ -250,11 +310,12 @@ export class GoogleSheetsService {
       }
     }
 
-    return priceTables;
+    return { priceTables, customMaxPrices };
   }
 
   /**
-   * Busca o preço máximo customizado da célula C2
+   * Busca o preço máximo customizado da célula C2 (mantido para compatibilidade)
+   * Nota: PREÇO TETO por provider agora é lido diretamente em fetchPriceTables
    */
   private async fetchCustomMaxPrice(
     sheets: ReturnType<typeof google.sheets>,
@@ -410,16 +471,25 @@ export class GoogleSheetsService {
     const sheets = google.sheets({ version: 'v4', auth });
     const sheetName = 'PROGRAMAS/ESTOQUE';
 
-    const [priceTables, availableMiles, customMaxPrice] = await Promise.all([
+    const [priceTablesResult, availableMiles, globalCustomMaxPrice] = await Promise.all([
       this.fetchPriceTables(sheets, spreadsheetId, sheetName),
       this.fetchAllAvailableMiles(sheets, spreadsheetId, sheetName),
       this.fetchCustomMaxPrice(sheets, spreadsheetId, sheetName),
     ]);
 
+    const { priceTables, customMaxPrices } = priceTablesResult;
+
+    // Mescla PREÇO TETO por provider com o valor global (se existir)
+    // O valor por provider tem prioridade sobre o global
+    const finalCustomMaxPrices: Record<Provider, number | undefined> = {};
+    for (const provider of Object.keys(priceTables) as Provider[]) {
+      finalCustomMaxPrices[provider] = customMaxPrices[provider] ?? globalCustomMaxPrice;
+    }
+
     return {
       priceTables,
       availableMiles,
-      customMaxPrice,
+      customMaxPrice: finalCustomMaxPrices,
     };
   }
 }

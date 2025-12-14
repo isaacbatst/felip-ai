@@ -66,7 +66,8 @@ export class TelegramPurchaseHandler {
       return;
     }
 
-    const options = customMaxPrice !== undefined ? { customMaxPrice } : undefined;
+    const providerCustomMaxPrice = customMaxPrice[selectedProvider];
+    const options = providerCustomMaxPrice !== undefined ? { customMaxPrice: providerCustomMaxPrice } : undefined;
 
     console.log(
       'Calculating price',

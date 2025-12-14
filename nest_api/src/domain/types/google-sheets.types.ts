@@ -13,9 +13,10 @@ export interface PriceTableResultV2 {
   priceTables: Record<Provider, PriceTableV2>;
   availableMiles: Record<MilesProgram, number | null>;
   /**
-   * Preço máximo customizado opcional lido da célula C2
-   * Quando fornecido, o preço calculado não pode exceder este valor
+   * Preço máximo customizado (PREÇO TETO) por provedor
+   * Quando fornecido, o preço calculado não pode exceder este valor para o provedor específico
+   * Se não houver PREÇO TETO específico para um provedor, pode ser undefined
    */
-  customMaxPrice?: number | undefined;
+  customMaxPrice: Record<Provider, number | undefined>;
 }
 

@@ -159,10 +159,25 @@ export class PriceCalculatorService {
   }
 
   /**
-   * Aplica limites de preço para múltiplos CPFs sem customMaxPrice
+   * Aplica limites de preço (minPrice, maxPrice e customMaxPrice se fornecido)
    */
-  private applyPriceLimits(price: number, maxPrice: number, minPrice: number): number {
-    return Math.max(Math.min(price, maxPrice), minPrice);
+  private applyPriceLimits(
+    price: number,
+    maxPrice: number,
+    minPrice: number,
+    customMaxPrice?: number,
+  ): number {
+    // Primeiro aplica o limite mínimo da tabela
+    let finalPrice = Math.max(price, minPrice);
+    
+    // Depois aplica o limite máximo (o menor entre maxPrice da tabela e customMaxPrice se fornecido)
+    const effectiveMaxPrice = customMaxPrice !== undefined 
+      ? customMaxPrice
+      : maxPrice;
+    
+    finalPrice = Math.min(finalPrice, effectiveMaxPrice);
+    
+    return finalPrice;
   }
 
   /**
@@ -170,9 +185,10 @@ export class PriceCalculatorService {
    */
   private calculatePriceAtMinimum(
     maxPrice: number,
+    minPrice: number,
     customMaxPrice?: number,
   ): PriceCalculationResult {
-    const finalPrice = customMaxPrice !== undefined ? Math.min(maxPrice, customMaxPrice) : maxPrice;
+    const finalPrice = this.applyPriceLimits(maxPrice, maxPrice, minPrice, customMaxPrice);
     return PriceCalculatorService.successResult(finalPrice);
   }
 
@@ -201,15 +217,8 @@ export class PriceCalculatorService {
       allPricesSame,
     );
 
-    if (customMaxPrice !== undefined) {
-      return PriceCalculatorService.successResult(Math.min(extrapolatedPrice, customMaxPrice));
-    }
-
-    if (cpfCount === 1) {
-      return PriceCalculatorService.successResult(maxPrice);
-    }
-
-    const finalPrice = this.applyPriceLimits(extrapolatedPrice, maxPrice, minPrice);
+    // Aplica limites incluindo customMaxPrice (extrapolação funciona para qualquer cpfCount)
+    const finalPrice = this.applyPriceLimits(extrapolatedPrice, maxPrice, minPrice, customMaxPrice);
     return PriceCalculatorService.successResult(finalPrice);
   }
 
@@ -228,6 +237,7 @@ export class PriceCalculatorService {
     quantities: number[],
     priceTable: PriceTableV2,
     minPrice: number,
+    customMaxPrice?: number,
   ): PriceCalculationResult {
     const points = InterpolationUtil.findInterpolationPoints(quantityPerCpf, quantities);
     if (!points) {
@@ -244,7 +254,8 @@ export class PriceCalculatorService {
     }
 
     if (lowerPrice === upperPrice) {
-      return PriceCalculatorService.successResult(lowerPrice);
+      const finalPrice = this.applyPriceLimits(lowerPrice, lowerPrice, minPrice, customMaxPrice);
+      return PriceCalculatorService.successResult(finalPrice);
     }
 
     const interpolatedPrice = InterpolationUtil.linearInterpolation(
@@ -255,7 +266,10 @@ export class PriceCalculatorService {
       upperPrice,
     );
 
-    const finalPrice = Math.max(interpolatedPrice, minPrice);
+    // Usa maxPrice da tabela (que é o preço para a menor quantidade)
+    const minQty = quantities[0];
+    const maxPrice = minQty !== undefined ? (priceTable[minQty] ?? lowerPrice) : lowerPrice;
+    const finalPrice = this.applyPriceLimits(interpolatedPrice, maxPrice, minPrice, customMaxPrice);
     return PriceCalculatorService.successResult(finalPrice);
   }
 
@@ -283,7 +297,7 @@ export class PriceCalculatorService {
     const { minQty, maxQty, minPrice } = tableData;
 
     if (quantityPerCpf === minQty) {
-      return this.calculatePriceAtMinimum(tableData.maxPrice, options?.customMaxPrice);
+      return this.calculatePriceAtMinimum(tableData.maxPrice, tableData.minPrice, options?.customMaxPrice);
     }
 
     if (quantityPerCpf < minQty) {
@@ -300,7 +314,13 @@ export class PriceCalculatorService {
       return this.calculatePriceAboveMaximum(minPrice);
     }
 
-    return this.calculatePriceInRange(quantityPerCpf, tableData.quantities, priceTable, minPrice);
+    return this.calculatePriceInRange(
+      quantityPerCpf,
+      tableData.quantities,
+      priceTable,
+      minPrice,
+      options?.customMaxPrice,
+    );
   }
 }
 
