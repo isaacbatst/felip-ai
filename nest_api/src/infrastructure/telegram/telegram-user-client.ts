@@ -3,6 +3,7 @@ import { getTdjson } from 'prebuilt-tdlib';
 import { AppConfigService } from 'src/config/app.config';
 import type { Client } from 'tdl';
 import { configure, createClient } from 'tdl';
+import type { TelegramUserInfo } from './telegram-user-login-handler';
 
 // Configure tdl to use prebuilt-tdlib before creating any clients
 configure({ tdjson: getTdjson() });
@@ -56,13 +57,6 @@ export class TelegramUserClient implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Retorna o cliente TDLib
-   */
-  getClient(): Client | null {
-    return this.client;
-  }
-
-  /**
    * Verifica se está em processo de shutdown
    */
   isShuttingDownState(): boolean {
@@ -70,27 +64,128 @@ export class TelegramUserClient implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * Verifica se o cliente está inicializado
+   */
+  private ensureClient(): Client {
+    if (!this.client) {
+      throw new Error('Client not initialized');
+    }
+    return this.client;
+  }
+
+  /**
+   * Realiza login com configuração fornecida
+   */
+  async login(config: Parameters<Client['login']>[0]): Promise<void> {
+    const client = this.ensureClient();
+    return client.login(config);
+  }
+
+  /**
+   * Reenvia código de autenticação
+   */
+  async resendAuthenticationCode(): Promise<unknown> {
+    const client = this.ensureClient();
+    return client.invoke({
+      _: 'resendAuthenticationCode',
+    });
+  }
+
+  /**
+   * Obtém informações do usuário atual
+   */
+  async getMe(): Promise<TelegramUserInfo> {
+    const client = this.ensureClient();
+    const me = await client.invoke({
+      _: 'getMe',
+    });
+    return me as TelegramUserInfo;
+  }
+
+  /**
+   * Envia uma mensagem de texto
+   */
+  async sendMessage(
+    chatId: number,
+    text: string,
+    replyToMessageId?: number,
+  ): Promise<unknown> {
+    const client = this.ensureClient();
+    const messageParams: Record<string, unknown> = {
+      _: 'sendMessage',
+      chat_id: chatId,
+      input_message_content: {
+        _: 'inputMessageText',
+        text: {
+          _: 'formattedText',
+          text,
+        },
+      },
+    };
+
+    if (replyToMessageId !== undefined) {
+      messageParams.reply_to_message_id = replyToMessageId;
+    }
+
+    return client.invoke(messageParams as Parameters<typeof client.invoke>[0]);
+  }
+
+  /**
+   * Obtém lista de chats
+   */
+  async getChats(chatList: { _: string }, limit: number): Promise<unknown> {
+    const client = this.ensureClient();
+    const params: Record<string, unknown> = {
+      _: 'getChats',
+      chat_list: chatList,
+      limit,
+    };
+    return client.invoke(params as Parameters<typeof client.invoke>[0]);
+  }
+
+  /**
+   * Obtém detalhes de um chat específico
+   */
+  async getChat(chatId: number): Promise<unknown> {
+    const client = this.ensureClient();
+    return client.invoke({
+      _: 'getChat',
+      chat_id: chatId,
+    });
+  }
+
+  /**
+   * Obtém o estado atual de autorização
+   */
+  async getAuthorizationState(): Promise<unknown> {
+    const client = this.ensureClient();
+    return client.invoke({
+      _: 'getAuthorizationState',
+    });
+  }
+
+  /**
+   * Realiza logout
+   */
+  async logOut(): Promise<unknown> {
+    const client = this.ensureClient();
+    return client.invoke({
+      _: 'logOut',
+    });
+  }
+
+  /**
    * Gets the current user's ID (bot's own user ID)
    * Fetches directly from the API each time
    */
   async getUserId(): Promise<number | null> {
-    if (!this.client) {
-      return null;
-    }
-
     try {
-      const me = await this.client.invoke({
-        _: 'getMe',
-      });
-      if (me && typeof me === 'object' && 'id' in me) {
-        const userInfo = me as { id: number };
-        return userInfo.id;
-      }
+      const me = await this.getMe();
+      return me.id;
     } catch (error) {
       console.log('[DEBUG] Could not fetch user ID:', error);
+      return null;
     }
-
-    return null;
   }
 
   /**
@@ -104,9 +199,7 @@ export class TelegramUserClient implements OnModuleInit, OnModuleDestroy {
       await new Promise((resolve) => setTimeout(resolve, 2000));
 
       // Check authorization state
-      const authState = await this.client.invoke({
-        _: 'getAuthorizationState',
-      });
+      const authState = await this.getAuthorizationState();
 
       if (
         typeof authState === 'object' &&
@@ -118,15 +211,10 @@ export class TelegramUserClient implements OnModuleInit, OnModuleDestroy {
         
         // Fetch user info to confirm
         try {
-          const me = await this.client.invoke({
-            _: 'getMe',
-          });
-          if (me && typeof me === 'object' && 'id' in me) {
-            const userInfo = me as { id: number; first_name?: string; username?: string };
-            console.log(
-              `[DEBUG] ✅ Logged in as: ${userInfo.first_name || 'Unknown'} (ID: ${userInfo.id})`,
-            );
-          }
+          const me = await this.getMe();
+          console.log(
+            `[DEBUG] ✅ Logged in as: ${me.first_name || 'Unknown'} (ID: ${me.id})`,
+          );
         } catch (error) {
           console.log('[DEBUG] Could not fetch user info:', error);
         }

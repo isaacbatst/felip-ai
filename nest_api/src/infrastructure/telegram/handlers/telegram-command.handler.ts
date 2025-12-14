@@ -50,21 +50,14 @@ export class TelegramCommandHandler {
   }
 
   async handleGrupos(ctx: Context): Promise<void> {
-    const client = this.telegramUserClient.getClient();
-    if (!client) {
-      await ctx.reply('❌ Cliente Telegram não está disponível. Por favor, faça login primeiro.');
-      return;
-    }
-
     try {
       // Get all chats
-      const chatsResult = await client.invoke({
-        _: 'getChats',
-        chat_list: {
+      const chatsResult = await this.telegramUserClient.getChats(
+        {
           _: 'chatListMain',
         },
-        limit: 100,
-      });
+        100,
+      );
 
       if (
         !chatsResult ||
@@ -82,10 +75,7 @@ export class TelegramCommandHandler {
       // Fetch details for each chat to filter groups
       for (const chatId of chatIds) {
         try {
-          const chat = await client.invoke({
-            _: 'getChat',
-            chat_id: chatId,
-          });
+          const chat = await this.telegramUserClient.getChat(chatId);
 
           if (
             chat &&
@@ -148,22 +138,18 @@ export class TelegramCommandHandler {
       }
     } catch (error) {
       console.error('[ERROR] Error fetching groups:', error);
-      await ctx.reply('❌ Erro ao buscar lista de grupos. Por favor, tente novamente mais tarde.');
+      if (error instanceof Error && error.message === 'Client not initialized') {
+        await ctx.reply('❌ Cliente Telegram não está disponível. Por favor, faça login primeiro.');
+      } else {
+        await ctx.reply('❌ Erro ao buscar lista de grupos. Por favor, tente novamente mais tarde.');
+      }
     }
   }
 
   async handleLogout(ctx: Context): Promise<void> {
-    const client = this.telegramUserClient.getClient();
-    if (!client) {
-      await ctx.reply('❌ Cliente Telegram não está disponível ou já foi desconectado.');
-      return;
-    }
-
     try {
       // Check if user is logged in before attempting logout
-      const authState = await client.invoke({
-        _: 'getAuthorizationState',
-      });
+      const authState = await this.telegramUserClient.getAuthorizationState();
 
       if (
         typeof authState === 'object' &&
@@ -176,14 +162,16 @@ export class TelegramCommandHandler {
       }
 
       // Perform logout
-      await client.invoke({
-        _: 'logOut',
-      });
+      await this.telegramUserClient.logOut();
 
       await ctx.reply('✅ Logout realizado com sucesso! Você foi desconectado do cliente Telegram.');
     } catch (error) {
       console.error('[ERROR] Error during logout:', error);
-      await ctx.reply('❌ Erro ao realizar logout. Por favor, tente novamente mais tarde.');
+      if (error instanceof Error && error.message === 'Client not initialized') {
+        await ctx.reply('❌ Cliente Telegram não está disponível ou já foi desconectado.');
+      } else {
+        await ctx.reply('❌ Erro ao realizar logout. Por favor, tente novamente mais tarde.');
+      }
     }
   }
 }

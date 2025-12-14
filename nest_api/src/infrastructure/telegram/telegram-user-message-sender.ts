@@ -17,28 +17,7 @@ export class TelegramUserMessageSender extends TelegramMessageSender {
     text: string,
     replyToMessageId?: number,
   ): Promise<unknown> {
-    const clientInstance = this.client.getClient();
-    if (!clientInstance) {
-      throw new Error('Client not initialized');
-    }
-
-    const messageParams: Record<string, unknown> = {
-      _: 'sendMessage',
-      chat_id: chatId,
-      input_message_content: {
-        _: 'inputMessageText',
-        text: {
-          _: 'formattedText',
-          text,
-        },
-      },
-    };
-
-    if (replyToMessageId !== undefined) {
-      messageParams.reply_to_message_id = replyToMessageId;
-    }
-
-    return clientInstance.invoke(messageParams as Parameters<typeof clientInstance.invoke>[0]);
+    return this.client.sendMessage(chatId, text, replyToMessageId);
   }
 }
 

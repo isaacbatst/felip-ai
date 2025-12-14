@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import type { Context } from 'grammy';
-import { ConversationStateService } from '../conversation-state.service';
 import { AuthCodeService } from '../auth-code.service';
+import { ConversationStateService } from '../conversation-state.service';
 
 /**
  * Handler responsável por processar entrada de código de autenticação durante o fluxo de login

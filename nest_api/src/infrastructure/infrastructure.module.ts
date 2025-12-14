@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { Context } from 'grammy';
-import { QueuedMessage } from 'src/infrastructure/telegram/telegram-user-message-handler';
+import { QueuedMessage } from 'src/infrastructure/telegram/interfaces/queued-message';
 import { AppConfigService } from '../config/app.config';
 import { DomainModule } from '../domain/domain.module';
 import { MessageParser } from '../domain/interfaces/message-parser.interface';

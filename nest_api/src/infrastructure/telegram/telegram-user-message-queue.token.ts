@@ -1,5 +1,5 @@
 import { Queue } from './interfaces/queue.interface';
-import { QueuedMessage } from './telegram-user-message-handler';
+import { QueuedMessage } from './interfaces/queued-message';
 
 /**
  * Concrete class token for injecting Queue<QueuedMessage> implementation

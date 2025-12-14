@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { TelegramPurchaseHandler } from './handlers/telegram-purchase.handler';
 import { TelegramUserClient } from './telegram-user-client';
-import { QueuedMessage } from './telegram-user-message-handler';
+import { QueuedMessage } from './interfaces/queued-message';
 
 /**
  * Processor responsável por processar mensagens da fila

@@ -1,6 +1,6 @@
 import { Injectable, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
 import { QueueProcessor } from './queue-processor.service';
-import { QueuedMessage } from './telegram-user-message-handler';
+import { QueuedMessage } from './interfaces/queued-message';
 import { TelegramUserMessageProcessor } from './telegram-user-message-processor';
 import { TelegramUserMessageQueue } from './telegram-user-message-queue.token';
 

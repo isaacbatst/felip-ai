@@ -72,49 +72,6 @@ export class TelegramUserLoginHandler {
         // Espera o código via mensagem do bot
         return await this.authCodeService.waitForAuthCode(userId);
       },
-      getPassword: async (passwordHint: string, retry?: boolean) => {
-        if (retry) {
-          console.log('[DEBUG] 🔒 Retrying password...');
-        } else {
-          console.log(`[DEBUG] 🔒 Password required (hint: ${passwordHint})`);
-        }
-
-        const passwordFile = path.join(process.cwd(), '.telegram-password.txt');
-
-        if (fs.existsSync(passwordFile)) {
-          fs.unlinkSync(passwordFile);
-        }
-
-        console.log(`[DEBUG] 🔒 Please write your password to: ${passwordFile}`);
-        console.log(
-          `[DEBUG] 🔒 You can do this by running: echo "YOUR_PASSWORD" > ${passwordFile}`,
-        );
-
-        return new Promise<string>((resolve) => {
-          const checkFile = () => {
-            if (fs.existsSync(passwordFile)) {
-              try {
-                const password = fs.readFileSync(passwordFile, 'utf-8').trim();
-                if (password) {
-                  console.log('[DEBUG] 🔒 Password read from file');
-                  try {
-                    fs.unlinkSync(passwordFile);
-                  } catch (_e) {
-                    // Ignore cleanup errors
-                  }
-                  resolve(password);
-                  return;
-                }
-              } catch (_error) {
-                // File might be being written, try again
-              }
-            }
-            setTimeout(checkFile, 500);
-          };
-
-          checkFile();
-        });
-      },
     };
   }
 
@@ -130,13 +87,9 @@ export class TelegramUserLoginHandler {
     if (!this.isPhoneNumberAllowed(phone)) {
       throw new Error('Phone number not in whitelist');
     }
-    const clientInstance = this.client.getClient();
-    if (!clientInstance) {
-      throw new Error('Client not initialized');
-    }
 
     try {
-      await clientInstance.login(this.createLoginConfig(phone, userId));
+      await this.client.login(this.createLoginConfig(phone, userId));
     } catch (error) {
       // Check if error is PHONE_CODE_EXPIRED
       if (
@@ -146,13 +99,11 @@ export class TelegramUserLoginHandler {
       ) {
         console.log('[DEBUG] ⏰ Auth code expired, resending authentication code...');
         try {
-          await clientInstance.invoke({
-            _: 'resendAuthenticationCode',
-          });
+          await this.client.resendAuthenticationCode();
           console.log('[DEBUG] ✅ Authentication code resent successfully');
 
           // Retry login after resending code
-          await clientInstance.login(
+          await this.client.login(
             this.createLoginConfig(phone, userId, true),
           );
         } catch (retryError) {
@@ -167,9 +118,7 @@ export class TelegramUserLoginHandler {
 
     console.log('[DEBUG] ✅ Login successful, fetching user info...');
 
-    const me = (await clientInstance.invoke({
-      _: 'getMe',
-    })) as TelegramUserInfo;
+    const me = await this.client.getMe();
 
     return me;
   }
