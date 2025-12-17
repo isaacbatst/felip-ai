@@ -1,10 +1,10 @@
+import { TelegramUserClientProxyService } from '@/infrastructure/tdlib/telegram-user-client-proxy.service';
 import { Injectable } from '@nestjs/common';
 import { MessageParser } from '../../../domain/interfaces/message-parser.interface';
 import { PriceTableProvider } from '../../../domain/interfaces/price-table-provider.interface';
 import { PriceCalculatorService } from '../../../domain/services/price-calculator.service';
 import { PurchaseValidatorService } from '../../../domain/services/purchase-validator.service';
 import type { Provider } from '../../../domain/types/provider.types';
-import { TelegramMessageSender } from '../interfaces/telegram-message-sender.interface';
 
 /**
  * Handler responsável por processar requisições de compra de milhas
@@ -18,7 +18,7 @@ export class TelegramPurchaseHandler {
     private readonly priceTableProvider: PriceTableProvider,
     private readonly purchaseValidator: PurchaseValidatorService,
     private readonly priceCalculator: PriceCalculatorService,
-    private readonly messageSender: TelegramMessageSender,
+    private readonly tdlibUserClient: TelegramUserClientProxyService,
   ) {}
 
   async handlePurchase(chatId: number, messageId: number | undefined, text: string): Promise<void> {
@@ -92,12 +92,12 @@ export class TelegramPurchaseHandler {
       const minAcceptedPrice = Math.min(...validatedRequest.acceptedPrices);
       if (minAcceptedPrice > priceResult.price) {
         // O usuário aceita pagar mais que nosso preço - responder com mensagem customizada
-        await this.messageSender.sendMessage(chatId, 'Vamos!', messageId);
+        await this.tdlibUserClient.sendMessage(chatId, 'Vamos!', messageId);
         return;
       }
     }
 
-    await this.messageSender.sendMessage(
+    await this.tdlibUserClient.sendMessage(
       chatId,
       Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(priceResult.price),
       messageId,

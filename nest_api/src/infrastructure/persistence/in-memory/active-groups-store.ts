@@ -1,4 +1,4 @@
-import { InMemoryStore } from "src/infrastructure/persistence/in-memory/in-memory-store";
+import { InMemoryStore } from "@/infrastructure/persistence/in-memory/in-memory-store";
 import { ActiveGroupsRepository } from "../active-groups.repository";
 
 export class ActiveGroupsStore extends InMemoryStore<number[]> implements ActiveGroupsRepository {

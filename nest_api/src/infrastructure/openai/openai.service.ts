@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import OpenAI from 'openai';
-import { AppConfigService } from 'src/config/app.config';
+import { AppConfigService } from '@/config/app.config';
 
 /**
  * Service responsável por gerenciar cliente OpenAI

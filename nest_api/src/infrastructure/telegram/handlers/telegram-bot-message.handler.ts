@@ -1,8 +1,8 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import type { Context } from 'grammy';
 import { ConversationState, ConversationStateService } from '../conversation-state.service';
-import { TelegramPhoneNumberHandler } from './telegram-bot-phone-number.handler';
 import { TelegramAuthCodeHandler } from './telegram-bot-auth-code.handler';
+import { TelegramPhoneNumberHandler } from './telegram-bot-phone-number.handler';
 
 /**
  * Handler responsável por processar mensagens de texto do Telegram Bot
@@ -11,34 +11,51 @@ import { TelegramAuthCodeHandler } from './telegram-bot-auth-code.handler';
  */
 @Injectable()
 export class TelegramMessageHandler {
+  private readonly logger = new Logger(TelegramMessageHandler.name);
+
   constructor(
     private readonly conversationState: ConversationStateService,
     private readonly phoneNumberHandler: TelegramPhoneNumberHandler,
     private readonly authCodeHandler: TelegramAuthCodeHandler,
   ) {}
 
-  async handleMessage(ctx: Context): Promise<void> {
-    console.log('[DEBUG] TelegramMessageHandler: Handling message');
-    const text = ctx.message?.text;
-    const userId = ctx.from?.id;
+  async handleMessage(msg: Context['update']['message']): Promise<void> {
+    try {
+      this.logger.log('Handling message received');
+      const text = msg?.text;
+      const userId = msg?.from?.id;
+      this.logger.log('Message', msg);
 
-    if (!text || !userId) {
-      return;
+      if (!text || !userId || !msg.chat?.id) {
+        this.logger.warn('No text or user ID found');
+        return;
+      }
+
+      // Check if user is waiting for auth code
+      if (await this.conversationState.isInState(userId, ConversationState.WAITING_AUTH_CODE)) {
+        this.logger.log('User is waiting for auth code');
+        await this.authCodeHandler.handleAuthCodeInput({
+          chatId: msg.chat.id,
+          authCode: text,
+          userId,
+        });
+        return;
+      }
+
+      // Check if user is in login flow (waiting for phone number)
+      if (await this.conversationState.isInState(userId, ConversationState.WAITING_PHONE_NUMBER)) {
+        this.logger.log('User is waiting for phone number');
+        await this.phoneNumberHandler.handlePhoneNumberInput({
+          chatId: msg.chat?.id,
+          phoneNumber: text,
+          userId,
+        });
+        return;
+      }
+
+      this.logger.warn('No handler found for message');
+    } catch (error) {
+      this.logger.error('Error handling try catch', error);
     }
-
-    // Check if user is waiting for auth code
-    if (this.conversationState.isInState(userId, ConversationState.WAITING_AUTH_CODE)) {
-      await this.authCodeHandler.handleAuthCodeInput(ctx, text, userId);
-      return;
-    }
-
-    // Check if user is in login flow (waiting for phone number)
-    if (this.conversationState.isInState(userId, ConversationState.WAITING_PHONE_NUMBER)) {
-      await this.phoneNumberHandler.handlePhoneNumberInput(ctx, text, userId);
-      return;
-    }
-
-    // Bot no longer handles purchase requests - they are handled by the Telegram User Client
   }
 }
-

@@ -1,8 +1,9 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { TelegramPurchaseHandler } from './handlers/telegram-user-purchase.handler';
-import { TelegramUserClient } from './telegram-user-client';
+import { TelegramUserClientProxyService } from '../tdlib/telegram-user-client-proxy.service';
 import { QueuedMessage } from './interfaces/queued-message';
-import { ActiveGroupsRepository } from 'src/infrastructure/persistence/active-groups.repository';
+import { ActiveGroupsRepository } from '@/infrastructure/persistence/active-groups.repository';
+import { TdlibUpdateNewMessage } from '../tdlib/tdlib-update.types';
 
 /**
  * Processor responsável por processar mensagens da fila
@@ -11,8 +12,9 @@ import { ActiveGroupsRepository } from 'src/infrastructure/persistence/active-gr
  */
 @Injectable()
 export class TelegramUserMessageProcessor {
+  private readonly logger = new Logger(TelegramUserMessageProcessor.name);
   constructor(
-    private readonly client: TelegramUserClient,
+    private readonly client: TelegramUserClientProxyService,
     private readonly purchaseHandler: TelegramPurchaseHandler,
     private readonly activeGroupsRepository: ActiveGroupsRepository,
   ) {}
@@ -21,26 +23,16 @@ export class TelegramUserMessageProcessor {
    * Processes a queued message update
    */
   async processMessage(queuedMessage: QueuedMessage): Promise<void> {
+    this.logger.log('Processing message', { queuedMessage });
     const { update } = queuedMessage;
     try {
-      const messageUpdate = update as {
-        message?: {
-          id?: number;
-          chat_id?: number;
-          content?: {
-            _?: string;
-            text?: {
-              _?: string;
-              text?: string;
-            };
-          };
-          sender_id?: {
-            _?: string;
-            user_id?: number;
-          };
-          date?: number;
-        };
-      };
+      // Type guard to check if this is an updateNewMessage
+      if (!update || typeof update !== 'object' || update._ !== 'updateNewMessage') {
+        this.logger.warn('Received non-message update, ignoring...');
+        return;
+      }
+
+      const messageUpdate = update as TdlibUpdateNewMessage;
 
       const message = messageUpdate?.message;
       if (!message) {
@@ -56,23 +48,23 @@ export class TelegramUserMessageProcessor {
       // Ignore self messages (messages sent by the bot itself)
       const userId = await this.client.getUserId();
       if(!userId) {
-        console.log('[MESSAGE] Could not fetch user ID, ignoring...');
+        this.logger.warn('Could not fetch user ID, ignoring...');
         return;
       }
       if(!chatId) {
-        console.log('[MESSAGE] Could not fetch chat ID, ignoring...');
+        this.logger.warn('Could not fetch chat ID, ignoring...');
         return;
       }
       if (senderId === userId) {
-        console.log('[MESSAGE] Self message received, ignoring...');
+        this.logger.warn('Self message received, ignoring...');
         return;
       }
 
       // Check if group is activated (only process messages from activated groups)
       const activeGroups = await this.activeGroupsRepository.getActiveGroups(userId.toString());
-      console.log('[MESSAGE] Active groups:', activeGroups, userId);
+      this.logger.log('Active groups:', { activeGroups, userId });
       if (activeGroups === null || !activeGroups.includes(chatId)) {
-        console.log(`[MESSAGE] Group ${chatId} is not activated, ignoring message...`);
+        this.logger.warn(`Group ${chatId} is not activated, ignoring message...`);
         return;
       }
       // Extract text content
@@ -106,9 +98,9 @@ export class TelegramUserMessageProcessor {
         logData.rawUpdate = JSON.stringify(update, null, 2);
       }
 
-      console.log('[MESSAGE] New message received:', JSON.stringify(logData, null, 2));
+      this.logger.log('New message received:', { logData });
     } catch (error) {
-      console.error('[ERROR] Error handling new message:', error);
+      this.logger.error('Error handling new message:', { error });
     }
   }
 }

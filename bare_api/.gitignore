@@ -1,7 +1,0 @@
-.env
-node_modules
-service-account-key.json
-_td_database
-_td_files
-.telegram-auth-code.txt
-.telegram-password.txt

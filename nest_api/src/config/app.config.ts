@@ -18,10 +18,6 @@ export class AppConfigService {
       'TELEGRAM_BOT_TOKEN',
       'GOOGLE_SPREADSHEET_ID',
       'GOOGLE_SERVICE_ACCOUNT_KEY_FILE',
-      'TELEGRAM_API_ID',
-      'TELEGRAM_API_HASH',
-      'TELEGRAM_DATABASE_DIRECTORY',
-      'TELEGRAM_FILES_DIRECTORY',
     ];
 
     for (const varName of requiredVars) {
@@ -48,6 +44,10 @@ export class AppConfigService {
     return value;
   }
 
+  getTelegramPhones(): string[] {
+    return this.configService.get<string>('TELEGRAM_PHONE', '+5584987287398,+5584994531473').split(',');
+  }
+
   getGoogleSpreadsheetId(): string {
     const value = this.configService.get<string>('GOOGLE_SPREADSHEET_ID');
     if (!value) {
@@ -62,26 +62,6 @@ export class AppConfigService {
       throw new Error('GOOGLE_SERVICE_ACCOUNT_KEY_FILE is not set');
     }
     return value;
-  }
-
-  getTelegramApiId(): string {
-    const value = this.configService.get<string>('TELEGRAM_API_ID');
-    if (!value) {
-      throw new Error('TELEGRAM_API_ID is not set');
-    }
-    return value;
-  }
-
-  getTelegramApiHash(): string {
-    const value = this.configService.get<string>('TELEGRAM_API_HASH');
-    if (!value) {
-      throw new Error('TELEGRAM_API_HASH is not set');
-    }
-    return value;
-  }
-
-  getTelegramPhones(): string[] {
-    return this.configService.get<string>('TELEGRAM_PHONE', '+5584987287398,+5584994531473').split(',');
   }
 
   getGoogleSpreadsheetRangeV2(): string | undefined {

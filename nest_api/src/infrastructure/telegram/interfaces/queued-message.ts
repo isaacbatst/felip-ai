@@ -1,7 +1,9 @@
+import { TdlibUpdateType } from '../../tdlib/tdlib-update.types';
+
 /**
  * Message data structure for queue processing
- * Contains the full update object to be processed
+ * Contains the full TDLib update object to be processed
  */
 export interface QueuedMessage {
-  update: unknown;
+  update: TdlibUpdateType;
 }

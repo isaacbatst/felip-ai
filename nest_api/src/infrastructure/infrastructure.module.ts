@@ -1,6 +1,7 @@
-import { Module } from '@nestjs/common';
-import { Context } from 'grammy';
-import { QueuedMessage } from 'src/infrastructure/telegram/interfaces/queued-message';
+import { PersistenceModule } from '@/infrastructure/persistence/persistence.module';
+import { TdlibUpdatesWorkerService } from '@/infrastructure/tdlib/tdlib-updates-worker.service';
+import { TelegramBotService } from '@/infrastructure/telegram/telegram-bot-service';
+import { Module, forwardRef } from '@nestjs/common';
 import { AppConfigService } from '../config/app.config';
 import { DomainModule } from '../domain/domain.module';
 import { MessageParser } from '../domain/interfaces/message-parser.interface';
@@ -9,34 +10,25 @@ import { GoogleSheetsCacheService } from './cache/google-sheets-cache.service';
 import { GoogleSheetsService } from './google-sheets/google-sheets.service';
 import { MessageParserService } from './openai/message-parser.service';
 import { OpenAIService } from './openai/openai.service';
-import { AuthCodeService } from './telegram/auth-code.service';
+import { QueueModule } from './queue/queue.module';
+import { TdlibModule } from './tdlib/tdlib.module';
 import { ConversationStateService } from './telegram/conversation-state.service';
 import { TelegramAuthCodeHandler } from './telegram/handlers/telegram-bot-auth-code.handler';
 import { TelegramCommandHandler } from './telegram/handlers/telegram-bot-command.handler';
+import { TelegramBotLoginResultHandler } from './telegram/handlers/telegram-bot-login-result.handler';
 import { TelegramMessageHandler } from './telegram/handlers/telegram-bot-message.handler';
 import { TelegramPhoneNumberHandler } from './telegram/handlers/telegram-bot-phone-number.handler';
 import { TelegramPurchaseHandler } from './telegram/handlers/telegram-user-purchase.handler';
-import { TelegramMessageSender } from './telegram/interfaces/telegram-message-sender.interface';
 import { PhoneWhitelistService } from './telegram/phone-whitelist.service';
-import { QueueInMemory } from './telegram/queue-in-memory';
-import { TelegramBotService } from './telegram/telegram-bot.service';
-import { TelegramBotMessageQueue } from './telegram/telegram-bot-message-queue.token';
-import { TelegramBotQueueProcessor } from './telegram/telegram-bot-queue-processor.service';
-import { TelegramQueueProcessor } from './telegram/telegram-queue-processor.service';
-import { TelegramUserClient } from './telegram/telegram-user-client';
-import { TelegramUserHandler } from './telegram/telegram-user-handler';
-import { TelegramUserLoginHandler } from './telegram/telegram-user-login-handler';
+import { TelegramBotController } from './telegram/telegram-bot.controller';
 import { TelegramUserMessageProcessor } from './telegram/telegram-user-message-processor';
-import { TelegramUserMessageQueue } from './telegram/telegram-user-message-queue.token';
-import { TelegramUserMessageSender } from './telegram/telegram-user-message-sender';
-import { PersistenceModule } from 'src/infrastructure/persistence/persistence.module';
 
 /**
  * Module responsável por serviços de infraestrutura
  * Agrupa serviços relacionados a integrações externas
  */
 @Module({
-  imports: [DomainModule, PersistenceModule],
+  imports: [DomainModule, PersistenceModule, TdlibModule, forwardRef(() => QueueModule)],
   providers: [
     AppConfigService,
     GoogleSheetsService,
@@ -60,46 +52,27 @@ import { PersistenceModule } from 'src/infrastructure/persistence/persistence.mo
       provide: MessageParser,
       useClass: MessageParserService,
     },
-    {
-      provide: TelegramMessageSender,
-      useClass: TelegramUserMessageSender,
-    },
-    {
-      provide: TelegramUserMessageQueue,
-      useFactory: (): TelegramUserMessageQueue => {
-        return new QueueInMemory<QueuedMessage>();
-      },
-    },
-    {
-      provide: TelegramBotMessageQueue,
-      useFactory: (): TelegramBotMessageQueue => {
-        return new QueueInMemory<Context>();
-      },
-    },
     TelegramMessageHandler,
     TelegramPhoneNumberHandler,
     TelegramAuthCodeHandler,
     TelegramCommandHandler,
-    AuthCodeService,
+    TelegramBotLoginResultHandler,
+    TdlibUpdatesWorkerService,
+    TelegramBotController,
     TelegramBotService,
-    TelegramBotQueueProcessor,
-    TelegramUserClient,
     TelegramPurchaseHandler,
-    TelegramUserHandler,
     TelegramUserMessageProcessor,
-    TelegramQueueProcessor,
-    TelegramUserMessageSender,
-    TelegramUserLoginHandler,
     PhoneWhitelistService,
     ConversationStateService,
   ],
   exports: [
     MessageParser,
     PriceTableProvider,
-    TelegramBotService,
-    TelegramMessageSender,
+    TelegramBotController,
     PhoneWhitelistService,
     ConversationStateService,
+    TelegramMessageHandler,
+    TelegramUserMessageProcessor,
   ],
 })
 export class InfrastructureModule {}

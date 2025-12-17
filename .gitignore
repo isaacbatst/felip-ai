@@ -5,3 +5,4 @@ _td_database
 _td_files
 .telegram-auth-code.txt
 .telegram-password.txt
+dist

@@ -1,0 +1,4 @@
+packages:
+  - 'nest_api'
+  - 'tdlib_worker'
+

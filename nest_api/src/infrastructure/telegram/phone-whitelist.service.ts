@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { AppConfigService } from 'src/config/app.config';
+import { AppConfigService } from '@/config/app.config';
 
 /**
  * Service responsável por gerenciar a whitelist de números de telefone

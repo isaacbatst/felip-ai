@@ -5,6 +5,7 @@
   "author": "",
   "private": true,
   "license": "UNLICENSED",
+  "packageManager": "pnpm@10.25.0",
   "scripts": {
     "build": "nest build",
     "format": "biome format --write .",
@@ -25,18 +26,19 @@
   },
   "dependencies": {
     "@grammyjs/runner": "^2.0.3",
+    "@nestjs/bullmq": "^11.0.4",
     "@nestjs/common": "^11.0.1",
     "@nestjs/config": "^4.0.2",
     "@nestjs/core": "^11.0.1",
     "@nestjs/platform-express": "^11.0.1",
     "@openai/agents": "^0.3.4",
+    "bullmq": "^5.66.0",
     "googleapis": "^167.0.0",
     "grammy": "^1.38.4",
     "openai": "^6.10.0",
-    "prebuilt-tdlib": "^0.1008058.0",
+    "redis": "^5.10.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
-    "tdl": "^8.0.2",
     "zod": "^3.25.76"
   },
   "devDependencies": {

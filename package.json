@@ -1,0 +1,17 @@
+{
+  "name": "felip-ai",
+  "version": "1.0.0",
+  "private": true,
+  "packageManager": "pnpm@10.25.0",
+  "scripts": {
+    "dev:nest": "pnpm --filter nest_api start:dev",
+    "dev:nest:debug": "pnpm --filter nest_api start:debug",
+    "dev:worker": "pnpm --filter tdlib_worker dev",
+    "build:nest": "pnpm --filter nest_api build",
+    "build:worker": "pnpm --filter tdlib_worker build",
+    "build": "pnpm build:nest && pnpm build:worker"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.3.10"
+  }
+}

@@ -1,10 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import type { Context } from 'grammy';
 import { QuoteFormatterService } from '../../../domain/services/quote-formatter.service';
-import { PriceTableProvider } from 'src/domain/interfaces/price-table-provider.interface';
+import { PriceTableProvider } from '@/domain/interfaces/price-table-provider.interface';
 import { ConversationStateService, ConversationState } from '../conversation-state.service';
-import { TelegramUserClient } from '../telegram-user-client';
-import { ActiveGroupsRepository } from 'src/infrastructure/persistence/active-groups.repository';
+import { TelegramUserClientProxyService } from '../../tdlib/telegram-user-client-proxy.service';
+import { ActiveGroupsRepository } from '@/infrastructure/persistence/active-groups.repository';
 
 /**
  * Handler responsável por processar comandos do Telegram
@@ -16,7 +16,7 @@ export class TelegramCommandHandler {
     private readonly priceTableCache: PriceTableProvider,
     private readonly quoteFormatter: QuoteFormatterService,
     private readonly conversationState: ConversationStateService,
-    private readonly telegramUserClient: TelegramUserClient,
+    private readonly telegramUserClient: TelegramUserClientProxyService,
     private readonly activeGroupsRepository: ActiveGroupsRepository,
   ) {}
 
@@ -41,7 +41,7 @@ export class TelegramCommandHandler {
     }
 
     // Set conversation state to waiting for phone number
-    this.conversationState.setState(userId, ConversationState.WAITING_PHONE_NUMBER);
+    await this.conversationState.setState(userId, ConversationState.WAITING_PHONE_NUMBER);
 
     const message =
       '📱 Por favor, envie seu número de telefone no formato internacional.\n\n' +

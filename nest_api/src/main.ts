@@ -1,15 +1,17 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
+import { ConsoleLogger, Logger } from '@nestjs/common';
 
 async function bootstrap() {
-  console.log('[DEBUG] Starting application initialization...');
+  const logger = new ConsoleLogger();
+  logger.log('Starting application initialization...');
 
   // Create standalone application context (no HTTP server)
   const app = await NestFactory.createApplicationContext(AppModule, {
-    logger: ['log', 'error', 'warn', 'debug'],
+    logger,
   });
 
-  console.log('[DEBUG] Application context created successfully');
+  logger.log('Application context created successfully');
 
   // Graceful shutdown handler
   let isShuttingDown = false;
@@ -19,7 +21,7 @@ async function bootstrap() {
     }
     isShuttingDown = true;
 
-    console.log(`[DEBUG] Shutting down (${signal})...`);
+    logger.log(`Shutting down (${signal})...`);
 
     // Close stdin immediately to release any readline interfaces that might be blocking
     try {
@@ -35,12 +37,12 @@ async function bootstrap() {
     // Close the application context
     try {
       await app.close();
-      console.log('[DEBUG] Application context closed successfully');
+      logger.log('Application context closed successfully');
     } catch (error) {
-      console.error('[ERROR] Error closing application context:', error);
+      logger.error('Error closing application context:', error);
     }
 
-    console.log('[DEBUG] Shutdown complete');
+    logger.log('Shutdown complete');
     process.exitCode = 0;
     process.exit(0);
   };
@@ -53,7 +55,7 @@ async function bootstrap() {
     void shutdown('SIGTERM');
   });
 
-  console.log('[DEBUG] Application started successfully');
+  logger.log('Application started successfully');
 }
 
 bootstrap().catch((error) => {

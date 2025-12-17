@@ -1,7 +1,8 @@
-import { Injectable } from '@nestjs/common';
-import type { Context } from 'grammy';
-import { ConversationState, ConversationStateService } from '../conversation-state.service';
-import { TelegramUserLoginHandler } from '../telegram-user-login-handler';
+import { TelegramUserClientProxyService } from '@/infrastructure/tdlib/telegram-user-client-proxy.service';
+import { PhoneWhitelistService } from '@/infrastructure/telegram/phone-whitelist.service';
+import { Injectable, Logger } from '@nestjs/common';
+import { ConversationStateService } from '../conversation-state.service';
+import { TelegramBotService } from '@/infrastructure/telegram/telegram-bot-service';
 
 /**
  * Handler responsável por processar entrada de número de telefone durante o fluxo de login
@@ -10,20 +11,27 @@ import { TelegramUserLoginHandler } from '../telegram-user-login-handler';
  */
 @Injectable()
 export class TelegramPhoneNumberHandler {
+  private readonly logger = new Logger(TelegramPhoneNumberHandler.name);
+
   constructor(
     private readonly conversationState: ConversationStateService,
-    private readonly loginHandler: TelegramUserLoginHandler,
+    private readonly client: TelegramUserClientProxyService,
+    private readonly phoneWhitelist: PhoneWhitelistService,
+    private readonly botService: TelegramBotService,
   ) {}
 
-  async handlePhoneNumberInput(
-    ctx: Context,
-    phoneNumber: string,
-    userId: number,
-  ): Promise<void> {
+  async handlePhoneNumberInput(input: {
+    chatId: number;
+    phoneNumber: string;
+    userId: number;
+  }): Promise<void> {
+    const { chatId, phoneNumber, userId } = input;
     // Validate phone number format (should start with +)
     const normalizedPhone = phoneNumber.trim();
     if (!normalizedPhone.startsWith('+')) {
-      await ctx.reply(
+      this.logger.warn('Phone number format invalid', { phoneNumber });
+      await this.botService.bot.api.sendMessage(
+        chatId,
         '❌ Formato inválido. Por favor, envie o número no formato internacional começando com +.\n\n' +
           'Exemplo: +5511999999999',
       );
@@ -31,51 +39,27 @@ export class TelegramPhoneNumberHandler {
     }
 
     // Check if phone number is in whitelist
-    if (!this.loginHandler.isPhoneNumberAllowed(normalizedPhone)) {
-      this.conversationState.clearState(userId);
-      await ctx.reply(
+    if (!this.phoneWhitelist.isAllowed(normalizedPhone)) {
+      this.logger.warn('Phone number not allowed, clearing state', { phoneNumber });
+      await this.conversationState.clearState(userId);
+      await this.botService.bot.api.sendMessage(
+        chatId,
         '❌ Seu número não está autorizado.\n\n' +
           'Por favor, entre em contato com o suporte para habilitar seu número.',
       );
       return;
     }
 
-    // Set conversation state to waiting for auth code
-    this.conversationState.setState(userId, ConversationState.WAITING_AUTH_CODE);
-
-    // Inform user that login is starting and ask for auth code
-    await ctx.reply(
-      '🔄 Iniciando processo de login...\n\n' +
-        '🔐 Por favor, envie o código de autenticação que você recebeu no Telegram.\n\n' +
-        'O código geralmente tem 5 dígitos.',
+    // Inform user that login is starting
+    await this.botService.bot.api.sendMessage(
+      chatId,
+      '🔄 Iniciando processo de login...',
     );
 
-    try {
-      // Perform login (this will wait for auth code via message)
-      const userInfo = await this.loginHandler.login(normalizedPhone, userId);
-
-      // Clear conversation state after successful login
-      this.conversationState.clearState(userId);
-
-      // Send success message
-      const successMessage =
-        '✅ Login realizado com sucesso!\n\n' +
-        `📋 Informações da conta:\n` +
-        `• ID: ${userInfo.id}\n` +
-        (userInfo.first_name ? `• Nome: ${userInfo.first_name}` : '') +
-        (userInfo.last_name ? ` ${userInfo.last_name}` : '') +
-        (userInfo.username ? `\n• Username: @${userInfo.username}` : '') +
-        (userInfo.phone_number ? `\n• Telefone: ${userInfo.phone_number}` : '');
-
-      await ctx.reply(successMessage);
-    } catch (error) {
-      console.error('[ERROR] Login failed:', error);
-      // Clear conversation state on error
-      this.conversationState.clearState(userId);
-      await ctx.reply(
-        '❌ Erro ao realizar login. Por favor, tente novamente mais tarde ou entre em contato com o suporte.',
-      );
-    }
+    // Perform login (dispatched to queue, processed separately)
+    // Auth code request will be handled by TdlibUpdatesWorkerService when tdlib dispatches auth-code-request event
+    // Success/failure will be handled by TelegramBotLoginResultHandler via tdlib-updates queue
+    this.logger.log('Dispatching login to queue', { phoneNumber });
+    await this.client.login(normalizedPhone, userId, chatId);
   }
 }
-
