@@ -22,13 +22,14 @@ import { TelegramPurchaseHandler } from './telegram/handlers/telegram-user-purch
 import { PhoneWhitelistService } from './telegram/phone-whitelist.service';
 import { TelegramBotController } from './telegram/telegram-bot.controller';
 import { TelegramUserMessageProcessor } from './telegram/telegram-user-message-processor';
+import { WorkersModule } from '@/infrastructure/workers/workers.module';
 
 /**
  * Module responsável por serviços de infraestrutura
  * Agrupa serviços relacionados a integrações externas
  */
 @Module({
-  imports: [DomainModule, PersistenceModule, TdlibModule, forwardRef(() => QueueModule)],
+  imports: [DomainModule, PersistenceModule, TdlibModule, forwardRef(() => QueueModule), WorkersModule],
   providers: [
     AppConfigService,
     GoogleSheetsService,

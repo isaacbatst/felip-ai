@@ -18,6 +18,7 @@ export class AppConfigService {
       'TELEGRAM_BOT_TOKEN',
       'GOOGLE_SPREADSHEET_ID',
       'GOOGLE_SERVICE_ACCOUNT_KEY_FILE',
+      'WORKER_ENV_FILE',
     ];
 
     for (const varName of requiredVars) {
@@ -26,14 +27,6 @@ export class AppConfigService {
         throw new Error(`${varName} is not set`);
       }
     }
-  }
-
-  getQueueMaxItems(): number {
-    const value = this.configService.get<string>('QUEUE_MAX_ITEMS', '1000');
-    if (!value) {
-      throw new Error('QUEUE_MAX_ITEMS is not set');
-    }
-    return Number.parseInt(value, 10);
   }
 
   getTelegramBotToken(): string {
@@ -81,18 +74,10 @@ export class AppConfigService {
     return value;
   }
 
-  getTelegramDatabaseDirectory(): string {
-    const value = this.configService.get<string>('TELEGRAM_DATABASE_DIRECTORY');
+  getWorkerEnvFile(): string {
+    const value = this.configService.get<string>('WORKER_ENV_FILE');
     if (!value) {
-      throw new Error('TELEGRAM_DATABASE_DIRECTORY is not set');
-    }
-    return value;
-  }
-
-  getTelegramFilesDirectory(): string {
-    const value = this.configService.get<string>('TELEGRAM_FILES_DIRECTORY');
-    if (!value) {
-      throw new Error('TELEGRAM_FILES_DIRECTORY is not set');
+      throw new Error('WORKER_ENV_FILE is not set');
     }
     return value;
   }

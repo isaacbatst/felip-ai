@@ -6,6 +6,5 @@ build
 *.log
 .git
 .gitignore
-pnpm-lock.yaml
 .DS_Store
 
