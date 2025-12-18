@@ -1,5 +1,6 @@
 export abstract class WorkerManager {
-  abstract start(userId: string): Promise<void>;
+  abstract run(userId: string): Promise<boolean>;
   abstract stop(userId: string): Promise<void>;
   abstract getStatus(userId: string): Promise<{ state: 'running' | 'stopped' } | null>;
+  abstract waitUntilHealthy(userId: string): Promise<boolean>;
 }

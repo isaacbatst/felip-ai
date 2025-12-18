@@ -1,8 +1,8 @@
 import { AppConfigService } from '@/config/app.config';
 import { WorkerManager } from '@/infrastructure/workers/worker-manager';
 import { Injectable, Logger } from '@nestjs/common';
-import Docker from 'dockerode';
-import fs from 'fs';
+import Docker, { Container } from 'dockerode';
+import fs from 'node:fs';
 
 @Injectable()
 export class WorkerManagerCompose extends WorkerManager {
@@ -13,23 +13,21 @@ export class WorkerManagerCompose extends WorkerManager {
     super();
   }
 
-  async start(userId: string) {
-    const name = this.getContainerName(userId);
+  async run(userId: string): Promise<boolean> {
+    const name = this.getContainerNameByUserId(userId);
     const exists = await this.getStatus(userId);
     if (exists && exists.state === 'running') {
       this.logger.log(`Worker for user ${userId} is already running`);
-      return;
+      return true;
     }
 
     if (exists && exists.state === 'stopped') {
-      await this.docker.getContainer(name).start();
-      this.logger.log(`Worker for user ${userId} is started`);
-      return;
+      return await this.startByUserId(userId);
     }
 
     if (exists) {
-      this.logger.error(`Container ${name} already exists`);
-      return;
+      this.logger.error(`Container ${name} already exists but unknown state`);
+      return false;
     }
 
     this.logger.log(`Creating container ${name}`);
@@ -45,16 +43,42 @@ export class WorkerManagerCompose extends WorkerManager {
       Labels: {
         'tdlib.user': userId,
       },
+      Healthcheck: {
+        Test: ['CMD', 'curl', '-f', 'http://localhost:3001/health'],
+        Interval: 10000000000, // 10 seconds in nanoseconds
+        Timeout: 5000000000, // 5 seconds in nanoseconds
+        Retries: 5,
+      },
     });
-
-    await container.start();
+    this.logger.log(`Container ${name} created`);
+    return await this.startContainer(container);
   }
+
+  async startByUserId(userId: string): Promise<boolean> {
+    const name = this.getContainerNameByUserId(userId);
+    const container = this.docker.getContainer(name);
+    return this.startContainer(container);
+  }
+
+  async startContainer(container: Container): Promise<boolean> {
+    this.logger.log(`Starting container ${container.id}`);
+    await container.start();
+    this.logger.log(`Container ${container.id} started`);
+    const isHealthy = await this.waitUntilHealthy(container.id);
+    this.logger.log(`Container ${container.id} is healthy: ${isHealthy}`);
+    if (!isHealthy) {
+      await container.stop();
+      return false;
+    }
+    return isHealthy;
+  }
+
   stop(userId: string): Promise<void> {
-    const name = this.getContainerName(userId);
+    const name = this.getContainerNameByUserId(userId);
     return this.docker.getContainer(name).stop();
   }
   async getStatus(userId: string): Promise<{ state: 'running' | 'stopped' } | null> {
-    const name = this.getContainerName(userId);
+    const name = this.getContainerNameByUserId(userId);
     try {
       const container = await this.docker.getContainer(name).inspect();
       if (!container) {
@@ -67,7 +91,36 @@ export class WorkerManagerCompose extends WorkerManager {
     }
   }
 
-  private getContainerName(userId: string): string {
+  async waitUntilHealthy(containerId: string, options: { timeout?: number, interval?: number } = { timeout: 120000, interval: 5000 }): Promise<boolean> {
+    const { timeout = 120000, interval = 5000 } = options;
+    const START_TIME = Date.now();
+    let elapsedTime = 0;
+    return await new Promise((resolve) => {
+      console.log(`Waiting for container ${containerId} to be healthy, timeout: ${timeout}, interval: ${interval}`);
+      const intervalId = setInterval(async () => {
+        elapsedTime = Date.now() - START_TIME;
+        if (elapsedTime > timeout) {
+          console.log(`Timeout reached for container ${containerId}`);
+          clearInterval(intervalId);
+          resolve(false);
+        }
+        const isHealthy = await this.isHealthy(containerId);
+        console.log(`Container ${containerId} is healthy: ${isHealthy}`);
+        if (isHealthy) {
+          clearInterval(intervalId);
+          resolve(true);
+        }
+      }, interval);
+    });
+  }
+
+  private async isHealthy(containerId: string): Promise<boolean> {
+    const container = this.docker.getContainer(containerId);
+    const health = await container.inspect();
+    return health.State.Health?.Status === 'healthy';
+  }
+
+  private getContainerNameByUserId(userId: string): string {
     return `tdlib-${userId}`;
   }
 

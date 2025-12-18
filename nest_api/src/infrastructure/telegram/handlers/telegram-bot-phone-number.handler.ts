@@ -3,6 +3,7 @@ import { PhoneWhitelistService } from '@/infrastructure/telegram/phone-whitelist
 import { Injectable, Logger } from '@nestjs/common';
 import { ConversationStateService } from '../conversation-state.service';
 import { TelegramBotService } from '@/infrastructure/telegram/telegram-bot-service';
+import { WorkerManager } from '@/infrastructure/workers/worker-manager';
 
 /**
  * Handler responsável por processar entrada de número de telefone durante o fluxo de login
@@ -18,6 +19,7 @@ export class TelegramPhoneNumberHandler {
     private readonly client: TelegramUserClientProxyService,
     private readonly phoneWhitelist: PhoneWhitelistService,
     private readonly botService: TelegramBotService,
+    private readonly workerManager: WorkerManager,
   ) {}
 
   async handlePhoneNumberInput(input: {
@@ -55,6 +57,16 @@ export class TelegramPhoneNumberHandler {
       chatId,
       '🔄 Iniciando processo de login...',
     );
+
+    const isWorkerRunning = await this.workerManager.run(userId.toString());
+    if (!isWorkerRunning) {
+      this.logger.error('Failed to start worker', { userId });
+      await this.botService.bot.api.sendMessage(
+        chatId,
+        '❌ Falha ao iniciar o worker. Por favor, tente novamente mais tarde.',
+      );
+      return;
+    }
 
     // Perform login (dispatched to queue, processed separately)
     // Auth code request will be handled by TdlibUpdatesWorkerService when tdlib dispatches auth-code-request event
