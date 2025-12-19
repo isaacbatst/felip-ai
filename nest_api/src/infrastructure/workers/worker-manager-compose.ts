@@ -1,4 +1,5 @@
 import { AppConfigService } from '@/config/app.config';
+import { WorkerRepository } from '@/infrastructure/persistence/worker.repository';
 import { WorkerManager } from '@/infrastructure/workers/worker-manager';
 import { Injectable, Logger } from '@nestjs/common';
 import Docker, { Container } from 'dockerode';
@@ -8,9 +9,52 @@ import fs from 'node:fs';
 export class WorkerManagerCompose extends WorkerManager {
   private docker = new Docker();
   private readonly logger = new Logger(WorkerManagerCompose.name);
+  private readonly DEFAULT_START_PORT = 5000;
+  private readonly MAX_PORT = 6000;
 
-  constructor(private readonly appConfigService: AppConfigService) {
+  constructor(
+    private readonly appConfigService: AppConfigService,
+    private readonly workerRepository: WorkerRepository,
+  ) {
     super();
+  }
+
+  /**
+   * Get or assign a port for a worker
+   */
+  private async getPortForWorker(userId: string): Promise<number> {
+    // Check if port already assigned
+    const existingPort = await this.workerRepository.getWorkerPort(userId);
+    if (existingPort !== null) {
+      return existingPort;
+    }
+    
+    // Get next available port
+    let nextPort = await this.workerRepository.getNextPort();
+    if (nextPort === null) {
+      nextPort = this.DEFAULT_START_PORT;
+    }
+    
+    // Assign port to worker
+    const assignedPort = nextPort;
+    await this.workerRepository.setWorkerPort(userId, assignedPort);
+    
+    // Increment port, wrap around if we exceed MAX_PORT
+    nextPort++;
+    if (nextPort > this.MAX_PORT) {
+      nextPort = this.DEFAULT_START_PORT;
+    }
+    await this.workerRepository.setNextPort(nextPort);
+    
+    this.logger.log(`Assigned port ${assignedPort} to worker for user ${userId}`);
+    return assignedPort;
+  }
+
+  /**
+   * Get the HTTP port for a worker
+   */
+  async getWorkerPort(userId: string): Promise<number | null> {
+    return await this.workerRepository.getWorkerPort(userId);
   }
 
   async run(userId: string): Promise<boolean> {
@@ -31,20 +75,30 @@ export class WorkerManagerCompose extends WorkerManager {
     }
 
     this.logger.log(`Creating container ${name}`);
+    const envVars = await this.getEnvFromPath(this.appConfigService.getWorkerEnvFile());
+    // Add USER_ID to environment variables so worker knows which queue to listen to
+    envVars.push(`USER_ID=${userId}`);
+    // Assign and set HTTP port for this worker
+    const httpPort = await this.getPortForWorker(userId);
+    envVars.push(`HTTP_PORT=${httpPort}`);
     const container = await this.docker.createContainer({
       Image: this.getImageName(),
       name,
-      Env: await this.getEnvFromPath(this.appConfigService.getWorkerEnvFile()),
+      Env: envVars,
       HostConfig: {
         RestartPolicy: { Name: 'unless-stopped' },
         Binds: [`tdlib-${userId}:/tdlib`],
-        NetworkMode: 'host',
+        PortBindings: {
+          [`${httpPort}/tcp`]: [{
+            HostPort: `${httpPort}`,
+          }],
+        },
       },
       Labels: {
         'tdlib.user': userId,
       },
       Healthcheck: {
-        Test: ['CMD', 'curl', '-f', 'http://localhost:3001/health'],
+        Test: ['CMD', 'curl', '-f', `http://localhost:${httpPort}/health`],
         Interval: 10000000000, // 10 seconds in nanoseconds
         Timeout: 5000000000, // 5 seconds in nanoseconds
         Retries: 5,

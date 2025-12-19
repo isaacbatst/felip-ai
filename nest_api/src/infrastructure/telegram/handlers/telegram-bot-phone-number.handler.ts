@@ -1,9 +1,10 @@
 import { TelegramUserClientProxyService } from '@/infrastructure/tdlib/telegram-user-client-proxy.service';
 import { PhoneWhitelistService } from '@/infrastructure/telegram/phone-whitelist.service';
 import { Injectable, Logger } from '@nestjs/common';
-import { ConversationStateService } from '../conversation-state.service';
 import { TelegramBotService } from '@/infrastructure/telegram/telegram-bot-service';
 import { WorkerManager } from '@/infrastructure/workers/worker-manager';
+import { ConversationRepository } from '@/infrastructure/persistence/conversation.repository';
+import { randomUUID } from 'node:crypto';
 
 /**
  * Handler responsável por processar entrada de número de telefone durante o fluxo de login
@@ -15,11 +16,11 @@ export class TelegramPhoneNumberHandler {
   private readonly logger = new Logger(TelegramPhoneNumberHandler.name);
 
   constructor(
-    private readonly conversationState: ConversationStateService,
     private readonly client: TelegramUserClientProxyService,
     private readonly phoneWhitelist: PhoneWhitelistService,
     private readonly botService: TelegramBotService,
     private readonly workerManager: WorkerManager,
+    private readonly conversationRepository: ConversationRepository,
   ) {}
 
   async handlePhoneNumberInput(input: {
@@ -42,8 +43,11 @@ export class TelegramPhoneNumberHandler {
 
     // Check if phone number is in whitelist
     if (!this.phoneWhitelist.isAllowed(normalizedPhone)) {
-      this.logger.warn('Phone number not allowed, clearing state', { phoneNumber });
-      await this.conversationState.clearState(userId);
+      this.logger.warn('Phone number not allowed, clearing session', { phoneNumber });
+      const session = await this.conversationRepository.getSessionByTelegramUserId(userId);
+      if (session) {
+        await this.conversationRepository.deleteSession(session.requestId);
+      }
       await this.botService.bot.api.sendMessage(
         chatId,
         '❌ Seu número não está autorizado.\n\n' +
@@ -68,10 +72,36 @@ export class TelegramPhoneNumberHandler {
       return;
     }
 
+    // Get or create session
+    let session = await this.conversationRepository.getSessionByTelegramUserId(userId);
+    
+    if (!session) {
+      // Create new session
+      // Initially, loggedInUserId is set to telegramUserId (will be updated when login completes if different)
+      const requestId = randomUUID();
+      session = {
+        requestId,
+        loggedInUserId: userId, // Initially same as telegramUserId, updated when login completes
+        telegramUserId: userId,
+        phoneNumber: normalizedPhone,
+        chatId,
+        state: 'waitingPhone',
+      };
+    } else {
+      // Update existing session with phone number
+      session.phoneNumber = normalizedPhone;
+      session.state = 'waitingPhone';
+    }
+    
+    // Store session in Redis before dispatching login command
+    await this.conversationRepository.setSession(session);
+    this.logger.log('Session created/updated', { requestId: session.requestId, phoneNumber, loggedInUserId: session.loggedInUserId });
+
     // Perform login (dispatched to queue, processed separately)
     // Auth code request will be handled by TdlibUpdatesWorkerService when tdlib dispatches auth-code-request event
     // Success/failure will be handled by TelegramBotLoginResultHandler via tdlib-updates queue
-    this.logger.log('Dispatching login to queue', { phoneNumber });
-    await this.client.login(normalizedPhone, userId, chatId);
+    // Use loggedInUserId.toString() as the worker identifier
+    this.logger.log('Dispatching login to queue', { phoneNumber, requestId: session.requestId, loggedInUserId: session.loggedInUserId });
+    await this.client.login(session.loggedInUserId.toString(), normalizedPhone, session.requestId);
   }
 }

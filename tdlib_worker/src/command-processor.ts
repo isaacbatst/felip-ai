@@ -1,19 +1,16 @@
 import { Queue, Worker } from 'bullmq';
 import { TelegramUserClient } from './telegram-user-client';
 import { LoginSessionManager } from './login-session-manager';
+import type { CommandContext, TdlibCommand } from '@felip-ai/shared-types';
 
-export interface TdlibCommand {
-  type: 'sendMessage' | 'login' | 'getChats' | 'getChat' | 'getAuthorizationState' | 'logOut' | 'getMe' | 'getUserId' | 'resendAuthenticationCode' | 'provideAuthCode' | 'providePassword';
-  payload: unknown;
-  requestId?: string;
-}
+// Re-export for convenience
+export type { CommandContext, TdlibCommand };
 
 /**
  * Processor responsável por processar comandos recebidos via BullMQ
  */
 export class CommandProcessor {
   private worker: Worker;
-  private responsesQueue: Queue;
   private updatesQueue: Queue;
   private loginSessionManager: LoginSessionManager;
 
@@ -21,12 +18,14 @@ export class CommandProcessor {
     private readonly client: TelegramUserClient,
     redisConnection: { host: string; port: number; password?: string },
     queueName: string = 'tdlib-commands',
-    responsesQueueName: string = 'tdlib-responses',
     updatesQueueName: string = 'tdlib-updates',
+    loggedInUserId?: string,
   ) {
-    this.responsesQueue = new Queue(responsesQueueName, {
-      connection: redisConnection,
-    });
+    console.log(`[DEBUG] CommandProcessor: Listening to commands queue: ${queueName}`);
+    console.log(`[DEBUG] CommandProcessor: Using updates queue: ${updatesQueueName}`);
+    if (loggedInUserId) {
+      console.log(`[DEBUG] CommandProcessor: Logged in user ID: ${loggedInUserId}`);
+    }
 
     this.updatesQueue = new Queue(updatesQueueName, {
       connection: redisConnection,
@@ -35,6 +34,7 @@ export class CommandProcessor {
     this.loginSessionManager = new LoginSessionManager(
       client,
       this.updatesQueue,
+      loggedInUserId,
     );
 
     this.worker = new Worker(
@@ -49,27 +49,36 @@ export class CommandProcessor {
     );
 
     this.worker.on('completed', async (job, result) => {
-      console.log(`[DEBUG] Command processed: ${job.id}`);
+      console.log(`[DEBUG] ✅ Command processed: ${job.id} (type: ${(job.data as TdlibCommand).type})`);
       const command = job.data as TdlibCommand;
       if (command.requestId) {
-        // Send response back to nest_api
-        await this.responsesQueue.add('response', {
+        // Send response back to nest_api via updates queue, including context if present
+        await this.updatesQueue.add('command-response', {
           requestId: command.requestId,
+          commandType: command.type,
           result,
+          context: command.context, // Echo back context from command
         });
       }
     });
 
     this.worker.on('failed', async (job, err) => {
-      console.error(`[ERROR] Command failed: ${job?.id}`, err);
+      console.error(`[ERROR] ❌ Command failed: ${job?.id} (type: ${(job?.data as TdlibCommand)?.type})`, err);
       const command = job?.data as TdlibCommand;
       if (command?.requestId) {
-        // Send error response back to nest_api
-        await this.responsesQueue.add('response', {
+        // Send error response back to nest_api via updates queue, including context if present
+        await this.updatesQueue.add('command-response', {
           requestId: command.requestId,
+          commandType: command.type,
           error: err.message || String(err),
+          context: command.context, // Echo back context from command
         });
       }
+    });
+
+    // Log when worker starts listening
+    this.worker.on('ready', () => {
+      console.log(`[DEBUG] ✅ Worker is now listening to queue: ${queueName}`);
     });
   }
 
@@ -85,21 +94,18 @@ export class CommandProcessor {
           return await this.client.sendMessage(chatId, text, replyToMessageId);
         }
         case 'login': {
-          const { phoneNumber, userId, chatId } = command.payload as {
+          const { phoneNumber } = command.payload as {
             phoneNumber: string;
-            userId: number;
-            chatId: number;
           };
           if (!command.requestId) {
             throw new Error('Login command requires requestId');
           }
           await this.loginSessionManager.startLogin(
             phoneNumber,
-            userId,
-            chatId,
-            command.requestId,
           );
-          return undefined;
+          return {
+            phoneNumber,
+          };
         }
         case 'provideAuthCode': {
           const { requestId, code, userId, chatId, phoneNumber, state } = command.payload as {

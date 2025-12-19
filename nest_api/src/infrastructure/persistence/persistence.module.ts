@@ -3,15 +3,13 @@ import { ActiveGroupsRepository } from "@/infrastructure/persistence/active-grou
 import { ActiveGroupsRedisStore } from "@/infrastructure/persistence/redis/active-groups-redis-store";
 import { ConversationRepository } from "@/infrastructure/persistence/conversation.repository";
 import { ConversationRedisStore } from "@/infrastructure/persistence/redis/conversation-redis-store";
+import { WorkerRepository } from "@/infrastructure/persistence/worker.repository";
+import { WorkerRedisStore } from "@/infrastructure/persistence/redis/worker-redis-store";
 import { RedisRepository } from "@/infrastructure/persistence/redis/redis.repository";
-import { RedisStore } from "@/infrastructure/persistence/redis/redis-store";
 
 @Module({
   providers: [
-    {
-      provide: RedisRepository,
-      useClass: RedisStore,
-    },
+    RedisRepository,
     {
       provide: ConversationRepository,
       useClass: ConversationRedisStore,
@@ -20,12 +18,15 @@ import { RedisStore } from "@/infrastructure/persistence/redis/redis-store";
       provide: ActiveGroupsRepository,
       useClass: ActiveGroupsRedisStore,
     },
-    RedisStore,
+    {
+      provide: WorkerRepository,
+      useClass: WorkerRedisStore,
+    },
   ],
   exports: [
     ConversationRepository,
     ActiveGroupsRepository,
-    RedisStore,
+    WorkerRepository,
   ],
 })
 export class PersistenceModule {}

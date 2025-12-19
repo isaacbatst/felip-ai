@@ -1,170 +1,224 @@
 import { Injectable } from '@nestjs/common';
-import { ConversationRepository, ConversationState, LoginSessionData } from '../conversation.repository';
+import { ConversationRepository, SessionData, SessionState } from '../conversation.repository';
 import { RedisRepository } from './redis.repository';
 
 /**
  * Redis implementation of ConversationRepository
- * Single Responsibility: conversation state and login session operations using Redis
+ * Single Responsibility: unified session data operations using Redis
  */
 @Injectable()
 export class ConversationRedisStore extends ConversationRepository {
-  private readonly stateKeyPrefix = 'conversation:state:';
-  private readonly requestIdKeyPrefix = 'conversation:auth-code-request-id:';
-  private readonly sessionKeyPrefix = 'login:session:';
-  private readonly stateTtlSeconds = 3600; // 1 hour TTL for state expiration
-  // Match tdlib_worker TTL (30 minutes) to avoid conflicts when both services write to the same key
-  private readonly requestIdTtlSeconds = 30 * 60; // 30 minutes TTL for requestId expiration (matches login session TTL)
-  private readonly sessionTtlSeconds = 30 * 60; // 30 minutes TTL for session expiration
+  private readonly sessionKeyPrefix = 'session:';
+  private readonly telegramUserIdIndexPrefix = 'session:telegramUserId:';
+  private readonly loggedInUserIdIndexPrefix = 'session:loggedInUserId:';
+  private readonly sessionTtlSeconds = 30 * 60; // 30 minutes TTL for active sessions
+  private readonly completedSessionTtlSeconds = 365 * 24 * 60 * 60; // 1 year TTL for completed sessions (persistent login)
 
   constructor(private readonly redis: RedisRepository) {
     super();
   }
 
   /**
-   * Define o estado de uma conversa para um usuário
+   * Store a session
+   * This will cancel any existing active sessions for the same loggedInUserId to ensure only one active session exists
    */
-  async setState(userId: number, state: ConversationState): Promise<void> {
-    const key = `${this.stateKeyPrefix}${userId}`;
-    await this.redis.set(key, state, this.stateTtlSeconds);
-  }
-
-  /**
-   * Obtém o estado atual de uma conversa para um usuário
-   */
-  async getState(userId: number): Promise<ConversationState> {
-    const key = `${this.stateKeyPrefix}${userId}`;
-    const state = await this.redis.get(key);
-    if (!state) {
-      return ConversationState.IDLE;
+  async setSession(session: SessionData): Promise<void> {
+    // Cancel any existing active sessions for this loggedInUserId
+    const existingActiveSession = await this.getActiveSessionByLoggedInUserId(session.loggedInUserId);
+    if (existingActiveSession && existingActiveSession.requestId !== session.requestId) {
+      // Mark existing session as failed since a new one is being created
+      existingActiveSession.state = 'failed';
+      await this.redis.set(
+        `${this.sessionKeyPrefix}${existingActiveSession.requestId}`,
+        JSON.stringify(existingActiveSession),
+        this.sessionTtlSeconds,
+      );
+      // Clear indexes
+      await this.redis.del(`${this.telegramUserIdIndexPrefix}${existingActiveSession.telegramUserId}`);
+      await this.redis.del(`${this.loggedInUserIdIndexPrefix}${existingActiveSession.loggedInUserId}`);
     }
-    return state as ConversationState;
-  }
 
-  /**
-   * Remove o estado de uma conversa (volta para IDLE)
-   */
-  async clearState(userId: number): Promise<void> {
-    const key = `${this.stateKeyPrefix}${userId}`;
-    await this.redis.del(key);
-    // Also clear requestId when clearing state
-    await this.clearPendingAuthCodeRequestId(userId);
-  }
-
-  /**
-   * Define o requestId pendente de auth code para um usuário
-   * 
-   * Note: This key is used for mapping userId -> requestId for login sessions.
-   * Format: plain string (requestId)
-   * TTL: 30 minutes (aligned with login session TTL)
-   */
-  async setPendingAuthCodeRequestId(userId: number, requestId: string): Promise<void> {
-    const key = `${this.requestIdKeyPrefix}${userId}`;
-    await this.redis.set(key, requestId, this.requestIdTtlSeconds);
-  }
-
-  /**
-   * Obtém o requestId pendente de auth code para um usuário
-   */
-  async getPendingAuthCodeRequestId(userId: number): Promise<string | undefined> {
-    const key = `${this.requestIdKeyPrefix}${userId}`;
-    const requestId = await this.redis.get(key);
-    return requestId ?? undefined;
-  }
-
-  /**
-   * Verifica se há um requestId pendente de auth code para um usuário
-   */
-  async hasPendingAuthCodeRequestId(userId: number): Promise<boolean> {
-    const key = `${this.requestIdKeyPrefix}${userId}`;
-    return await this.redis.exists(key);
-  }
-
-  /**
-   * Remove o requestId pendente de auth code para um usuário
-   */
-  async clearPendingAuthCodeRequestId(userId: number): Promise<void> {
-    const key = `${this.requestIdKeyPrefix}${userId}`;
-    await this.redis.del(key);
-  }
-
-  /**
-   * Store a login session
-   */
-  async setLoginSession(session: LoginSessionData): Promise<void> {
     const sessionKey = `${this.sessionKeyPrefix}${session.requestId}`;
-    const userIdKey = `${this.requestIdKeyPrefix}${session.userId}`;
+    const ttl = session.state === 'completed' ? this.completedSessionTtlSeconds : this.sessionTtlSeconds;
 
     // Store session data by requestId
     await this.redis.set(
       sessionKey,
       JSON.stringify(session),
-      this.sessionTtlSeconds,
+      ttl,
     );
 
-    // Store reverse mapping: userId -> requestId (reuses existing key pattern)
+    // Store index: telegramUserId -> requestId (for quick lookup)
     await this.redis.set(
-      userIdKey,
+      `${this.telegramUserIdIndexPrefix}${session.telegramUserId}`,
       session.requestId,
-      this.requestIdTtlSeconds,
+      ttl,
+    );
+
+    // Store index: loggedInUserId -> requestId (for quick lookup)
+    await this.redis.set(
+      `${this.loggedInUserIdIndexPrefix}${session.loggedInUserId}`,
+      session.requestId,
+      ttl,
     );
   }
 
   /**
-   * Get a login session by requestId
+   * Get a session by requestId
    */
-  async getLoginSession(requestId: string): Promise<LoginSessionData | null> {
+  async getSession(requestId: string): Promise<SessionData | null> {
     const sessionKey = `${this.sessionKeyPrefix}${requestId}`;
     const data = await this.redis.get(sessionKey);
     if (!data) {
       return null;
     }
-    return JSON.parse(data) as LoginSessionData;
+    return JSON.parse(data) as SessionData;
   }
 
   /**
-   * Get a login session by userId
+   * Get a session by telegramUserId (the user interacting with the bot)
+   * Returns the most recent active session
    */
-  async getLoginSessionByUserId(userId: number): Promise<LoginSessionData | null> {
-    const userIdKey = `${this.requestIdKeyPrefix}${userId}`;
-    const requestId = await this.redis.get(userIdKey);
+  async getSessionByTelegramUserId(telegramUserId: number): Promise<SessionData | null> {
+    const indexKey = `${this.telegramUserIdIndexPrefix}${telegramUserId}`;
+    const requestId = await this.redis.get(indexKey);
     if (!requestId) {
       return null;
     }
-    return this.getLoginSession(requestId);
+    return this.getSession(requestId);
   }
 
   /**
-   * Update login session state
+   * Get active session by loggedInUserId (returns the most recent non-completed session)
    */
-  async updateLoginSessionState(
+  async getActiveSessionByLoggedInUserId(loggedInUserId: number): Promise<SessionData | null> {
+    const indexKey = `${this.loggedInUserIdIndexPrefix}${loggedInUserId}`;
+    const requestId = await this.redis.get(indexKey);
+    if (requestId) {
+      const session = await this.getSession(requestId);
+      if (session && session.state !== 'completed' && session.state !== 'failed') {
+        return session;
+      }
+    }
+    
+    // Fallback: scan all sessions (for migration/backward compatibility)
+    const pattern = `${this.sessionKeyPrefix}*`;
+    const keys = await this.redis.keys(pattern);
+    
+    for (const key of keys) {
+      // Skip index keys - they only contain requestId, not full session data
+      if (key.startsWith(this.telegramUserIdIndexPrefix) || key.startsWith(this.loggedInUserIdIndexPrefix)) {
+        continue;
+      }
+      const data = await this.redis.get(key);
+      if (data) {
+        const session = JSON.parse(data) as SessionData;
+        if (session.loggedInUserId === loggedInUserId && session.state !== 'completed' && session.state !== 'failed') {
+          return session;
+        }
+      }
+    }
+    
+    return null;
+  }
+
+  /**
+   * Get completed session by loggedInUserId (returns the most recent completed session)
+   * Used to check if a telegram user is logged in as another user
+   */
+  async getCompletedSessionByLoggedInUserId(loggedInUserId: number): Promise<SessionData | null> {
+    const indexKey = `${this.loggedInUserIdIndexPrefix}${loggedInUserId}`;
+    const requestId = await this.redis.get(indexKey);
+    if (requestId) {
+      const session = await this.getSession(requestId);
+      if (session && session.state === 'completed') {
+        return session;
+      }
+    }
+    
+    // Fallback: scan all sessions
+    const pattern = `${this.sessionKeyPrefix}*`;
+    const keys = await this.redis.keys(pattern);
+    
+    for (const key of keys) {
+      // Skip index keys - they only contain requestId, not full session data
+      if (key.startsWith(this.telegramUserIdIndexPrefix) || key.startsWith(this.loggedInUserIdIndexPrefix)) {
+        continue;
+      }
+      const data = await this.redis.get(key);
+      if (data) {
+        const session = JSON.parse(data) as SessionData;
+        if (session.loggedInUserId === loggedInUserId && session.state === 'completed') {
+          return session;
+        }
+      }
+    }
+    
+    return null;
+  }
+
+  /**
+   * Check if a telegram user is logged in (has a completed session)
+   * Returns the logged-in user ID if logged in, null otherwise
+   */
+  async isLoggedIn(telegramUserId: number): Promise<number | null> {
+    const session = await this.getSessionByTelegramUserId(telegramUserId);
+    if (session && session.state === 'completed') {
+      return session.loggedInUserId;
+    }
+    return null;
+  }
+
+  /**
+   * Update session state
+   */
+  async updateSessionState(
     requestId: string,
-    state: LoginSessionData['state'],
+    state: SessionState,
   ): Promise<void> {
-    const session = await this.getLoginSession(requestId);
+    const session = await this.getSession(requestId);
     if (!session) {
       throw new Error(`Session not found for requestId: ${requestId}`);
     }
     session.state = state;
-    await this.setLoginSession(session);
+    
+    // Update TTL based on state
+    const ttl = state === 'completed' ? this.completedSessionTtlSeconds : this.sessionTtlSeconds;
+    const sessionKey = `${this.sessionKeyPrefix}${requestId}`;
+    await this.redis.set(sessionKey, JSON.stringify(session), ttl);
+    
+    // Update index TTLs
+    await this.redis.set(
+      `${this.telegramUserIdIndexPrefix}${session.telegramUserId}`,
+      requestId,
+      ttl,
+    );
+    await this.redis.set(
+      `${this.loggedInUserIdIndexPrefix}${session.loggedInUserId}`,
+      requestId,
+      ttl,
+    );
   }
 
   /**
-   * Delete a login session
+   * Delete a session
    */
-  async deleteLoginSession(requestId: string): Promise<void> {
-    const session = await this.getLoginSession(requestId);
+  async deleteSession(requestId: string): Promise<void> {
+    const session = await this.getSession(requestId);
     if (session) {
       const sessionKey = `${this.sessionKeyPrefix}${requestId}`;
-      const userIdKey = `${this.requestIdKeyPrefix}${session.userId}`;
       await this.redis.del(sessionKey);
-      await this.redis.del(userIdKey);
+      
+      // Clear indexes
+      await this.redis.del(`${this.telegramUserIdIndexPrefix}${session.telegramUserId}`);
+      await this.redis.del(`${this.loggedInUserIdIndexPrefix}${session.loggedInUserId}`);
     }
   }
 
   /**
-   * Check if a login session exists
+   * Check if a session exists
    */
-  async loginSessionExists(requestId: string): Promise<boolean> {
+  async sessionExists(requestId: string): Promise<boolean> {
     const sessionKey = `${this.sessionKeyPrefix}${requestId}`;
     return await this.redis.exists(sessionKey);
   }

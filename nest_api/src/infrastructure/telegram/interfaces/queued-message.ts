@@ -6,4 +6,5 @@ import { TdlibUpdateType } from '../../tdlib/tdlib-update.types';
  */
 export interface QueuedMessage {
   update: TdlibUpdateType;
+  userId?: string; // Bot user ID (from ctx.from.id) - identifies which user's worker sent this update
 }

@@ -61,11 +61,17 @@ import { TelegramUserInfo } from './telegram-user-info.types';
 export interface TdlibUpdateJobData {
   update?: TdlibUpdateType;
   requestId?: string;
-  userId?: number;
+  userId?: string; // Bot user ID (string) - identifies which bot user owns this worker (legacy, use botUserId)
+  botUserId?: string; // Bot user ID (string) - identifies which bot user owns this worker
+  telegramBotUserId?: number; // Telegram bot user ID (number) - the bot user ID from Telegram context
   chatId?: number;
   phoneNumber?: string;
   retry?: boolean;
   userInfo?: TelegramUserInfo | null;
   error?: string;
   state?: 'waitingPhone' | 'waitingCode' | 'waitingPassword' | 'completed' | 'failed';
+  // Command response fields
+  commandType?: string;
+  result?: unknown;
+  context?: import('@felip-ai/shared-types').CommandContext;
 }

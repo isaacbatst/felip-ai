@@ -1,5 +1,5 @@
 import { TelegramUserClientProxyService } from '@/infrastructure/tdlib/telegram-user-client-proxy.service';
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { MessageParser } from '../../../domain/interfaces/message-parser.interface';
 import { PriceTableProvider } from '../../../domain/interfaces/price-table-provider.interface';
 import { PriceCalculatorService } from '../../../domain/services/price-calculator.service';
@@ -13,6 +13,7 @@ import type { Provider } from '../../../domain/types/provider.types';
  */
 @Injectable()
 export class TelegramPurchaseHandler {
+  private readonly logger = new Logger(TelegramPurchaseHandler.name);
   constructor(
     private readonly messageParser: MessageParser,
     private readonly priceTableProvider: PriceTableProvider,
@@ -21,7 +22,7 @@ export class TelegramPurchaseHandler {
     private readonly tdlibUserClient: TelegramUserClientProxyService,
   ) {}
 
-  async handlePurchase(chatId: number, messageId: number | undefined, text: string): Promise<void> {
+  async handlePurchase(botUserId: string, chatId: number, messageId: number | undefined, text: string): Promise<void> {
     // Busca providers disponíveis primeiro para passar ao parser
     const priceTableResult = await this.priceTableProvider.getPriceTable();
     const { priceTables, customMaxPrice } = priceTableResult;
@@ -30,13 +31,10 @@ export class TelegramPurchaseHandler {
     // Passa os providers como contexto para ajudar o modelo a reconhecer melhor
     const purchaseRequest = await this.messageParser.parse(text, providers);
 
-    console.log('Purchase request', purchaseRequest);
-
     const validatedRequest = this.purchaseValidator.validate(purchaseRequest);
 
-    console.log('Validated request', validatedRequest);
-
     if (!validatedRequest) {
+      this.logger.warn('No validated request');
       return;
     }
 
@@ -88,16 +86,17 @@ export class TelegramPurchaseHandler {
     }
 
     // Verifica se o usuário forneceu valores aceitos e se o menor valor aceito é maior que o preço calculado
-    if (validatedRequest.acceptedPrices.length > 0 && priceResult.success) {
+      if (validatedRequest.acceptedPrices.length > 0 && priceResult.success) {
       const minAcceptedPrice = Math.min(...validatedRequest.acceptedPrices);
       if (minAcceptedPrice > priceResult.price) {
         // O usuário aceita pagar mais que nosso preço - responder com mensagem customizada
-        await this.tdlibUserClient.sendMessage(chatId, 'Vamos!', messageId);
+        await this.tdlibUserClient.sendMessage(botUserId, chatId, 'Vamos!', messageId);
         return;
       }
     }
 
     await this.tdlibUserClient.sendMessage(
+      botUserId,
       chatId,
       Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(priceResult.price),
       messageId,

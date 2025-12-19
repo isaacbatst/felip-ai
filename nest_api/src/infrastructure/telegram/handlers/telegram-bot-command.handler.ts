@@ -1,10 +1,13 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import type { Context } from 'grammy';
 import { QuoteFormatterService } from '../../../domain/services/quote-formatter.service';
 import { PriceTableProvider } from '@/domain/interfaces/price-table-provider.interface';
-import { ConversationStateService, ConversationState } from '../conversation-state.service';
+import { ConversationRepository, SessionData } from '@/infrastructure/persistence/conversation.repository';
 import { TelegramUserClientProxyService } from '../../tdlib/telegram-user-client-proxy.service';
 import { ActiveGroupsRepository } from '@/infrastructure/persistence/active-groups.repository';
+import type {
+  CommandContext,
+} from '@felip-ai/shared-types';
 
 /**
  * Handler responsável por processar comandos do Telegram
@@ -12,18 +15,17 @@ import { ActiveGroupsRepository } from '@/infrastructure/persistence/active-grou
  */
 @Injectable()
 export class TelegramCommandHandler {
+  
+  private readonly logger = new Logger(TelegramCommandHandler.name);
   constructor(
     private readonly priceTableCache: PriceTableProvider,
     private readonly quoteFormatter: QuoteFormatterService,
-    private readonly conversationState: ConversationStateService,
+    private readonly conversationRepository: ConversationRepository,
     private readonly telegramUserClient: TelegramUserClientProxyService,
     private readonly activeGroupsRepository: ActiveGroupsRepository,
   ) {}
 
   async handleStart(ctx: Context): Promise<void> {
-    const _userId = ctx.from?.id;
-    const _chatId = ctx.chat?.id;
-
     // Revalida o cache antes de mostrar a tabela
     const priceTableResult = await this.priceTableCache.getPriceTable();
     const priceTablesFormatted = this.quoteFormatter.formatPriceTablesByProvider(priceTableResult.priceTables);
@@ -34,14 +36,35 @@ export class TelegramCommandHandler {
   }
 
   async handleLogin(ctx: Context): Promise<void> {
-    const userId = ctx.from?.id;
-    if (!userId) {
+    const telegramUserId = ctx.from?.id;
+    const chatId = ctx.chat?.id;
+    if (!telegramUserId || !chatId) {
       await ctx.reply('❌ Não foi possível identificar seu usuário.');
       return;
     }
 
-    // Set conversation state to waiting for phone number
-    await this.conversationState.setState(userId, ConversationState.WAITING_PHONE_NUMBER);
+    // Check if user is already logged in
+    const loggedInUserId = await this.conversationRepository.isLoggedIn(telegramUserId);
+    if (loggedInUserId) {
+      await ctx.reply(
+        `✅ Você já está logado como usuário ID: ${loggedInUserId}\n\n` +
+        'Use /logout para fazer logout antes de fazer login novamente.'
+      );
+      return;
+    }
+
+    // Create a session in waitingPhone state
+    // Initially, loggedInUserId is set to telegramUserId (will be updated when login completes if different)
+    const { randomUUID } = await import('node:crypto');
+    const requestId = randomUUID();
+    const session: SessionData = {
+      requestId,
+      loggedInUserId: telegramUserId, // Initially same as telegramUserId, updated when login completes
+      telegramUserId,
+      chatId,
+      state: 'waitingPhone',
+    };
+    await this.conversationRepository.setSession(session);
 
     const message =
       '📱 Por favor, envie seu número de telefone no formato internacional.\n\n' +
@@ -53,90 +76,98 @@ export class TelegramCommandHandler {
 
   async handleGrupos(ctx: Context): Promise<void> {
     try {
-      // Get all chats
-      const chatsResult = await this.telegramUserClient.getChats(
-        {
-          _: 'chatListMain',
-        },
-        100,
-      );
-
-      if (
-        !chatsResult ||
-        typeof chatsResult !== 'object' ||
-        !('chat_ids' in chatsResult) ||
-        !Array.isArray(chatsResult.chat_ids)
-      ) {
-        await ctx.reply('❌ Não foi possível obter a lista de grupos.');
+      const userId = ctx.from?.id?.toString();
+      const chatId = ctx.chat?.id;
+      if (!userId || !chatId) {
+        await ctx.reply('❌ Não foi possível identificar seu usuário.');
         return;
       }
 
-      const chatIds = chatsResult.chat_ids as number[];
-      const grupos: Array<{ id: number; title: string }> = [];
+      // Call getChats via HTTP (synchronous)
+      await ctx.reply('🔄 Buscando grupos...');
+      
+      try {
+        const result = await this.telegramUserClient.getChats(
+          userId,
+          { _: 'chatListMain' },
+          100,
+        ) as { chat_ids?: number[] };
 
-      // Fetch details for each chat to filter groups
-      for (const chatId of chatIds) {
-        try {
-          const chat = await this.telegramUserClient.getChat(chatId);
+        if (!result?.chat_ids || !Array.isArray(result.chat_ids)) {
+          await ctx.reply('❌ Não foi possível obter a lista de grupos.');
+          return;
+        }
 
-          if (
-            chat &&
-            typeof chat === 'object' &&
-            'type' in chat &&
-            chat.type &&
-            typeof chat.type === 'object' &&
-            '_' in chat.type
-          ) {
-            const chatType = (chat.type as { _: string })._;
-            // Filter for groups and supergroups
-            if (chatType === 'chatTypeBasicGroup' || chatType === 'chatTypeSupergroup') {
-              const title =
-                'title' in chat && typeof chat.title === 'string' ? chat.title : 'Sem título';
-              grupos.push({ id: chatId, title });
+        const chatIds = result.chat_ids;
+        const groups: Array<{ id: number; title: string }> = [];
+
+        // Fetch each chat via HTTP to filter groups
+        for (const chatIdToFetch of chatIds) {
+          try {
+            const chatResult = await this.telegramUserClient.getChat(userId, chatIdToFetch) as {
+              type?: { _?: string };
+              title?: string;
+            } | null;
+
+            if (
+              chatResult &&
+              typeof chatResult === 'object' &&
+              chatResult.type &&
+              typeof chatResult.type === 'object' &&
+              '_' in chatResult.type
+            ) {
+              const chatType = chatResult.type._;
+              // Only include groups and supergroups
+              if (chatType === 'chatTypeBasicGroup' || chatType === 'chatTypeSupergroup') {
+                const title = typeof chatResult.title === 'string' ? chatResult.title : 'Sem título';
+                groups.push({ id: chatIdToFetch, title });
+              }
             }
+          } catch (error) {
+            this.logger.warn(`Error fetching chat ${chatIdToFetch}`, { error });
+            // Continue with other chats
           }
-        } catch (error) {
-          console.error(`[ERROR] Error fetching chat ${chatId}:`, error);
         }
-      }
 
-      if (grupos.length === 0) {
-        await ctx.reply('📭 Você não está em nenhum grupo.');
-        return;
-      }
+        // Send groups list
+        if (groups.length === 0) {
+          await ctx.reply('📭 Você não está em nenhum grupo.');
+          return;
+        }
 
-      // Format the response
-      let message = `📋 Grupos que você está participando (${grupos.length}):\n\n`;
-      grupos.forEach((grupo, index) => {
-        message += `${index + 1}. ${grupo.title}\`${grupo.id}\`\n\n`;
-      });
+        let message = `📋 Grupos que você está participando (${groups.length}):\n\n`;
+        groups.forEach((grupo, index) => {
+          message += `${index + 1}. ${grupo.title}\`${grupo.id}\`\n\n`;
+        });
 
-      // Telegram has a message length limit, so split if needed
-      const maxLength = 4096;
-      if (message.length > maxLength) {
-        const chunks: string[] = [];
-        let currentChunk = `📋 Grupos que você está participando (${grupos.length}):\n\n`;
-        let count = 0;
+        const maxLength = 4096;
+        if (message.length > maxLength) {
+          const chunks: string[] = [];
+          let currentChunk = `📋 Grupos que você está participando (${groups.length}):\n\n`;
+          let count = 0;
 
-        for (const grupo of grupos) {
-          const grupoLine = `${count + 1}. ${grupo.title}\`${grupo.id}\`\n\n`;
-          if (currentChunk.length + grupoLine.length > maxLength) {
+          for (const grupo of groups) {
+            const grupoLine = `${count + 1}. ${grupo.title}\`${grupo.id}\`\n\n`;
+            if (currentChunk.length + grupoLine.length > maxLength) {
+              chunks.push(currentChunk);
+              currentChunk = '';
+            }
+            currentChunk += grupoLine;
+            count++;
+          }
+          if (currentChunk) {
             chunks.push(currentChunk);
-            currentChunk = '';
           }
-          currentChunk += grupoLine;
-          count++;
-        }
-        if (currentChunk) {
-          chunks.push(currentChunk);
-        }
 
-        // Send all chunks
-        for (const chunk of chunks) {
-          await ctx.reply(chunk, { parse_mode: 'Markdown' });
+          for (const chunk of chunks) {
+            await ctx.reply(chunk, { parse_mode: 'Markdown' });
+          }
+        } else {
+          await ctx.reply(message, { parse_mode: 'Markdown' });
         }
-      } else {
-        await ctx.reply(message, { parse_mode: 'Markdown' });
+      } catch (error) {
+        this.logger.error('Error fetching groups', { error, userId });
+        await ctx.reply('❌ Erro ao buscar grupos. Por favor, tente novamente.');
       }
     } catch (error) {
       console.error('[ERROR] Error fetching groups:', error);
@@ -150,23 +181,29 @@ export class TelegramCommandHandler {
 
   async handleLogout(ctx: Context): Promise<void> {
     try {
-      // Check if user is logged in before attempting logout
-      const authState = await this.telegramUserClient.getAuthorizationState();
-
-      if (
-        typeof authState === 'object' &&
-        authState !== null &&
-        '_' in authState &&
-        (authState as { _: string })._ !== 'authorizationStateReady'
-      ) {
-        await ctx.reply('❌ Você não está logado no momento.');
+      const userId = ctx.from?.id?.toString();
+      const chatId = ctx.chat?.id;
+      if (!userId || !chatId) {
+        await ctx.reply('❌ Não foi possível identificar seu usuário.');
         return;
       }
 
-      // Perform logout
-      await this.telegramUserClient.logOut();
+      // Dispatch logout command with context
+      const context: CommandContext = {
+        userId,
+        commandType: 'logOut',
+        chatId,
+      };
+      await this.telegramUserClient.dispatchCommandWithContext(
+        userId,
+        {
+          type: 'logOut',
+          payload: {},
+        },
+        context,
+      );
 
-      await ctx.reply('✅ Logout realizado com sucesso! Você foi desconectado do cliente Telegram.');
+      await ctx.reply('🔄 Realizando logout...');
     } catch (error) {
       console.error('[ERROR] Error during logout:', error);
       if (error instanceof Error && error.message === 'Client not initialized') {
@@ -179,10 +216,10 @@ export class TelegramCommandHandler {
 
   async handleAtivar(ctx: Context): Promise<void> {
     try {
-      // Get logged in user ID from Telegram client
-      const loggedInUserId = await this.telegramUserClient.getUserId();
-      if (!loggedInUserId) {
-        await ctx.reply('❌ Cliente Telegram não está logado. Por favor, faça login primeiro.');
+      const botUserId = ctx.from?.id?.toString();
+      const chatId = ctx.chat?.id;
+      if (!botUserId || !chatId) {
+        await ctx.reply('❌ Não foi possível identificar seu usuário.');
         return;
       }
 
@@ -229,28 +266,47 @@ export class TelegramCommandHandler {
         return;
       }
 
-      // Validate groups exist in Telegram client before saving
+      // Check if user is logged in
+      const telegramUserId = ctx.from?.id;
+      if (!telegramUserId) {
+        await ctx.reply('❌ Não foi possível identificar seu usuário.');
+        return;
+      }
+
+      const loggedInUserId = await this.conversationRepository.isLoggedIn(telegramUserId);
+      this.logger.debug('loggedInUserId', { loggedInUserId });
+      this.logger.debug('telegramUserId', { telegramUserId });
+      if (!loggedInUserId) {
+        await ctx.reply('❌ Você não está logado. Por favor, faça login primeiro usando /login.');
+        return;
+      }
+
+      // Validate groups synchronously via HTTP
+      await ctx.reply('🔄 Validando grupos...');
+
+      // Validate each groupId synchronously via HTTP using loggedInUserId as worker identifier
       const validatedGroups: Array<{ id: number; title: string }> = [];
       const notFoundIds: number[] = [];
       const invalidGroupIds: number[] = [];
 
       for (const groupId of groupIds) {
         try {
-          const chat = await this.telegramUserClient.getChat(groupId);
-          
+          const chatResult = await this.telegramUserClient.getChat(telegramUserId.toString(), groupId) as {
+            type?: { _?: string };
+            title?: string;
+          } | null;
+
           if (
-            chat &&
-            typeof chat === 'object' &&
-            'type' in chat &&
-            chat.type &&
-            typeof chat.type === 'object' &&
-            '_' in chat.type
+            chatResult &&
+            typeof chatResult === 'object' &&
+            chatResult.type &&
+            typeof chatResult.type === 'object' &&
+            '_' in chatResult.type
           ) {
-            const chatType = (chat.type as { _: string })._;
+            const chatType = chatResult.type._;
             // Only allow groups and supergroups
             if (chatType === 'chatTypeBasicGroup' || chatType === 'chatTypeSupergroup') {
-              const title =
-                'title' in chat && typeof chat.title === 'string' ? chat.title : 'Sem título';
+              const title = 'title' in chatResult && typeof chatResult.title === 'string' ? chatResult.title : 'Sem título';
               validatedGroups.push({ id: groupId, title });
             } else {
               invalidGroupIds.push(groupId);
@@ -259,94 +315,100 @@ export class TelegramCommandHandler {
             notFoundIds.push(groupId);
           }
         } catch (error) {
-          console.error(`[ERROR] Error fetching chat ${groupId}:`, error);
+          this.logger.warn(`Error fetching chat ${groupId}`, { error });
           notFoundIds.push(groupId);
         }
       }
 
-      // If no valid groups found, return error
-      if (validatedGroups.length === 0) {
-        let errorMessage = '❌ Nenhum grupo válido encontrado.\n\n';
-        if (notFoundIds.length > 0) {
-          errorMessage += `Grupos não encontrados: \`${notFoundIds.join(', ')}\`\n\n`;
-        }
-        if (invalidGroupIds.length > 0) {
-          errorMessage += `IDs não são grupos: \`${invalidGroupIds.join(', ')}\`\n\n`;
-        }
-        errorMessage += 'Verifique se os IDs estão corretos e se você tem acesso aos grupos.';
-        errorMessage += 'Use o comando /grupos para ver a lista de grupos que você está participando.';
-        await ctx.reply(errorMessage, { parse_mode: 'Markdown' });
-        return;
-      }
-
-      // Get current active groups using logged in user ID
-      const currentActiveGroups = await this.activeGroupsRepository.getActiveGroups(loggedInUserId.toString());
-      const activeGroupsSet = new Set(currentActiveGroups || []);
-
-      // Add new validated group IDs
-      const newGroups: Array<{ id: number; title: string }> = [];
-      const alreadyActiveGroups: Array<{ id: number; title: string }> = [];
-
-      for (const grupo of validatedGroups) {
-        if (!activeGroupsSet.has(grupo.id)) {
-          activeGroupsSet.add(grupo.id);
-          newGroups.push(grupo);
-        } else {
-          alreadyActiveGroups.push(grupo);
-        }
-      }
-
-      // Save updated active groups using logged in user ID
-      const updatedActiveGroups = Array.from(activeGroupsSet);
-      await this.activeGroupsRepository.setActiveGroups(loggedInUserId.toString(), updatedActiveGroups);
-
-      // Build response message
-      let message = '';
-      
-      if (newGroups.length > 0) {
-        message = `✅ ${newGroups.length} grupo(s) ativado(s) com sucesso!\n\n`;
-        message += `📋 Grupos ativos:\n\n`;
-        newGroups.forEach((grupo, index) => {
-          message += `${index + 1}. ${grupo.title}\n\`${grupo.id}\`\n\n`;
-        });
-        message += `Total de grupos ativos: ${updatedActiveGroups.length}`;
-      } else {
-        message = `ℹ️ Todos os grupos fornecidos já estavam ativos.\n\n`;
-        message += `📋 Grupos já ativos:\n\n`;
-        alreadyActiveGroups.forEach((grupo, index) => {
-          message += `${index + 1}. ${grupo.title}\n\`ID: ${grupo.id}\`\n\n`;
-        });
-        message += `Total de grupos ativos: ${updatedActiveGroups.length}`;
-      }
-
-      // Add warnings for not found or invalid groups
-      if (notFoundIds.length > 0 || invalidGroupIds.length > 0) {
-        message += '\n\n⚠️ Atenção:\n';
-        if (notFoundIds.length > 0) {
-          message += `Grupos não encontrados: \`${notFoundIds.join(', ')}\`\n`;
-        }
-        if (invalidGroupIds.length > 0) {
-          message += `IDs não são grupos: \`${invalidGroupIds.join(', ')}\`\n`;
-        }
-      }
-
-      await ctx.reply(message, { parse_mode: 'Markdown' });
+      // Process activation synchronously using loggedInUserId
+      await this.processActivateGroups(ctx, validatedGroups, notFoundIds, invalidGroupIds, loggedInUserId);
     } catch (error) {
-      console.error('[ERROR] Error activating groups:', error);
-      if (error instanceof Error && error.message === 'Client not initialized') {
-        await ctx.reply('❌ Cliente Telegram não está disponível. Por favor, faça login primeiro.');
+      this.logger.error('Error activating groups', { error });
+      await ctx.reply('❌ Erro ao ativar grupos. Por favor, tente novamente mais tarde.');
+    }
+  }
+
+  private async processActivateGroups(
+    ctx: Context,
+    validatedGroups: Array<{ id: number; title: string }>,
+    notFoundIds: number[],
+    invalidGroupIds: number[],
+    loggedInUserId: number,
+  ): Promise<void> {
+    // If no valid groups found, return error
+    if (validatedGroups.length === 0) {
+      let errorMessage = '❌ Nenhum grupo válido encontrado.\n\n';
+      if (notFoundIds.length > 0) {
+        errorMessage += `Grupos não encontrados: \`${notFoundIds.join(', ')}\`\n\n`;
+      }
+      if (invalidGroupIds.length > 0) {
+        errorMessage += `IDs não são grupos: \`${invalidGroupIds.join(', ')}\`\n\n`;
+      }
+      errorMessage += 'Verifique se os IDs estão corretos e se você tem acesso aos grupos.\n\n';
+      errorMessage += 'Use o comando /grupos para ver a lista de grupos que você está participando.';
+      await ctx.reply(errorMessage, { parse_mode: 'Markdown' });
+      return;
+    }
+
+    // Get current active groups for the logged-in user
+    const currentActiveGroups = await this.activeGroupsRepository.getActiveGroups(loggedInUserId.toString());
+    const activeGroupsSet = new Set(currentActiveGroups || []);
+
+    // Add new validated group IDs
+    const newGroups: Array<{ id: number; title: string }> = [];
+    const alreadyActiveGroups: Array<{ id: number; title: string }> = [];
+
+    for (const grupo of validatedGroups) {
+      if (!activeGroupsSet.has(grupo.id)) {
+        activeGroupsSet.add(grupo.id);
+        newGroups.push(grupo);
       } else {
-        await ctx.reply('❌ Erro ao ativar grupos. Por favor, tente novamente mais tarde.');
+        alreadyActiveGroups.push(grupo);
       }
     }
+
+    // Save updated active groups for the logged-in user
+    const updatedActiveGroups = Array.from(activeGroupsSet);
+    await this.activeGroupsRepository.setActiveGroups(loggedInUserId.toString(), updatedActiveGroups);
+
+    // Build response message
+    let message = '';
+    
+    if (newGroups.length > 0) {
+      message = `✅ ${newGroups.length} grupo(s) ativado(s) com sucesso!\n\n`;
+      message += `📋 Grupos ativos:\n\n`;
+      newGroups.forEach((grupo, index) => {
+        message += `${index + 1}. ${grupo.title}\n\`${grupo.id}\`\n\n`;
+      });
+      message += `Total de grupos ativos: ${updatedActiveGroups.length}`;
+    } else {
+      message = `ℹ️ Todos os grupos fornecidos já estavam ativos.\n\n`;
+      message += `📋 Grupos já ativos:\n\n`;
+      alreadyActiveGroups.forEach((grupo, index) => {
+        message += `${index + 1}. ${grupo.title}\n\`ID: ${grupo.id}\`\n\n`;
+      });
+      message += `Total de grupos ativos: ${updatedActiveGroups.length}`;
+    }
+
+    // Add warnings for not found or invalid groups
+    if (notFoundIds.length > 0 || invalidGroupIds.length > 0) {
+      message += '\n\n⚠️ Atenção:\n';
+      if (notFoundIds.length > 0) {
+        message += `Grupos não encontrados: \`${notFoundIds.join(', ')}\`\n`;
+      }
+      if (invalidGroupIds.length > 0) {
+        message += `IDs não são grupos: \`${invalidGroupIds.join(', ')}\`\n`;
+      }
+    }
+
+    await ctx.reply(message, { parse_mode: 'Markdown' });
   }
 
   async handleDesativar(ctx: Context): Promise<void> {
     try {
-      // Get logged in user ID from Telegram client
-      const loggedInUserId = await this.telegramUserClient.getUserId();
-      if (!loggedInUserId) {
-        await ctx.reply('❌ Cliente Telegram não está logado. Por favor, faça login primeiro.');
+      const chatId = ctx.chat?.id;
+      if (!chatId) {
+        await ctx.reply('❌ Não foi possível identificar o chat.');
         return;
       }
 
@@ -393,7 +455,20 @@ export class TelegramCommandHandler {
         return;
       }
 
-      // Get current active groups using logged in user ID
+      // Check if user is logged in
+      const telegramUserId = ctx.from?.id;
+      if (!telegramUserId) {
+        await ctx.reply('❌ Não foi possível identificar seu usuário.');
+        return;
+      }
+
+      const loggedInUserId = await this.conversationRepository.isLoggedIn(telegramUserId);
+      if (!loggedInUserId) {
+        await ctx.reply('❌ Você não está logado. Por favor, faça login primeiro usando /login.');
+        return;
+      }
+
+      // Get current active groups for the logged-in user
       const currentActiveGroups = await this.activeGroupsRepository.getActiveGroups(loggedInUserId.toString());
       if (!currentActiveGroups || currentActiveGroups.length === 0) {
         await ctx.reply('ℹ️ Você não tem grupos ativos no momento.');
@@ -413,7 +488,7 @@ export class TelegramCommandHandler {
         }
       }
 
-      // Get updated active groups count using logged in user ID
+      // Get updated active groups count
       const updatedActiveGroups = await this.activeGroupsRepository.getActiveGroups(loggedInUserId.toString());
       const remainingCount = updatedActiveGroups?.length || 0;
 
@@ -433,93 +508,112 @@ export class TelegramCommandHandler {
 
       await ctx.reply(message);
     } catch (error) {
-      console.error('[ERROR] Error deactivating groups:', error);
+      this.logger.error('Error deactivating groups', { error });
       await ctx.reply('❌ Erro ao desativar grupos. Por favor, tente novamente mais tarde.');
     }
   }
 
   async handleGruposAtivos(ctx: Context): Promise<void> {
     try {
-      // Get logged in user ID from Telegram client
-      const loggedInUserId = await this.telegramUserClient.getUserId();
-      if (!loggedInUserId) {
-        await ctx.reply('❌ Cliente Telegram não está logado. Por favor, faça login primeiro.');
+      const chatId = ctx.chat?.id;
+      if (!chatId) {
+        await ctx.reply('❌ Não foi possível identificar o chat.');
         return;
       }
 
-      // Get active groups from repository using logged in user ID
+      // Check if user is logged in
+      const telegramUserId = ctx.from?.id;
+      if (!telegramUserId) {
+        await ctx.reply('❌ Não foi possível identificar seu usuário.');
+        return;
+      }
+
+      const loggedInUserId = await this.conversationRepository.isLoggedIn(telegramUserId);
+      if (!loggedInUserId) {
+        await ctx.reply('❌ Você não está logado. Por favor, faça login primeiro usando /login.');
+        return;
+      }
+
+      // Get active groups from repository for the logged-in user
       const activeGroups = await this.activeGroupsRepository.getActiveGroups(loggedInUserId.toString());
       
       if (!activeGroups || activeGroups.length === 0) {
-        await ctx.reply('📭 Você não tem grupos ativos no momento.\n\nUse /ativar para ativar grupos.');
+        await ctx.reply(
+          '📭 Você não tem grupos ativos no momento.\n\nUse /ativar para ativar grupos.',
+        );
         return;
       }
 
+      // Fetch chat titles synchronously via HTTP
+      await ctx.reply('🔄 Buscando grupos ativos...');
+      
       const grupos: Array<{ id: number; title: string }> = [];
 
-      // Try to fetch group details for each active group
       for (const groupId of activeGroups) {
         try {
-          const chat = await this.telegramUserClient.getChat(groupId);
-          
+          const chatResult = await this.telegramUserClient.getChat(telegramUserId.toString(), groupId) as {
+            title?: string;
+          } | null;
+
           if (
-            chat &&
-            typeof chat === 'object' &&
-            'title' in chat &&
-            typeof chat.title === 'string'
+            chatResult &&
+            typeof chatResult === 'object' &&
+            'title' in chatResult &&
+            typeof chatResult.title === 'string'
           ) {
-            grupos.push({ id: groupId, title: chat.title });
+            grupos.push({ id: groupId, title: chatResult.title });
           } else {
             // If we can't get the title, just show the ID
             grupos.push({ id: groupId, title: 'Nome não disponível' });
           }
         } catch (error) {
-          console.error(`[ERROR] Error fetching chat ${groupId}:`, error);
-          // If we can't fetch the chat, just show the ID
+          this.logger.warn(`Error fetching chat ${groupId}`, { error });
+          // If we can't get the title, just show the ID
           grupos.push({ id: groupId, title: 'Nome não disponível' });
         }
       }
 
-      // Format the response
-      let message = `✅ Grupos Ativos (${grupos.length}):\n\n`;
-      grupos.forEach((grupo, index) => {
-        message += `${index + 1}. ${grupo.title}\n\`${grupo.id}\`\n\n`;
-      });
-
-      // Telegram has a message length limit, so split if needed
-      const maxLength = 4096;
-      if (message.length > maxLength) {
-        const chunks: string[] = [];
-        let currentChunk = `✅ Grupos Ativos (${grupos.length}):\n\n`;
-        let count = 0;
-
-        for (const grupo of grupos) {
-          const grupoLine = `${count + 1}. ${grupo.title}\n\`ID: ${grupo.id}\`\n\n`;
-          if (currentChunk.length + grupoLine.length > maxLength) {
-            chunks.push(currentChunk);
-            currentChunk = '';
-          }
-          currentChunk += grupoLine;
-          count++;
-        }
-        if (currentChunk) {
-          chunks.push(currentChunk);
-        }
-
-        // Send all chunks
-        for (const chunk of chunks) {
-          await ctx.reply(chunk, { parse_mode: 'Markdown' });
-        }
-      } else {
-        await ctx.reply(message, { parse_mode: 'Markdown' });
-      }
+      // Format and send the response
+      await this.sendActiveGroupsList(ctx, grupos);
     } catch (error) {
-      console.error('[ERROR] Error fetching active groups:', error);
-      if (error instanceof Error && error.message === 'Client not initialized') {
-        await ctx.reply('❌ Cliente Telegram não está disponível. Por favor, faça login primeiro.');
-      } else {
-        await ctx.reply('❌ Erro ao buscar grupos ativos. Por favor, tente novamente mais tarde.');
+      this.logger.error('Error fetching active groups', { error });
+      await ctx.reply('❌ Erro ao buscar grupos ativos. Por favor, tente novamente mais tarde.');
+    }
+  }
+
+  private async sendActiveGroupsList(ctx: Context, grupos: Array<{ id: number; title: string }>): Promise<void> {
+    // Format the response
+    let message = `✅ Grupos Ativos (${grupos.length}):\n\n`;
+    grupos.forEach((grupo, index) => {
+      message += `${index + 1}. ${grupo.title}\n\`${grupo.id}\`\n\n`;
+    });
+
+    // Telegram has a message length limit, so split if needed
+    const maxLength = 4096;
+    if (message.length > maxLength) {
+      const chunks: string[] = [];
+      let currentChunk = `✅ Grupos Ativos (${grupos.length}):\n\n`;
+      let count = 0;
+
+      for (const grupo of grupos) {
+        const grupoLine = `${count + 1}. ${grupo.title}\n\`ID: ${grupo.id}\`\n\n`;
+        if (currentChunk.length + grupoLine.length > maxLength) {
+          chunks.push(currentChunk);
+          currentChunk = '';
+        }
+        currentChunk += grupoLine;
+        count++;
       }
+      if (currentChunk) {
+        chunks.push(currentChunk);
+      }
+
+      // Send all chunks
+      for (const chunk of chunks) {
+        await ctx.reply(chunk, { parse_mode: 'Markdown' });
+      }
+    } else {
+      await ctx.reply(message, { parse_mode: 'Markdown' });
     }
   }
 }

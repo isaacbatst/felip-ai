@@ -2,7 +2,7 @@ import { Injectable, type OnModuleDestroy, type OnModuleInit } from '@nestjs/com
 import type { Context } from 'grammy';
 import { InMemoryQueueProcessor } from '../../telegram/in-memory-queue-processor.service';
 import { TelegramBotMessageQueue } from '../tokens/telegram-bot-message-queue.token';
-import { TelegramMessageHandler } from '../../telegram/handlers/telegram-bot-message.handler';
+import { TelegramBotMessageHandler } from '../../telegram/handlers/telegram-bot-message.handler';
 
 /**
  * Service that manages QueueProcessor for Telegram bot messages
@@ -15,7 +15,7 @@ export class TelegramBotInMemoryQueueProcessor implements OnModuleInit, OnModule
 
   constructor(
     private readonly botMessageQueue: TelegramBotMessageQueue,
-    private readonly messageHandler: TelegramMessageHandler,
+    private readonly messageHandler: TelegramBotMessageHandler,
   ) {}
 
   async onModuleInit(): Promise<void> {

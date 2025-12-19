@@ -1,10 +1,8 @@
+import { InjectQueue, Processor, WorkerHost } from '@nestjs/bullmq';
 import { Injectable } from '@nestjs/common';
-import { InjectQueue } from '@nestjs/bullmq';
-import { Processor, WorkerHost } from '@nestjs/bullmq';
-import { Queue, Job } from 'bullmq';
+import { Job, Queue } from 'bullmq';
 import { Context } from 'grammy';
-import { TelegramMessageHandler } from '../../telegram/handlers/telegram-bot-message.handler';
-import { TdlibUpdateType } from '../../tdlib/tdlib-update.types';
+import { TelegramBotMessageHandler } from '../../telegram/handlers/telegram-bot-message.handler';
 
 /**
  * BullMQ-based queue processor for Telegram bot messages
@@ -15,12 +13,12 @@ import { TdlibUpdateType } from '../../tdlib/tdlib-update.types';
 export class TelegramBotQueueProcessorBullMQ extends WorkerHost {
   constructor(
     @InjectQueue('telegram-bot-messages') private readonly queue: Queue,
-    private readonly messageHandler: TelegramMessageHandler,
+    private readonly messageHandler: TelegramBotMessageHandler,
   ) {
     super();
   }
 
-  async process(job: Job<Context['update']['message'], any, string>): Promise<void> {
+  async process(job: Job<Context['update']['message']>): Promise<void> {
     switch (job.name) {
       case 'job': {
         const data = job.data;

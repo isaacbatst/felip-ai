@@ -1,5 +1,4 @@
 import { Injectable } from '@nestjs/common';
-import { ConversationStateService } from '../conversation-state.service';
 import { TelegramBotService } from '@/infrastructure/telegram/telegram-bot-service';
 import { TelegramUserClientProxyService } from '@/infrastructure/tdlib/telegram-user-client-proxy.service';
 import { ConversationRepository } from '@/infrastructure/persistence/conversation.repository';
@@ -12,7 +11,6 @@ import { ConversationRepository } from '@/infrastructure/persistence/conversatio
 @Injectable()
 export class TelegramAuthCodeHandler {
   constructor(
-    private readonly conversationState: ConversationStateService,
     private readonly botService: TelegramBotService,
     private readonly telegramUserClient: TelegramUserClientProxyService,
     private readonly conversationRepository: ConversationRepository,
@@ -35,48 +33,53 @@ export class TelegramAuthCodeHandler {
       return;
     }
 
-    // Check if there's a pending auth code request
-    if (!(await this.conversationState.hasPendingAuthCodeRequestId(userId))) {
+    // Get session for this user
+    const session = await this.conversationRepository.getSessionByTelegramUserId(userId);
+    if (!session) {
+      await this.botService.bot.api.sendMessage(chatId, '❌ Não há uma sessão de login ativa.\n\n' +
+          'Por favor, inicie o processo de login novamente.',
+      );
+      return;
+    }
+
+    // Check if session is in the right state
+    if (session.state !== 'waitingCode' && session.state !== 'waitingPassword') {
       await this.botService.bot.api.sendMessage(chatId, '❌ Não há uma solicitação de código de autenticação pendente.\n\n' +
           'Por favor, inicie o processo de login novamente.',
       );
-      await this.conversationState.clearState(userId);
+      await this.conversationRepository.deleteSession(session.requestId);
       return;
     }
 
-    // Get the requestId associated with this userId
-    const requestId = await this.conversationState.getPendingAuthCodeRequestId(userId);
-    if (!requestId) {
-      await this.botService.bot.api.sendMessage(chatId, '❌ Erro ao processar código. Por favor, tente novamente.');
-      await this.conversationState.clearState(userId);
-      return;
-    }
-
-    // Get session data from Redis to include in payload
-    const session = await this.conversationRepository.getLoginSession(requestId);
-    if (!session) {
-      await this.botService.bot.api.sendMessage(chatId, '❌ Sessão de login não encontrada. Por favor, inicie o processo novamente.');
-      await this.conversationState.clearState(userId);
-      return;
-    }
+    const requestId = session.requestId;
 
     try {
       // Send auth code to tdlib worker via queue with session data
-      await this.telegramUserClient.provideAuthCode(requestId, normalizedCode, {
-        userId: session.userId,
-        chatId: session.chatId,
-        phoneNumber: session.phoneNumber,
-        state: session.state,
-      });
-      
-      // Clear the pending auth code mapping
-      await this.conversationState.clearPendingAuthCodeRequestId(userId);
+      // session.botUserId is botUserId (string) - identifies which worker
+      // session.telegramUserId is telegramUserId (number) - the user interacting with the bot
+      if (!session.phoneNumber) {
+        await this.botService.bot.api.sendMessage(chatId, '❌ Erro: número de telefone não encontrado na sessão.');
+        return;
+      }
+      await this.telegramUserClient.provideAuthCode(
+        session.loggedInUserId.toString(),
+        requestId,
+        normalizedCode,
+        {
+          userId: session.telegramUserId,
+          chatId: session.chatId,
+          phoneNumber: session.phoneNumber,
+          state: session.state,
+        },
+      );
       
       await this.botService.bot.api.sendMessage(chatId, '✅ Código recebido! Processando login...');
     } catch (error) {
       console.error(`[ERROR] Error providing auth code for userId ${userId}:`, error);
       await this.botService.bot.api.sendMessage(chatId, '❌ Erro ao processar código. Por favor, tente novamente.');
-      await this.conversationState.clearState(userId);
+      if (session) {
+        await this.conversationRepository.deleteSession(session.requestId);
+      }
     }
   }
 }

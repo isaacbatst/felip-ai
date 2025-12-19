@@ -1,92 +1,88 @@
 /**
- * Estados possíveis de uma conversa
+ * Session state - unified state for both conversation flow and login process
  */
-export enum ConversationState {
-  IDLE = 'idle',
-  WAITING_PHONE_NUMBER = 'waiting_phone_number',
-  WAITING_AUTH_CODE = 'waiting_auth_code',
+export type SessionState = 
+  | 'idle'                    // No active session
+  | 'waitingPhone'            // Waiting for phone number input
+  | 'waitingCode'             // Waiting for authentication code
+  | 'waitingPassword'         // Waiting for password (2FA)
+  | 'completed'               // Login completed successfully
+  | 'failed';                 // Login failed
+
+/**
+ * Unified session data structure
+ * Merges conversation state and login session data into a single model
+ */
+export interface SessionData {
+  // Identifiers
+  requestId: string;                    // Unique session identifier
+  loggedInUserId: number;                // The Telegram user ID that is logged in (impersonated user) - the user the worker is configured to impersonate
+  telegramUserId: number;                // Telegram user ID (number) - the user interacting with the bot (from ctx.from.id)
+  
+  // Login information (only present during login flow)
+  phoneNumber?: string;                  // Phone number being used for login
+  
+  // Conversation context
+  chatId: number;                        // Chat ID where the conversation is happening
+  
+  // Session state
+  state: SessionState;                   // Current state of the session
 }
 
 /**
- * Login session data structure
- */
-export interface LoginSessionData {
-  userId: number;
-  phoneNumber: string;
-  chatId: number;
-  requestId: string;
-  state: 'waitingPhone' | 'waitingCode' | 'waitingPassword' | 'completed' | 'failed';
-}
-
-/**
- * Abstract repository for conversation state operations and login sessions
+ * Abstract repository for session data operations
+ * Unified model: session data contains both conversation state and login information
  */
 export abstract class ConversationRepository {
   /**
-   * Define o estado de uma conversa para um usuário
+   * Store a session
+   * This will cancel any existing active sessions for the same loggedInUserId to ensure only one active session exists
    */
-  abstract setState(userId: number, state: ConversationState): Promise<void>;
+  abstract setSession(session: SessionData): Promise<void>;
 
   /**
-   * Obtém o estado atual de uma conversa para um usuário
+   * Get a session by requestId
    */
-  abstract getState(userId: number): Promise<ConversationState>;
+  abstract getSession(requestId: string): Promise<SessionData | null>;
 
   /**
-   * Remove o estado de uma conversa (volta para IDLE)
+   * Get a session by telegramUserId (the user interacting with the bot)
+   * Returns the most recent active session
    */
-  abstract clearState(userId: number): Promise<void>;
+  abstract getSessionByTelegramUserId(telegramUserId: number): Promise<SessionData | null>;
 
   /**
-   * Define o requestId pendente de auth code para um usuário
+   * Get active session by loggedInUserId (returns the most recent non-completed session)
    */
-  abstract setPendingAuthCodeRequestId(userId: number, requestId: string): Promise<void>;
+  abstract getActiveSessionByLoggedInUserId(loggedInUserId: number): Promise<SessionData | null>;
 
   /**
-   * Obtém o requestId pendente de auth code para um usuário
+   * Get completed session by loggedInUserId (returns the most recent completed session)
+   * Used to check if a telegram user is logged in as another user
    */
-  abstract getPendingAuthCodeRequestId(userId: number): Promise<string | undefined>;
+  abstract getCompletedSessionByLoggedInUserId(loggedInUserId: number): Promise<SessionData | null>;
 
   /**
-   * Verifica se há um requestId pendente de auth code para um usuário
+   * Check if a telegram user is logged in (has a completed session)
+   * Returns the logged-in user ID if logged in, null otherwise
    */
-  abstract hasPendingAuthCodeRequestId(userId: number): Promise<boolean>;
+  abstract isLoggedIn(telegramUserId: number): Promise<number | null>;
 
   /**
-   * Remove o requestId pendente de auth code para um usuário
+   * Update session state
    */
-  abstract clearPendingAuthCodeRequestId(userId: number): Promise<void>;
-
-  /**
-   * Store a login session
-   */
-  abstract setLoginSession(session: LoginSessionData): Promise<void>;
-
-  /**
-   * Get a login session by requestId
-   */
-  abstract getLoginSession(requestId: string): Promise<LoginSessionData | null>;
-
-  /**
-   * Get a login session by userId
-   */
-  abstract getLoginSessionByUserId(userId: number): Promise<LoginSessionData | null>;
-
-  /**
-   * Update login session state
-   */
-  abstract updateLoginSessionState(
+  abstract updateSessionState(
     requestId: string,
-    state: LoginSessionData['state'],
+    state: SessionState,
   ): Promise<void>;
 
   /**
-   * Delete a login session
+   * Delete a session
    */
-  abstract deleteLoginSession(requestId: string): Promise<void>;
+  abstract deleteSession(requestId: string): Promise<void>;
 
   /**
-   * Check if a login session exists
+   * Check if a session exists
    */
-  abstract loginSessionExists(requestId: string): Promise<boolean>;
+  abstract sessionExists(requestId: string): Promise<boolean>;
 }

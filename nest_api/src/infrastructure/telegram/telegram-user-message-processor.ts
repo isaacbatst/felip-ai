@@ -3,6 +3,7 @@ import { TelegramPurchaseHandler } from './handlers/telegram-user-purchase.handl
 import { TelegramUserClientProxyService } from '../tdlib/telegram-user-client-proxy.service';
 import { QueuedMessage } from './interfaces/queued-message';
 import { ActiveGroupsRepository } from '@/infrastructure/persistence/active-groups.repository';
+import { ConversationRepository } from '@/infrastructure/persistence/conversation.repository';
 import { TdlibUpdateNewMessage } from '../tdlib/tdlib-update.types';
 
 /**
@@ -14,21 +15,88 @@ import { TdlibUpdateNewMessage } from '../tdlib/tdlib-update.types';
 export class TelegramUserMessageProcessor {
   private readonly logger = new Logger(TelegramUserMessageProcessor.name);
   constructor(
-    private readonly client: TelegramUserClientProxyService,
     private readonly purchaseHandler: TelegramPurchaseHandler,
     private readonly activeGroupsRepository: ActiveGroupsRepository,
+    private readonly telegramUserClient: TelegramUserClientProxyService,
+    private readonly conversationRepository: ConversationRepository,
   ) {}
 
   /**
    * Processes a queued message update
+   * This method dispatches getUserId to check for self-messages first
    */
   async processMessage(queuedMessage: QueuedMessage): Promise<void> {
-    this.logger.log('Processing message', { queuedMessage });
-    const { update } = queuedMessage;
+    this.logger.log('Processing message');
+    const { update, userId: userIdStr } = queuedMessage;
     try {
       // Type guard to check if this is an updateNewMessage
       if (!update || typeof update !== 'object' || update._ !== 'updateNewMessage') {
         this.logger.warn('Received non-message update, ignoring...');
+        return;
+      }
+
+      if (!userIdStr) {
+        this.logger.warn('No userId in message update, ignoring...');
+        return;
+      }
+
+      const messageUpdate = update as TdlibUpdateNewMessage;
+
+      const message = messageUpdate?.message;
+      if (!message) {
+        return;
+      }
+
+      const chatId = message.chat_id;
+      const senderId = message.sender_id?.user_id;
+
+      if (!chatId) {
+        this.logger.warn('Could not fetch chat ID, ignoring...');
+        return;
+      }
+
+      // Get telegramUserId via HTTP to check for self-messages
+      try {
+        const telegramUserId = await this.telegramUserClient.getUserId(userIdStr) as number | null;
+        
+        // Check if this is a self-message
+        if (senderId === telegramUserId) {
+          this.logger.warn('Self message received, ignoring...', {
+            telegramUserId,
+            senderId,
+            chatId,
+          });
+          return;
+        }
+
+        // Not a self-message, process it directly
+        await this.processMessageDirectly(queuedMessage);
+      } catch (error) {
+        this.logger.error('Error getting telegramUserId for self-message check', { error, userId: userIdStr });
+        // If we can't get userId, process anyway (better than blocking)
+        await this.processMessageDirectly(queuedMessage);
+      }
+    } catch (error) {
+      this.logger.error('Error handling new message:', { error });
+    }
+  }
+
+  /**
+   * Processes a message directly (after self-message check)
+   * This is called from tdlib-command-response.handler.ts after verifying it's not a self-message
+   */
+  async processMessageDirectly(queuedMessage: QueuedMessage): Promise<void> {
+    this.logger.log('Processing message directly');
+    const { update, userId: userIdStr } = queuedMessage;
+    try {
+      // Type guard to check if this is an updateNewMessage
+      if (!update || typeof update !== 'object' || update._ !== 'updateNewMessage') {
+        this.logger.warn('Received non-message update, ignoring...');
+        return;
+      }
+
+      if (!userIdStr) {
+        this.logger.warn('No userId in message update, ignoring...');
         return;
       }
 
@@ -45,28 +113,46 @@ export class TelegramUserMessageProcessor {
       const date = message.date;
       const content = message.content;
 
-      // Ignore self messages (messages sent by the bot itself)
-      const userId = await this.client.getUserId();
-      if(!userId) {
-        this.logger.warn('Could not fetch user ID, ignoring...');
-        return;
-      }
-      if(!chatId) {
+      if (!chatId) {
         this.logger.warn('Could not fetch chat ID, ignoring...');
         return;
       }
-      if (senderId === userId) {
-        this.logger.warn('Self message received, ignoring...');
+
+      // Get loggedInUserId from repositories using telegramUserId
+      // userIdStr is the telegramUserId (string) - the user interacting with the bot
+      const telegramUserId = Number.parseInt(userIdStr, 10);
+      if (Number.isNaN(telegramUserId)) {
+        this.logger.error(`Invalid userId (not a number): ${userIdStr}`);
+        return;
+      }
+
+      // Get loggedInUserId from repository
+      // First try isLoggedIn which returns loggedInUserId if user is logged in
+      let loggedInUserId = await this.conversationRepository.isLoggedIn(telegramUserId);
+      
+      // If not found, try to get session by telegramUserId (might be in progress)
+      if (!loggedInUserId) {
+        const session = await this.conversationRepository.getSessionByTelegramUserId(telegramUserId);
+        if (session?.loggedInUserId) {
+          loggedInUserId = session.loggedInUserId;
+        }
+      }
+
+      if (!loggedInUserId) {
+        this.logger.warn(`No loggedInUserId found for telegramUserId: ${telegramUserId}, ignoring message...`);
         return;
       }
 
       // Check if group is activated (only process messages from activated groups)
-      const activeGroups = await this.activeGroupsRepository.getActiveGroups(userId.toString());
-      this.logger.log('Active groups:', { activeGroups, userId });
+      // Use loggedInUserId to get active groups
+      const loggedInUserIdStr = loggedInUserId.toString();
+      const activeGroups = await this.activeGroupsRepository.getActiveGroups(loggedInUserIdStr);
+      this.logger.log('Active groups:', { activeGroups, loggedInUserId, telegramUserId, senderId });
       if (activeGroups === null || !activeGroups.includes(chatId)) {
-        this.logger.warn(`Group ${chatId} is not activated, ignoring message...`);
+        this.logger.warn(`Group ${chatId} is not activated for loggedInUserId ${loggedInUserId}, ignoring message...`);
         return;
       }
+      
       // Extract text content
       let text = '';
       let contentType = 'unknown';
@@ -89,16 +175,15 @@ export class TelegramUserMessageProcessor {
       if (text) {
         logData.text = text;
         // Handle text message with purchase handler
+        // userIdStr is botUserId (string) - needed for sendMessage HTTP calls
         if (chatId && messageId !== undefined) {
-          await this.purchaseHandler.handlePurchase(chatId, messageId, text);
+          await this.purchaseHandler.handlePurchase(userIdStr, chatId, messageId, text);
         }
       } else {
         logData.content = '(non-text message)';
         // Include full update for non-text messages to help debugging
         logData.rawUpdate = JSON.stringify(update, null, 2);
       }
-
-      this.logger.log('New message received:', { logData });
     } catch (error) {
       this.logger.error('Error handling new message:', { error });
     }

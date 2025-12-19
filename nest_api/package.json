@@ -25,6 +25,7 @@
     "test:e2e": "jest --config ./test/jest-e2e.json"
   },
   "dependencies": {
+    "@felip-ai/shared-types": "workspace:*",
     "@grammyjs/runner": "^2.0.3",
     "@nestjs/bullmq": "^11.0.4",
     "@nestjs/common": "^11.0.1",

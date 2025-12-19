@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import type { Context } from 'grammy';
-import { ConversationState, ConversationStateService } from '../conversation-state.service';
+import { ConversationRepository } from '@/infrastructure/persistence/conversation.repository';
 import { TelegramAuthCodeHandler } from './telegram-bot-auth-code.handler';
 import { TelegramPhoneNumberHandler } from './telegram-bot-phone-number.handler';
 
@@ -10,11 +10,11 @@ import { TelegramPhoneNumberHandler } from './telegram-bot-phone-number.handler'
  * Composition: usa handlers especializados para processar diferentes tipos de mensagens
  */
 @Injectable()
-export class TelegramMessageHandler {
-  private readonly logger = new Logger(TelegramMessageHandler.name);
+export class TelegramBotMessageHandler {
+  private readonly logger = new Logger(TelegramBotMessageHandler.name);
 
   constructor(
-    private readonly conversationState: ConversationStateService,
+    private readonly conversationRepository: ConversationRepository,
     private readonly phoneNumberHandler: TelegramPhoneNumberHandler,
     private readonly authCodeHandler: TelegramAuthCodeHandler,
   ) {}
@@ -31,26 +31,28 @@ export class TelegramMessageHandler {
         return;
       }
 
-      // Check if user is waiting for auth code
-      if (await this.conversationState.isInState(userId, ConversationState.WAITING_AUTH_CODE)) {
-        this.logger.log('User is waiting for auth code');
-        await this.authCodeHandler.handleAuthCodeInput({
-          chatId: msg.chat.id,
-          authCode: text,
-          userId,
-        });
-        return;
-      }
+      // Check session state
+      const session = await this.conversationRepository.getSessionByTelegramUserId(userId);
+      if (session) {
+        if (session.state === 'waitingCode' || session.state === 'waitingPassword') {
+          this.logger.log('User is waiting for auth code');
+          await this.authCodeHandler.handleAuthCodeInput({
+            chatId: msg.chat.id,
+            authCode: text,
+            userId,
+          });
+          return;
+        }
 
-      // Check if user is in login flow (waiting for phone number)
-      if (await this.conversationState.isInState(userId, ConversationState.WAITING_PHONE_NUMBER)) {
-        this.logger.log('User is waiting for phone number');
-        await this.phoneNumberHandler.handlePhoneNumberInput({
-          chatId: msg.chat?.id,
-          phoneNumber: text,
-          userId,
-        });
-        return;
+        if (session.state === 'waitingPhone') {
+          this.logger.log('User is waiting for phone number');
+          await this.phoneNumberHandler.handlePhoneNumberInput({
+            chatId: msg.chat?.id,
+            phoneNumber: text,
+            userId,
+          });
+          return;
+        }
       }
 
       this.logger.warn('No handler found for message');

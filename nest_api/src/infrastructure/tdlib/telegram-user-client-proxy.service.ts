@@ -1,181 +1,286 @@
-import { Injectable } from '@nestjs/common';
+import { WorkerManager } from '@/infrastructure/workers/worker-manager';
+import type {
+  CommandContext,
+  TdlibCommand,
+  TdlibCommandType
+} from '@felip-ai/shared-types';
+import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { randomUUID } from 'node:crypto';
-import { TelegramUserInfo } from './telegram-user-info.types';
 
-export interface TdlibCommandRequest {
-  type:
-    | 'sendMessage'
-    | 'login'
-    | 'getChats'
-    | 'getChat'
-    | 'getAuthorizationState'
-    | 'logOut'
-    | 'getMe'
-    | 'getUserId'
-    | 'resendAuthenticationCode';
+// Re-export for convenience
+export type { CommandContext, TdlibCommand, TdlibCommandType };
+
+interface TdlibHttpCommandRequest {
+  type: 'sendMessage' | 'getChats' | 'getChat' | 'getAuthorizationState' | 'logOut' | 'getMe' | 'getUserId' | 'resendAuthenticationCode';
   payload: unknown;
 }
 
-export interface TdlibCommandResponse {
+interface TdlibHttpCommandResponse {
   success: boolean;
   result?: unknown;
   error?: string;
 }
 
-export interface TdlibCommand {
-  type:
-    | 'sendMessage'
-    | 'login'
-    | 'getChats'
-    | 'getChat'
-    | 'getAuthorizationState'
-    | 'logOut'
-    | 'getMe'
-    | 'getUserId'
-    | 'resendAuthenticationCode'
-    | 'provideAuthCode'
-    | 'providePassword';
-  payload: unknown;
-  requestId?: string;
-}
-
 /**
- * Proxy service that sends commands to tdlib_worker via HTTP (for most operations) or BullMQ (for login with callbacks)
- * Single Responsibility: sending commands to tdlib_worker via HTTP requests or BullMQ
+ * Proxy service that sends commands to tdlib_worker
+ * - Uses HTTP for synchronous responses for commands available in http-api.ts
+ * - Uses BullMQ for async commands (login, provideAuthCode, providePassword)
+ * Single Responsibility: dispatching commands to tdlib_worker via HTTP or BullMQ
  */
 @Injectable()
-export class TelegramUserClientProxyService {
-  private readonly workerBaseUrl: string;
-  
+export class TelegramUserClientProxyService implements OnModuleDestroy {
+  private readonly logger = new Logger(TelegramUserClientProxyService.name);
+  private readonly queues: Map<string, Queue> = new Map();
+  private readonly redisConfig: { host: string; port: number; password?: string };
+
   constructor(
     private readonly configService: ConfigService,
-    @InjectQueue('tdlib-commands') private readonly commandsQueue: Queue,
+    private readonly workerManager: WorkerManager,
   ) {
-    const workerHost = this.configService.get<string>('TDLIB_WORKER_HOST') || 'localhost';
-    const workerPort = this.configService.get<string>('TDLIB_WORKER_PORT') || '3001';
-    this.workerBaseUrl = `http://${workerHost}:${workerPort}`;
+    this.redisConfig = {
+      host: this.configService.get<string>('REDIS_HOST') || 'localhost',
+      port: Number.parseInt(this.configService.get<string>('REDIS_PORT') || '6379', 10),
+      password: this.configService.get<string>('REDIS_PASSWORD'),
+    };
   }
 
-  private async enqueueCommand(command: TdlibCommand): Promise<void> {
-    await this.commandsQueue.add(command.type, command);
-  }
-
-  private async sendCommandViaHttp<T>(command: TdlibCommandRequest): Promise<T> {
-    try {
-      const response = await fetch(`${this.workerBaseUrl}/command`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(command),
+  private getQueueForUser(userId: string): Queue {
+    if (!this.queues.has(userId)) {
+      const queueName = `tdlib-commands-${userId}`;
+      const queue = new Queue(queueName, {
+        connection: this.redisConfig,
       });
+      this.queues.set(userId, queue);
+      this.logger.log(`Created queue for user ${userId}: ${queueName}`);
+      return queue;
+    }
+    const queue = this.queues.get(userId);
+    if (!queue) {
+      throw new Error(`Queue for user ${userId} not found`);
+    }
+    return queue;
+  }
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`HTTP error! status: ${response.status}, body: ${errorText}`);
-      }
-
-      const data = (await response.json()) as TdlibCommandResponse;
-
-      if (!data.success) {
-        throw new Error(data.error || 'Unknown error');
-      }
-
-      return data.result as T;
-    } catch (error) {
-      if (error instanceof Error) {
-        throw error;
-      }
-      throw new Error(`Failed to send command: ${String(error)}`);
+  async onModuleDestroy(): Promise<void> {
+    // Close all user queues
+    for (const queue of this.queues.values()) {
+      await queue.close();
     }
   }
 
-  async sendMessage(chatId: number, text: string, replyToMessageId?: number): Promise<unknown> {
-    return this.sendCommandViaHttp({
+  /**
+   * Sends a command via HTTP and returns the result synchronously
+   */
+  private async sendHttpCommand(
+    userId: string,
+    command: TdlibHttpCommandRequest,
+  ): Promise<unknown> {
+    const port = await this.workerManager.getWorkerPort(userId);
+    if (!port) {
+      throw new Error(`No port found for worker user ${userId}. Worker may not be running.`);
+    }
+
+    const url = `http://localhost:${port}/command`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(command),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+      throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
+    }
+
+    const data = await response.json() as TdlibHttpCommandResponse;
+    if (!data.success) {
+      throw new Error(data.error || 'Command failed');
+    }
+
+    return data.result;
+  }
+
+  /**
+   * Dispatches a command to the worker queue asynchronously (for commands not in http-api)
+   * Responses are handled via events in the tdlib-updates queue
+   */
+  private async dispatchCommand(
+    userId: string,
+    command: TdlibCommand,
+    context?: CommandContext,
+  ): Promise<string> {
+    const queue = this.getQueueForUser(userId);
+    const requestId = command.requestId || randomUUID();
+    const commandWithRequestId = { 
+      ...command, 
+      requestId,
+      context: context || command.context,
+    };
+
+    await queue.add(command.type, commandWithRequestId);
+    this.logger.debug(`Dispatched command ${command.type} for user ${userId} with requestId ${requestId}`);
+    return requestId;
+  }
+
+  /**
+   * Dispatches a command with context that will be echoed back in the response
+   */
+  async dispatchCommandWithContext(
+    userId: string,
+    command: Omit<TdlibCommand, 'context'>,
+    context: CommandContext,
+  ): Promise<string> {
+    return this.dispatchCommand(userId, command, context);
+  }
+
+  /**
+   * Sends a sendMessage command via HTTP (synchronous)
+   */
+  async sendMessage(userId: string, chatId: number, text: string, replyToMessageId?: number): Promise<unknown> {
+    return this.sendHttpCommand(userId, {
       type: 'sendMessage',
       payload: { chatId, text, replyToMessageId },
     });
   }
 
-  async login(phoneNumber: string, userId: number, chatId: number): Promise<void> {
-    // Generate a unique requestId for this login session
-    const requestId = randomUUID();
-    await this.enqueueCommand({
+  /**
+   * Dispatches a login command
+   * Response will be sent via login-success/login-failure events in tdlib-updates queue
+   * @param botUserId - Bot user ID (string) - identifies which bot user owns this worker
+   * @param phoneNumber - Phone number to login with
+   * @param telegramBotUserId - Telegram bot user ID (number) - the bot user ID from Telegram context
+   * @param chatId - Chat ID where to send messages
+   * @param requestId - Optional request ID. If not provided, a new one will be generated.
+   */
+  async login(botUserId: string, phoneNumber: string, requestId?: string): Promise<string> {
+    const finalRequestId = requestId || randomUUID();
+    await this.dispatchCommand(botUserId, {
       type: 'login',
-      payload: { phoneNumber, userId, chatId },
-      requestId,
+      payload: { 
+        phoneNumber, 
+      },
+      requestId: finalRequestId,
     });
+    return finalRequestId;
   }
 
+  /**
+   * Dispatches a provideAuthCode command
+   * Response will be sent via login-success/login-failure events in tdlib-updates queue
+   * @param botUserId - Bot user ID (string) - identifies which bot user owns this worker
+   * @param requestId - Request ID from login command
+   * @param code - Authentication code
+   * @param sessionData - Session data containing telegramBotUserId (number)
+   */
   async provideAuthCode(
+    botUserId: string,
     requestId: string,
     code: string,
     sessionData: { userId: number; chatId: number; phoneNumber: string; state: string },
   ): Promise<void> {
-    await this.enqueueCommand({
-      type: 'provideAuthCode',
-      payload: { requestId, code, ...sessionData },
-    });
+    await this.dispatchCommand(
+      botUserId,
+      {
+        type: 'provideAuthCode',
+        payload: { requestId, code, ...sessionData },
+        requestId,
+      },
+      {
+        userId: botUserId,
+        commandType: 'provideAuthCode',
+        chatId: sessionData.chatId,
+      },
+    );
   }
 
+  /**
+   * Dispatches a providePassword command
+   * Response will be sent via login-success/login-failure events in tdlib-updates queue
+   * @param botUserId - Bot user ID (string) - identifies which bot user owns this worker
+   * @param requestId - Request ID from login command
+   * @param password - Password
+   * @param sessionData - Session data containing telegramBotUserId (number)
+   */
   async providePassword(
+    botUserId: string,
     requestId: string,
     password: string,
     sessionData: { userId: number; chatId: number; phoneNumber: string; state: string },
   ): Promise<void> {
-    await this.enqueueCommand({
+    await this.dispatchCommand(botUserId, {
       type: 'providePassword',
       payload: { requestId, password, ...sessionData },
+      requestId,
     });
   }
 
-  async getChats(chatList: { _: string }, limit: number): Promise<unknown> {
-    return this.sendCommandViaHttp({
+  /**
+   * Sends a getChats command via HTTP (synchronous)
+   */
+  async getChats(userId: string, chatList: { _: string }, limit: number): Promise<unknown> {
+    return this.sendHttpCommand(userId, {
       type: 'getChats',
       payload: { chatList, limit },
     });
   }
 
-  async getChat(chatId: number): Promise<unknown> {
-    return this.sendCommandViaHttp({
+  /**
+   * Sends a getChat command via HTTP (synchronous)
+   */
+  async getChat(userId: string, chatId: number): Promise<unknown> {
+    return this.sendHttpCommand(userId, {
       type: 'getChat',
       payload: { chatId },
     });
   }
 
-  async getAuthorizationState(): Promise<unknown> {
-    return this.sendCommandViaHttp({
+  /**
+   * Sends a getAuthorizationState command via HTTP (synchronous)
+   */
+  async getAuthorizationState(userId: string): Promise<unknown> {
+    return this.sendHttpCommand(userId, {
       type: 'getAuthorizationState',
       payload: {},
     });
   }
 
-  async logOut(): Promise<unknown> {
-    return this.sendCommandViaHttp({
+  /**
+   * Sends a logOut command via HTTP (synchronous)
+   */
+  async logOut(userId: string): Promise<unknown> {
+    return this.sendHttpCommand(userId, {
       type: 'logOut',
       payload: {},
     });
   }
 
-  async getMe(): Promise<TelegramUserInfo> {
-    return this.sendCommandViaHttp<TelegramUserInfo>({
+  /**
+   * Sends a getMe command via HTTP (synchronous)
+   */
+  async getMe(userId: string): Promise<unknown> {
+    return this.sendHttpCommand(userId, {
       type: 'getMe',
       payload: {},
     });
   }
 
-  async getUserId(): Promise<number | null> {
-    return this.sendCommandViaHttp<number | null>({
+  /**
+   * Sends a getUserId command via HTTP (synchronous)
+   */
+  async getUserId(userId: string): Promise<unknown> {
+    return this.sendHttpCommand(userId, {
       type: 'getUserId',
       payload: {},
     });
   }
 
-  async resendAuthenticationCode(): Promise<unknown> {
-    return this.sendCommandViaHttp({
+  /**
+   * Sends a resendAuthenticationCode command via HTTP (synchronous)
+   */
+  async resendAuthenticationCode(userId: string): Promise<unknown> {
+    return this.sendHttpCommand(userId, {
       type: 'resendAuthenticationCode',
       payload: {},
     });

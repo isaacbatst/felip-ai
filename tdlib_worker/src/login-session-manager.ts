@@ -7,41 +7,34 @@ import { TelegramUserClient } from './telegram-user-client';
  * Results are communicated via events to Nest API, not Promise resolution
  */
 export class LoginSessionManager {
-  // Track active requestIds (for matching authorization state updates)
-  private activeRequestIds: Set<string> = new Set();
+  // loggedInUserId from worker config (USER_ID env var) - used to identify which worker/user this session belongs to
+  // This is the user ID that the worker is configured to impersonate
+  private readonly loggedInUserId: string | null;
   private updatesQueue: Queue;
 
   constructor(
     private readonly client: TelegramUserClient,
     updatesQueue: Queue,
+    loggedInUserId?: string,
   ) {
     this.updatesQueue = updatesQueue;
+    this.loggedInUserId = loggedInUserId || null;
     this.setupAuthorizationStateHandler();
   }
 
   /**
    * Starts a login session by setting the phone number
    * Fire-and-forget: results are communicated via events to Nest API
+   * Session is created in Nest API before dispatching login command
+   * @param phoneNumber - Phone number to login with
    */
   async startLogin(
     phoneNumber: string,
-    userId: number,
-    chatId: number,
-    requestId: string,
   ): Promise<void> {
-    this.activeRequestIds.add(requestId);
+    // No need to track telegramUserId - loggedInUserId from config is used to identify the worker
 
-    // Dispatch session created event to Nest API for persistence
-    this.updatesQueue.add('session-created', {
-      requestId,
-      userId,
-      phoneNumber,
-      chatId,
-      state: 'waitingPhone',
-    }).catch((error) => {
-      console.error(`[ERROR] Failed to dispatch session-created event for ${requestId}:`, error);
-      // Still continue with login flow
-    });
+    // Session is now created in Nest API before dispatching login command
+    // No need to create it here
 
     // Set phone number using TDLib API directly
     this.setPhoneNumber(phoneNumber)
@@ -50,16 +43,16 @@ export class LoginSessionManager {
         console.log(`[DEBUG] 📱 Phone number set: ${phoneNumber}`);
       })
       .catch((error) => {
-        console.error(`[ERROR] Failed to set phone number for ${requestId}:`, error);
-        this.updateSessionState(requestId, 'failed', userId);
-        // Dispatch failure event to Nest API
-        this.updatesQueue.add('login-failure', {
-          requestId,
-          error: error instanceof Error ? error.message : String(error),
-        }).catch((err) => {
-          console.error('[ERROR] Error enqueueing login failure event:', err);
-        });
-        this.cleanupSession(requestId);
+        console.error(`[ERROR] Failed to set phone number:`, error);
+        if (this.loggedInUserId) {
+          // Dispatch failure event to Nest API (Nest API will look up active session by loggedInUserId)
+          this.updatesQueue.add('login-failure', {
+            botUserId: this.loggedInUserId, // Keep botUserId in payload for backward compatibility with nest_api
+            error: error instanceof Error ? error.message : String(error),
+          }).catch((err) => {
+            console.error('[ERROR] Error enqueueing login failure event:', err);
+          });
+        }
       });
     }
 
@@ -75,7 +68,7 @@ export class LoginSessionManager {
 
   /**
    * Handles authorization state updates and requests auth codes when needed
-   * Note: We dispatch events with requestId, and Nest API will look up session data from Redis
+   * Note: We dispatch events with loggedInUserId, and Nest API will look up session data from Redis
    */
   async handleAuthorizationState(update: unknown): Promise<void> {
     if (typeof update !== 'object' || update === null || !('authorization_state' in update)) {
@@ -84,54 +77,53 @@ export class LoginSessionManager {
 
     const authState = (update as { authorization_state?: { _?: string } }).authorization_state?._;
 
-    // Process all active sessions (we only track requestIds, Nest API has the full session data)
-    for (const requestId of Array.from(this.activeRequestIds)) {
-      if (authState === 'authorizationStateWaitCode') {
-        this.updateSessionState(requestId, 'waitingCode');
-        // Send auth code request to nest_api (Nest API will look up session data)
-        await this.updatesQueue.add('auth-code-request', {
-          requestId,
-          retry: false,
+    // Only process if loggedInUserId is available (identifies which worker/user)
+    // Nest API will look up the active session by loggedInUserId (only one can be active at a time)
+    if (!this.loggedInUserId) {
+      return;
+    }
+
+    // Nest API will look up the active session by loggedInUserId
+    // Only one login can be active at a time per user, so it will return the active one
+    if (authState === 'authorizationStateWaitCode') {
+      // Send auth code request to nest_api (Nest API will look up active session by loggedInUserId)
+      await this.updatesQueue.add('auth-code-request', {
+        botUserId: this.loggedInUserId, // Keep botUserId in payload for backward compatibility with nest_api
+        retry: false,
+      });
+    } else if (authState === 'authorizationStateWaitPassword') {
+      // Send password request to nest_api (Nest API will look up active session by loggedInUserId)
+      await this.updatesQueue.add('password-request', {
+        botUserId: this.loggedInUserId, // Keep botUserId in payload for backward compatibility with nest_api
+      });
+    } else if (authState === 'authorizationStateReady') {
+      // Login completed - get user info and dispatch success event
+      try {
+        const userInfo = await this.client.getMe();
+        // Dispatch login success event to nest_api (Nest API will look up active session by loggedInUserId)
+        await this.updatesQueue.add('login-success', {
+          botUserId: this.loggedInUserId, // Keep botUserId in payload for backward compatibility with nest_api
+          userInfo,
         });
-      } else if (authState === 'authorizationStateWaitPassword') {
-        this.updateSessionState(requestId, 'waitingPassword');
-        // Send password request to nest_api (Nest API will look up session data)
-        await this.updatesQueue.add('password-request', {
-          requestId,
+      } catch (error) {
+        console.error(`[ERROR] Error getting user info after login:`, error);
+        // Still dispatch success but without user info
+        await this.updatesQueue.add('login-success', {
+          botUserId: this.loggedInUserId, // Keep botUserId in payload for backward compatibility with nest_api
+          userInfo: null,
+          error: error instanceof Error ? error.message : String(error),
         });
-      } else if (authState === 'authorizationStateReady') {
-        // Login completed - get user info and dispatch success event
-        this.updateSessionState(requestId, 'completed');
-        try {
-          const userInfo = await this.client.getMe();
-          // Dispatch login success event to nest_api (Nest API will look up session data)
-          await this.updatesQueue.add('login-success', {
-            requestId,
-            userInfo,
-          });
-        } catch (error) {
-          console.error(`[ERROR] Error getting user info after login for ${requestId}:`, error);
-          // Still dispatch success but without user info
-          await this.updatesQueue.add('login-success', {
-            requestId,
-            userInfo: null,
-            error: error instanceof Error ? error.message : String(error),
-          });
-        }
-        this.cleanupSession(requestId);
-      } else if (authState === 'authorizationStateClosed') {
-        // Login failed or closed - dispatch failure event
-        this.updateSessionState(requestId, 'failed');
-        const error = new Error('Authorization closed');
-        // Dispatch login failure event to nest_api (Nest API will look up session data)
-        await this.updatesQueue.add('login-failure', {
-          requestId,
-          error: error.message,
-        }).catch((err) => {
-          console.error('[ERROR] Error enqueueing login failure event:', err);
-        });
-        this.cleanupSession(requestId);
       }
+    } else if (authState === 'authorizationStateClosed') {
+      // Login failed or closed - dispatch failure event
+      const error = new Error('Authorization closed');
+      // Dispatch login failure event to nest_api (Nest API will look up active session by loggedInUserId)
+      await this.updatesQueue.add('login-failure', {
+        botUserId: this.loggedInUserId, // Keep botUserId in payload for backward compatibility with nest_api
+        error: error.message,
+      }).catch((err) => {
+        console.error('[ERROR] Error enqueueing login failure event:', err);
+      });
     }
   }
 
@@ -169,11 +161,7 @@ export class LoginSessionManager {
       throw new Error(`Session is not in waitingCode state, current state: ${sessionData.state}`);
     }
 
-    // Ensure requestId is active
-    if (!this.activeRequestIds.has(requestId)) {
-      throw new Error(`No active login session found for requestId: ${requestId}`);
-    }
-
+    // No need to verify active requestId - TDLib will reject if invalid, and Nest API validates sessions
     try {
       await this.checkAuthCode(code);
       return true;
@@ -197,11 +185,7 @@ export class LoginSessionManager {
       throw new Error(`Session is not in waitingPassword state, current state: ${sessionData.state}`);
     }
 
-    // Ensure requestId is active
-    if (!this.activeRequestIds.has(requestId)) {
-      throw new Error(`No active login session found for requestId: ${requestId}`);
-    }
-
+    // No need to verify active requestId - TDLib will reject if invalid, and Nest API validates sessions
     try {
       await this.checkPassword(password);
       return true;
@@ -232,53 +216,5 @@ export class LoginSessionManager {
       }
     });
   }
-
-  /**
-   * Cancels a login session
-   */
-  async cancelSession(requestId: string): Promise<void> {
-    // Dispatch login failure event for cancellation
-    await this.updatesQueue.add('login-failure', {
-      requestId,
-      error: 'Login cancelled',
-    }).catch((error) => {
-      console.error(`[ERROR] Failed to dispatch login-failure event for ${requestId}:`, error);
-    });
-    
-    // Dispatch session deleted event to Nest API (Nest API will look up session data)
-    await this.updatesQueue.add('session-deleted', {
-      requestId,
-    }).catch((error) => {
-      console.error(`[ERROR] Failed to dispatch session-deleted event for ${requestId}:`, error);
-    });
-    
-    this.cleanupSession(requestId);
-  }
-
-  /**
-   * Updates session state and dispatches event to Nest API
-   */
-  private updateSessionState(requestId: string, state: string, userId?: number): void {
-    // Dispatch session state update event to Nest API for persistence
-    this.updatesQueue.add('session-state-updated', {
-      requestId,
-      userId,
-      state,
-    }).catch((error) => {
-      console.error(`[ERROR] Failed to dispatch session-state-updated event for ${requestId}:`, error);
-    });
-  }
-
-  /**
-   * Cleanup session from memory (active requestIds)
-   */
-  private cleanupSession(requestId: string): void {
-    // Dispatch session deleted event to Nest API (Nest API will look up session data)
-    this.updatesQueue.add('session-deleted', {
-      requestId,
-    }).catch((error) => {
-      console.error(`[ERROR] Failed to dispatch session-deleted event for ${requestId}:`, error);
-    });
-    this.activeRequestIds.delete(requestId);
-  }
 }
+
