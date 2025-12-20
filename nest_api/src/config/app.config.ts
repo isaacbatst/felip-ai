@@ -81,5 +81,13 @@ export class AppConfigService {
     }
     return value;
   }
+
+  getWorkerManagerType(): 'compose' | 'swarm' {
+    const value = this.configService.get<string>('WORKER_MANAGER_TYPE', 'compose');
+    if (value !== 'compose' && value !== 'swarm') {
+      throw new Error(`WORKER_MANAGER_TYPE must be either 'compose' or 'swarm', got: ${value}`);
+    }
+    return value;
+  }
 }
 
