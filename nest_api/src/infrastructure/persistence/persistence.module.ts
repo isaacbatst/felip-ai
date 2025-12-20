@@ -1,26 +1,26 @@
 import { Module } from "@nestjs/common";
+import { DatabaseModule } from "@/infrastructure/database/database.module";
 import { ActiveGroupsRepository } from "@/infrastructure/persistence/active-groups.repository";
-import { ActiveGroupsRedisStore } from "@/infrastructure/persistence/redis/active-groups-redis-store";
+import { ActiveGroupsDrizzleStore } from "@/infrastructure/persistence/drizzle/active-groups-drizzle-store";
 import { ConversationRepository } from "@/infrastructure/persistence/conversation.repository";
-import { ConversationRedisStore } from "@/infrastructure/persistence/redis/conversation-redis-store";
+import { ConversationDrizzleStore } from "@/infrastructure/persistence/drizzle/conversation-drizzle-store";
 import { WorkerRepository } from "@/infrastructure/persistence/worker.repository";
-import { WorkerRedisStore } from "@/infrastructure/persistence/redis/worker-redis-store";
-import { RedisRepository } from "@/infrastructure/persistence/redis/redis.repository";
+import { WorkerDrizzleStore } from "@/infrastructure/persistence/drizzle/worker-drizzle-store";
 
 @Module({
+  imports: [DatabaseModule],
   providers: [
-    RedisRepository,
     {
       provide: ConversationRepository,
-      useClass: ConversationRedisStore,
+      useClass: ConversationDrizzleStore,
     },
     {
       provide: ActiveGroupsRepository,
-      useClass: ActiveGroupsRedisStore,
+      useClass: ActiveGroupsDrizzleStore,
     },
     {
       provide: WorkerRepository,
-      useClass: WorkerRedisStore,
+      useClass: WorkerDrizzleStore,
     },
   ],
   exports: [

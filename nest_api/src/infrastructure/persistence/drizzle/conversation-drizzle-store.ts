@@ -1,0 +1,333 @@
+import { Injectable, Inject, Logger } from '@nestjs/common';
+import { eq, and, desc, notInArray } from 'drizzle-orm';
+import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
+import { DrizzleQueryError } from 'drizzle-orm';
+import { ConversationRepository, SessionData, SessionState } from '../conversation.repository';
+import { sessions } from '@/infrastructure/database/schema';
+import type * as schema from '@/infrastructure/database/schema';
+
+/**
+ * Drizzle implementation of ConversationRepository
+ * Single Responsibility: unified session data operations using Drizzle ORM with Neon PostgreSQL
+ */
+@Injectable()
+export class ConversationDrizzleStore extends ConversationRepository {
+  private readonly logger = new Logger(ConversationDrizzleStore.name);
+  private readonly sessionTtlSeconds = 30 * 60; // 30 minutes TTL for active sessions
+  private readonly completedSessionTtlSeconds = 365 * 24 * 60 * 60; // 1 year TTL for completed sessions (persistent login)
+
+  constructor(
+    @Inject('DATABASE_CONNECTION')
+    private readonly db: PostgresJsDatabase<typeof schema>,
+  ) {
+    super();
+  }
+
+  /**
+   * Store a session
+   * This will cancel any existing active sessions for the same loggedInUserId to ensure only one active session exists
+   */
+  async setSession(session: SessionData): Promise<void> {
+    // Cancel any existing active sessions for this loggedInUserId
+    const existingActiveSession = await this.getActiveSessionByLoggedInUserId(session.loggedInUserId);
+    if (existingActiveSession && existingActiveSession.requestId !== session.requestId) {
+      // Mark existing session as failed since a new one is being created
+      await this.db
+        .update(sessions)
+        .set({
+          state: 'failed',
+          updatedAt: new Date(),
+        })
+        .where(eq(sessions.requestId, existingActiveSession.requestId));
+    }
+
+    const ttl = session.state === 'completed' ? this.completedSessionTtlSeconds : this.sessionTtlSeconds;
+    const expiresAt = new Date(Date.now() + ttl * 1000);
+
+    // Insert or update session
+    await this.db
+      .insert(sessions)
+      .values({
+        requestId: session.requestId,
+        loggedInUserId: session.loggedInUserId,
+        telegramUserId: session.telegramUserId,
+        phoneNumber: session.phoneNumber,
+        chatId: session.chatId,
+        state: session.state,
+        expiresAt,
+      })
+      .onConflictDoUpdate({
+        target: [sessions.requestId],
+        set: {
+          loggedInUserId: session.loggedInUserId,
+          telegramUserId: session.telegramUserId,
+          phoneNumber: session.phoneNumber,
+          chatId: session.chatId,
+          state: session.state,
+          updatedAt: new Date(),
+          expiresAt,
+        },
+      });
+  }
+
+  /**
+   * Get a session by requestId
+   */
+  async getSession(requestId: string): Promise<SessionData | null> {
+    const result = await this.db
+      .select()
+      .from(sessions)
+      .where(eq(sessions.requestId, requestId))
+      .limit(1);
+
+    if (result.length === 0) {
+      return null;
+    }
+
+    const row = result[0];
+
+    // Check if session has expired
+    if (row.expiresAt && row.expiresAt < new Date()) {
+      return null;
+    }
+
+    return this.mapRowToSessionData(row);
+  }
+
+  /**
+   * Get a session by telegramUserId (the user interacting with the bot)
+   * Returns the most recent active session
+   */
+  async getSessionByTelegramUserId(telegramUserId: number): Promise<SessionData | null> {
+    const result = await this.db
+      .select()
+      .from(sessions)
+      .where(eq(sessions.telegramUserId, telegramUserId))
+      .orderBy(desc(sessions.createdAt))
+      .limit(1);
+
+    if (result.length === 0) {
+      return null;
+    }
+
+    const row = result[0];
+
+    // Check if session has expired
+    if (row.expiresAt && row.expiresAt < new Date()) {
+      return null;
+    }
+
+    return this.mapRowToSessionData(row);
+  }
+
+  /**
+   * Get active session by loggedInUserId (returns the most recent non-completed session)
+   */
+  async getActiveSessionByLoggedInUserId(loggedInUserId: number): Promise<SessionData | null> {
+    try {
+      const result = await this.db
+        .select()
+        .from(sessions)
+        .where(
+          and(
+            eq(sessions.loggedInUserId, loggedInUserId),
+            notInArray(sessions.state, ['completed', 'failed']),
+          ),
+        )
+        .orderBy(desc(sessions.createdAt))
+        .limit(1);
+
+      if (result.length === 0) {
+        return null;
+      }
+
+      const row = result[0];
+
+      // Check if session has expired
+      if (row.expiresAt && row.expiresAt < new Date()) {
+        return null;
+      }
+
+      return this.mapRowToSessionData(row);
+    } catch (error: unknown) {
+      // Log all error properties to help debug
+      const errorDetails: Record<string, unknown> = {
+        errorType: error && typeof error === 'object' && 'constructor' in error ? error.constructor.name : 'Unknown',
+        errorMessage: error instanceof Error ? error.message : String(error),
+        loggedInUserId,
+      };
+
+      if (error instanceof DrizzleQueryError) {
+        errorDetails.query = error.query;
+        errorDetails.params = error.params;
+        errorDetails.stack = error.stack;
+        
+        // Try to get underlying PostgreSQL error
+        const cause = 'cause' in error ? error.cause : undefined;
+        if (cause) {
+          const causeObj = cause as unknown as Record<string, unknown>;
+          errorDetails.underlyingError = {
+            name: causeObj?.constructor && typeof causeObj.constructor === 'function' && 'name' in causeObj.constructor ? causeObj.constructor.name : undefined,
+            message: causeObj?.message,
+            code: causeObj?.code,
+            detail: causeObj?.detail,
+            hint: causeObj?.hint,
+            position: causeObj?.position,
+            severity: causeObj?.severity,
+            stack: causeObj?.stack,
+            // Log all properties of the cause
+            allProperties: Object.keys(causeObj || {}),
+          };
+        }
+        
+        // Also check if error has direct PostgreSQL error properties
+        const errorObj = error as unknown as Record<string, unknown>;
+        if (errorObj.code) {
+          errorDetails.postgresErrorCode = errorObj.code;
+        }
+        if (errorObj.detail) {
+          errorDetails.postgresDetail = errorObj.detail;
+        }
+        
+        this.logger.error('Database query error in getActiveSessionByLoggedInUserId', errorDetails);
+      } else {
+        errorDetails.name = error instanceof Error ? error.name : undefined;
+        errorDetails.stack = error instanceof Error ? error.stack : undefined;
+        
+        // Check for cause property
+        if (error && typeof error === 'object' && 'cause' in error && error.cause) {
+          const causeObj = error.cause as Record<string, unknown>;
+          errorDetails.cause = {
+            name: causeObj?.constructor && typeof causeObj.constructor === 'function' && 'name' in causeObj.constructor ? causeObj.constructor.name : undefined,
+            message: causeObj?.message,
+            code: causeObj?.code,
+            detail: causeObj?.detail,
+            stack: causeObj?.stack,
+            allProperties: Object.keys(causeObj || {}),
+          };
+        }
+        
+        // Log all error properties
+        if (error && typeof error === 'object') {
+          errorDetails.allErrorProperties = Object.keys(error);
+        }
+        
+        this.logger.error('Unexpected error in getActiveSessionByLoggedInUserId', errorDetails);
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Get completed session by loggedInUserId (returns the most recent completed session)
+   * Used to check if a telegram user is logged in as another user
+   */
+  async getCompletedSessionByLoggedInUserId(loggedInUserId: number): Promise<SessionData | null> {
+    const result = await this.db
+      .select()
+      .from(sessions)
+      .where(
+        and(
+          eq(sessions.loggedInUserId, loggedInUserId),
+          eq(sessions.state, 'completed'),
+        ),
+      )
+      .orderBy(desc(sessions.createdAt))
+      .limit(1);
+
+    if (result.length === 0) {
+      return null;
+    }
+
+    const row = result[0];
+
+    // Check if session has expired
+    if (row.expiresAt && row.expiresAt < new Date()) {
+      return null;
+    }
+
+    return this.mapRowToSessionData(row);
+  }
+
+  /**
+   * Check if a telegram user is logged in (has a completed session)
+   * Returns the logged-in user ID if logged in, null otherwise
+   */
+  async isLoggedIn(telegramUserId: number): Promise<number | null> {
+    const session = await this.getSessionByTelegramUserId(telegramUserId);
+    if (session && session.state === 'completed') {
+      return session.loggedInUserId;
+    }
+    return null;
+  }
+
+  /**
+   * Update session state
+   */
+  async updateSessionState(
+    requestId: string,
+    state: SessionState,
+  ): Promise<void> {
+    const session = await this.getSession(requestId);
+    if (!session) {
+      throw new Error(`Session not found for requestId: ${requestId}`);
+    }
+
+    const ttl = state === 'completed' ? this.completedSessionTtlSeconds : this.sessionTtlSeconds;
+    const expiresAt = new Date(Date.now() + ttl * 1000);
+
+    await this.db
+      .update(sessions)
+      .set({
+        state,
+        updatedAt: new Date(),
+        expiresAt,
+      })
+      .where(eq(sessions.requestId, requestId));
+  }
+
+  /**
+   * Delete a session
+   */
+  async deleteSession(requestId: string): Promise<void> {
+    await this.db.delete(sessions).where(eq(sessions.requestId, requestId));
+  }
+
+  /**
+   * Check if a session exists
+   */
+  async sessionExists(requestId: string): Promise<boolean> {
+    const result = await this.db
+      .select()
+      .from(sessions)
+      .where(eq(sessions.requestId, requestId))
+      .limit(1);
+
+    if (result.length === 0) {
+      return false;
+    }
+
+    const row = result[0];
+    // Check if session has expired
+    if (row.expiresAt && row.expiresAt < new Date()) {
+      return false;
+    }
+
+    return true;
+  }
+
+  /**
+   * Map database row to SessionData
+   */
+  private mapRowToSessionData(row: typeof sessions.$inferSelect): SessionData {
+    return {
+      requestId: row.requestId,
+      loggedInUserId: row.loggedInUserId,
+      telegramUserId: row.telegramUserId,
+      phoneNumber: row.phoneNumber ?? undefined,
+      chatId: row.chatId,
+      state: row.state as SessionState,
+    };
+  }
+}
+

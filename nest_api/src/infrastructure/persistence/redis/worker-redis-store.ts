@@ -55,13 +55,6 @@ export class WorkerRedisStore extends WorkerRepository {
   }
 
   /**
-   * Set the next available port number
-   */
-  async setNextPort(port: number): Promise<void> {
-    await this.redis.set(this.nextPortKey, port.toString());
-  }
-
-  /**
    * Delete worker port assignment
    */
   async deleteWorkerPort(userId: string): Promise<void> {
@@ -69,3 +62,4 @@ export class WorkerRedisStore extends WorkerRepository {
     await this.redis.del(key);
   }
 }
+

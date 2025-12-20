@@ -9,8 +9,6 @@ import fs from 'node:fs';
 export class WorkerManagerCompose extends WorkerManager {
   private docker = new Docker();
   private readonly logger = new Logger(WorkerManagerCompose.name);
-  private readonly DEFAULT_START_PORT = 5000;
-  private readonly MAX_PORT = 6000;
 
   constructor(
     private readonly appConfigService: AppConfigService,
@@ -29,22 +27,15 @@ export class WorkerManagerCompose extends WorkerManager {
       return existingPort;
     }
     
-    // Get next available port
-    let nextPort = await this.workerRepository.getNextPort();
+    // Get next available port (computed from existing assignments)
+    const nextPort = await this.workerRepository.getNextPort();
     if (nextPort === null) {
-      nextPort = this.DEFAULT_START_PORT;
+      throw new Error('Failed to compute next available port');
     }
     
     // Assign port to worker
     const assignedPort = nextPort;
     await this.workerRepository.setWorkerPort(userId, assignedPort);
-    
-    // Increment port, wrap around if we exceed MAX_PORT
-    nextPort++;
-    if (nextPort > this.MAX_PORT) {
-      nextPort = this.DEFAULT_START_PORT;
-    }
-    await this.workerRepository.setNextPort(nextPort);
     
     this.logger.log(`Assigned port ${assignedPort} to worker for user ${userId}`);
     return assignedPort;

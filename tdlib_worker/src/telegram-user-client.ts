@@ -36,7 +36,9 @@ export interface TelegramUserClientConfig {
 export class TelegramUserClient {
   protected client: Client | null = null;
   private isShuttingDown = false;
+  private isClientClosed = false;
   private readonly config: TelegramUserClientConfig;
+  private updateHandlers: Array<(update: unknown) => void> = [];
 
   constructor(config: TelegramUserClientConfig) {
     this.config = config;
@@ -76,11 +78,88 @@ export class TelegramUserClient {
   }
 
   /**
+   * Verifica se o cliente está fechado e recria se necessário
+   */
+  private async ensureClientReady(): Promise<Client> {
+    if (this.isShuttingDown) {
+      throw new Error('Client is shutting down');
+    }
+
+    // If client is closed, recreate it
+    if (this.isClientClosed || !this.client) {
+      console.log('[DEBUG] Client is closed, recreating...');
+      await this.recreateClient();
+    }
+
+    return this.ensureClient();
+  }
+
+  /**
+   * Recria o cliente após logout
+   */
+  private async recreateClient(): Promise<void> {
+    // Close existing client if it exists
+    if (this.client) {
+      try {
+        await this.client.close();
+      } catch (error) {
+        // Ignore errors when closing an already closed client
+        if (!(error instanceof Error && error.message.includes('authorizationStateClosed'))) {
+          console.error('[ERROR] Error closing old client:', error);
+        }
+      }
+    }
+
+    // Reset closed flag
+    this.isClientClosed = false;
+
+    // Create new client
+    this.client = createClient({
+      apiId: this.config.apiId,
+      apiHash: this.config.apiHash,
+    });
+
+    // Re-setup event handlers
+    this.setupBasicEventHandlers();
+
+    // Re-register update handlers directly (don't use onUpdate to avoid adding to array again)
+    for (const handler of this.updateHandlers) {
+      if (this.client) {
+        this.client.on('update', (update: unknown) => {
+          if (this.isShuttingDown) {
+            return;
+          }
+          handler(update);
+        });
+      }
+    }
+
+    console.log('[DEBUG] ✅ Client recreated successfully');
+  }
+
+  /**
    * Invokes a TDLib method directly (for login flow)
+   * Automatically recreates client if it was closed after logout
    */
   async invokeDirect(params: Parameters<Client['invoke']>[0]): Promise<unknown> {
-    const client = this.ensureClient();
-    return client.invoke(params);
+    try {
+      const client = await this.ensureClientReady();
+      return client.invoke(params);
+    } catch (error) {
+      // If error indicates closed client, try to recreate and retry once
+      if (
+        error instanceof Error &&
+        (error.message.includes('authorizationStateClosed') ||
+          error.message.includes('Client is closed') ||
+          error.message.includes('closed'))
+      ) {
+        console.log('[DEBUG] Client appears closed, recreating and retrying...');
+        await this.recreateClient();
+        const client = this.ensureClient();
+        return client.invoke(params);
+      }
+      throw error;
+    }
   }
 
   /**
@@ -274,12 +353,16 @@ export class TelegramUserClient {
           const authObj = update as { authorization_state?: { _?: string } };
           const authState = authObj?.authorization_state?._;
           if (authState === 'authorizationStateClosed') {
+            console.log('[DEBUG] ⚠️ Authorization state closed - client will be recreated on next use');
+            this.isClientClosed = true;
             return;
           }
           if (authState === 'authorizationStateReady') {
             console.log('[DEBUG] ✅ Authorization ready');
+            this.isClientClosed = false; // Reset closed flag when ready
           } else if (authState === 'authorizationStateWaitPhoneNumber') {
             console.log('[DEBUG] 📱 Waiting for phone number...');
+            this.isClientClosed = false; // Reset closed flag when waiting for phone
           } else if (authState === 'authorizationStateWaitCode') {
             console.log('[DEBUG] 🔐 Waiting for code...');
           } else if (authState === 'authorizationStateWaitPassword') {
@@ -295,6 +378,9 @@ export class TelegramUserClient {
    * Permite que outros handlers registrem seus próprios listeners
    */
   onUpdate(handler: (update: unknown) => void): void {
+    // Store handler to re-register after client recreation
+    this.updateHandlers.push(handler);
+
     if (!this.client) return;
     this.client.on('update', (update: unknown) => {
       if (this.isShuttingDown) {

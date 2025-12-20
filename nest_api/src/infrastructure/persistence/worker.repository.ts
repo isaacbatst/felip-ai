@@ -19,12 +19,8 @@ export abstract class WorkerRepository {
   abstract getNextPort(): Promise<number | null>;
 
   /**
-   * Set the next available port number
-   */
-  abstract setNextPort(port: number): Promise<void>;
-
-  /**
    * Delete worker port assignment
    */
   abstract deleteWorkerPort(userId: string): Promise<void>;
 }
+
