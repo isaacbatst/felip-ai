@@ -1,0 +1,79 @@
+name: Deploy Bot Stack
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  packages: write
+
+jobs:
+  run-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '22.x'
+      - name: Install dependencies
+        run: |
+          npm clean-install
+      - name: Test with the Node.js CLI
+        run: |
+          npm test
+
+  build-and-push:
+    runs-on: ubuntu-latest
+    needs:
+      - run-tests
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: https://ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Docker image for Bot
+        uses: docker/build-push-action@v6
+        with:
+          push: true
+          tags: |
+            ghcr.io/isaacbatst/fingram-bot:latest
+            ghcr.io/isaacbatst/fingram-bot:${{ github.sha }}
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs:
+      - build-and-push
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: create env file
+        run: |
+          echo "SQLITE_DATABASE_URL=${{ secrets.SQLITE_DATABASE_URL }}" >> envfile
+          echo "OPEN_AI_API_KEY=${{ secrets.OPEN_AI_API_KEY }}" >> envfile
+          echo "TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}" >> envfile
+          echo "TELEGRAM_WEBHOOK_DOMAIN=${{ secrets.TELEGRAM_WEBHOOK_DOMAIN }}" >> envfile
+          echo "TELEGRAM_WEBHOOK_SECRET_TOKEN=${{ secrets.TELEGRAM_WEBHOOK_SECRET_TOKEN }}" >> envfile
+          echo "TELEGRAM_BOT_USERNAME=${{ secrets.TELEGRAM_BOT_USERNAME }}" >> envfile
+          echo "TELEGRAM_MINIAPP_URL=${{ secrets.TELEGRAM_MINIAPP_URL }}" >> envfile
+          echo "JWT_SECRET=${{ secrets.JWT_SECRET }}" >> envfile
+          echo "GIT_COMMIT_HASH=${{ github.sha }}" >> envfile
+          echo "ALLOWED_ORIGINS=${{ secrets.ALLOWED_ORIGINS }}" >> envfile
+          echo "FRONTEND_URL=${{ secrets.FRONTEND_URL }}" >> envfile
+      - name: Docker Stack Deploy
+        uses: cssnr/stack-deploy-action@v1
+        with:
+          name: golpe
+          file: stack.yml
+          host: congressosimulator.com.br
+          user: fingram-bot
+          ssh_key: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}
+          env_file: ./envfile
