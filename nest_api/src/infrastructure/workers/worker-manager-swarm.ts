@@ -387,23 +387,74 @@ export class WorkerManagerSwarm extends WorkerManager implements OnModuleDestroy
       const service = this.docker.getService(serviceName);
       const inspect = await service.inspect();
       
-      // Check if service has desired replicas running
+      // Quick check: if service has 0 desired replicas, it's not healthy
       const desiredReplicas = inspect.Spec.Mode?.Replicated?.Replicas ?? 0;
-      const runningTasks = inspect.ServiceStatus?.RunningTasks ?? 0;
-
-      this.logger.log(`Desired replicas: ${desiredReplicas}, Running tasks: ${runningTasks}`);
-      
       if (desiredReplicas === 0) {
         return false;
       }
       
-      // Service is healthy if:
-      // 1. Desired replicas > 0
-      // 2. Running tasks >= desired replicas
-      // 3. No tasks in failed state (optional check)
-      const failedTasks = inspect.ServiceStatus?.FailedTasks ?? 0;
-      this.logger.log(`Failed tasks: ${failedTasks}`);
-      return runningTasks >= desiredReplicas && failedTasks === 0;
+      // Get tasks for this service to find container ID (necessary to check container health)
+      // Note: We check tasks directly instead of relying on ServiceStatus.RunningTasks
+      // because ServiceStatus can be stale/cached and may show 0 even when tasks exist
+      const tasks = await this.docker.listTasks({
+        filters: {
+          service: [serviceName],
+        },
+      });
+
+      this.logger.log(`Found ${tasks.length} tasks for service ${serviceName}`);
+      
+      // If no tasks exist at all, service is not healthy
+      if (tasks.length === 0) {
+        return false;
+      }
+      
+      // Log task states for debugging
+      tasks.forEach((t, idx) => {
+        this.logger.debug(`Task ${idx}: State=${t.Status?.State}, DesiredState=${t.DesiredState}, ContainerID=${t.Status?.ContainerStatus?.ContainerID?.substring(0, 12) ?? 'none'}`);
+      });
+      
+      // Find a running task with a container ID (prefer running tasks)
+      // First try to find a running task, then fall back to any task with container ID
+      let task = tasks.find(
+        (task) => task.Status?.State === 'running' && task.Status?.ContainerStatus?.ContainerID
+      );
+      
+      // If no running task found, try any task with container ID
+      if (!task) {
+        task = tasks.find(
+          (task) => task.Status?.ContainerStatus?.ContainerID
+        );
+      }
+      
+      if (!task) {
+        this.logger.log(`No task with container ID found for service ${serviceName}. Task states: ${tasks.map(t => t.Status?.State).join(', ')}`);
+        return false;
+      }
+      
+      // Get container ID from task and inspect container for health status
+      const containerId = task.Status.ContainerStatus.ContainerID;
+      const container = this.docker.getContainer(containerId);
+      const containerInspect = await container.inspect();
+      
+      // Check container health status directly - this is what matters
+      const healthStatus = containerInspect.State?.Health?.Status;
+      
+      this.logger.log(`Container ${containerId.substring(0, 12)} health status: ${healthStatus ?? 'no healthcheck'}`);
+      
+      // Service is healthy if container health status is 'healthy'
+      // If no healthcheck is defined, consider running container as healthy
+      if (healthStatus === 'healthy') {
+        return true;
+      } else if (healthStatus === 'unhealthy') {
+        return false;
+      } else if (!healthStatus && containerInspect.State?.Running) {
+        // No healthcheck defined, but container is running - consider healthy
+        return true;
+      }
+      
+      // Healthcheck is still starting or container not running
+      return false;
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       this.logger.warn(`Error checking health of service ${serviceName}: ${errorMessage}`);
