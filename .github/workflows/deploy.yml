@@ -80,8 +80,8 @@ jobs:
         with:
           name: felip-ai
           file: stack.yml
-          host: ${{ secrets.DEPLOY_HOST }}
-          user: ${{ secrets.DEPLOY_USER }}
+          host: congressosimulator.com.br
+          user: felip-ai
           ssh_key: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}
           env_file: ./envfile
 
