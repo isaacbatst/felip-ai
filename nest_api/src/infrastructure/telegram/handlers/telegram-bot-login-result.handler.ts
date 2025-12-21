@@ -1,7 +1,7 @@
 import { TelegramUserInfo } from '@/infrastructure/tdlib/telegram-user-info.types';
 import { TelegramBotService } from '@/infrastructure/telegram/telegram-bot-service';
 import { TelegramUserClientProxyService } from '@/infrastructure/tdlib/telegram-user-client-proxy.service';
-import { ConversationRepository, SessionData } from '@/infrastructure/persistence/conversation.repository';
+import { ConversationRepository, ConversationData } from '@/infrastructure/persistence/conversation.repository';
 import { Injectable, Logger } from '@nestjs/common';
 
 /**
@@ -48,12 +48,12 @@ export class TelegramBotLoginResultHandler {
         // Need to update the session with the new loggedInUserId
         // Delete old session and create new one with updated loggedInUserId
         await this.conversationRepository.deleteSession(session.requestId);
-        const updatedSession: SessionData = {
+        const updatedConversation: ConversationData = {
           ...session,
           loggedInUserId: actualLoggedInUserId,
           state: 'completed',
         };
-        await this.conversationRepository.setSession(updatedSession);
+        await this.conversationRepository.setConversation(updatedConversation);
         this.logger.log('Session updated with new logged-in user ID', { telegramUserId, oldLoggedInUserId: session.loggedInUserId, newLoggedInUserId: actualLoggedInUserId });
       } else {
         await this.conversationRepository.updateSessionState(session.requestId, 'completed');

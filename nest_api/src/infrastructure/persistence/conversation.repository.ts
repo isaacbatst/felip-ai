@@ -1,8 +1,8 @@
 /**
- * Session state - unified state for both conversation flow and login process
+ * Conversation state - unified state for login process
  */
-export type SessionState = 
-  | 'idle'                    // No active session
+export type ConversationState = 
+  | 'idle'                    // No active conversation
   | 'waitingPhone'            // Waiting for phone number input
   | 'waitingCode'             // Waiting for authentication code
   | 'waitingPassword'         // Waiting for password (2FA)
@@ -10,12 +10,12 @@ export type SessionState =
   | 'failed';                 // Login failed
 
 /**
- * Unified session data structure
- * Merges conversation state and login session data into a single model
+ * Conversation data structure
+ * Tracks login conversation state
  */
-export interface SessionData {
+export interface ConversationData {
   // Identifiers
-  requestId: string;                    // Unique session identifier
+  requestId: string;                    // Unique conversation identifier
   loggedInUserId: number;                // The Telegram user ID that is logged in (impersonated user) - the user the worker is configured to impersonate
   telegramUserId: number;                // Telegram user ID (number) - the user interacting with the bot (from ctx.from.id)
   
@@ -25,64 +25,104 @@ export interface SessionData {
   // Conversation context
   chatId: number;                        // Chat ID where the conversation is happening
   
-  // Session state
-  state: SessionState;                   // Current state of the session
+  // Conversation state
+  state: ConversationState;                   // Current state of the conversation
 }
 
 /**
- * Abstract repository for session data operations
- * Unified model: session data contains both conversation state and login information
+ * Abstract repository for conversation data operations
  */
 export abstract class ConversationRepository {
   /**
-   * Store a session
-   * This will cancel any existing active sessions for the same loggedInUserId to ensure only one active session exists
+   * Store a conversation
+   * This will cancel any existing active conversations for the same loggedInUserId to ensure only one active conversation exists
    */
-  abstract setSession(session: SessionData): Promise<void>;
+  abstract setConversation(conversation: ConversationData): Promise<void>;
 
   /**
-   * Get a session by requestId
+   * Get a conversation by requestId
    */
-  abstract getSession(requestId: string): Promise<SessionData | null>;
+  abstract getConversation(requestId: string): Promise<ConversationData | null>;
 
   /**
-   * Get a session by telegramUserId (the user interacting with the bot)
-   * Returns the most recent active session
+   * Get a conversation by telegramUserId (the user interacting with the bot)
+   * Returns the most recent active conversation
    */
-  abstract getSessionByTelegramUserId(telegramUserId: number): Promise<SessionData | null>;
+  abstract getConversationByTelegramUserId(telegramUserId: number): Promise<ConversationData | null>;
 
   /**
-   * Get active session by loggedInUserId (returns the most recent non-completed session)
+   * Get active conversation by loggedInUserId (returns the most recent non-completed conversation)
    */
-  abstract getActiveSessionByLoggedInUserId(loggedInUserId: number): Promise<SessionData | null>;
+  abstract getActiveConversationByLoggedInUserId(loggedInUserId: number): Promise<ConversationData | null>;
 
   /**
-   * Get completed session by loggedInUserId (returns the most recent completed session)
+   * Get completed conversation by loggedInUserId (returns the most recent completed conversation)
    * Used to check if a telegram user is logged in as another user
    */
-  abstract getCompletedSessionByLoggedInUserId(loggedInUserId: number): Promise<SessionData | null>;
+  abstract getCompletedConversationByLoggedInUserId(loggedInUserId: number): Promise<ConversationData | null>;
 
   /**
-   * Check if a telegram user is logged in (has a completed session)
+   * Check if a telegram user is logged in (has a completed conversation)
    * Returns the logged-in user ID if logged in, null otherwise
    */
   abstract isLoggedIn(telegramUserId: number): Promise<number | null>;
 
   /**
-   * Update session state
+   * Update conversation state
    */
-  abstract updateSessionState(
+  abstract updateConversationState(
     requestId: string,
-    state: SessionState,
+    state: ConversationState,
   ): Promise<void>;
 
   /**
-   * Delete a session
+   * Delete a conversation
    */
-  abstract deleteSession(requestId: string): Promise<void>;
+  abstract deleteConversation(requestId: string): Promise<void>;
 
   /**
-   * Check if a session exists
+   * Check if a conversation exists
    */
-  abstract sessionExists(requestId: string): Promise<boolean>;
+  abstract conversationExists(requestId: string): Promise<boolean>;
+
+  // Legacy method names for backward compatibility (deprecated)
+  /** @deprecated Use setConversation instead */
+  async setSession(session: ConversationData): Promise<void> {
+    return this.setConversation(session);
+  }
+
+  /** @deprecated Use getConversation instead */
+  async getSession(requestId: string): Promise<ConversationData | null> {
+    return this.getConversation(requestId);
+  }
+
+  /** @deprecated Use getConversationByTelegramUserId instead */
+  async getSessionByTelegramUserId(telegramUserId: number): Promise<ConversationData | null> {
+    return this.getConversationByTelegramUserId(telegramUserId);
+  }
+
+  /** @deprecated Use getActiveConversationByLoggedInUserId instead */
+  async getActiveSessionByLoggedInUserId(loggedInUserId: number): Promise<ConversationData | null> {
+    return this.getActiveConversationByLoggedInUserId(loggedInUserId);
+  }
+
+  /** @deprecated Use getCompletedConversationByLoggedInUserId instead */
+  async getCompletedSessionByLoggedInUserId(loggedInUserId: number): Promise<ConversationData | null> {
+    return this.getCompletedConversationByLoggedInUserId(loggedInUserId);
+  }
+
+  /** @deprecated Use updateConversationState instead */
+  async updateSessionState(requestId: string, state: ConversationState): Promise<void> {
+    return this.updateConversationState(requestId, state);
+  }
+
+  /** @deprecated Use deleteConversation instead */
+  async deleteSession(requestId: string): Promise<void> {
+    return this.deleteConversation(requestId);
+  }
+
+  /** @deprecated Use conversationExists instead */
+  async sessionExists(requestId: string): Promise<boolean> {
+    return this.conversationExists(requestId);
+  }
 }

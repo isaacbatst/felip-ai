@@ -1,74 +1,74 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ConversationRepository, SessionData, SessionState } from '../conversation.repository';
+import { ConversationRepository, ConversationData, ConversationState } from '../conversation.repository';
 import { RedisRepository } from './redis.repository';
 
 /**
  * Redis implementation of ConversationRepository
- * Single Responsibility: unified session data operations using Redis
+ * Single Responsibility: unified conversation data operations using Redis
  */
 @Injectable()
 export class ConversationRedisStore extends ConversationRepository {
   private readonly logger = new Logger(ConversationRedisStore.name);
-  private readonly sessionKeyPrefix = 'session:';
-  private readonly telegramUserIdIndexPrefix = 'session:telegramUserId:';
-  private readonly loggedInUserIdIndexPrefix = 'session:loggedInUserId:';
-  private readonly sessionTtlSeconds = 30 * 60; // 30 minutes TTL for active sessions
-  private readonly completedSessionTtlSeconds = 365 * 24 * 60 * 60; // 1 year TTL for completed sessions (persistent login)
+  private readonly conversationKeyPrefix = 'conversation:';
+  private readonly telegramUserIdIndexPrefix = 'conversation:telegramUserId:';
+  private readonly loggedInUserIdIndexPrefix = 'conversation:loggedInUserId:';
+  private readonly conversationTtlSeconds = 30 * 60; // 30 minutes TTL for active conversations
+  private readonly completedConversationTtlSeconds = 365 * 24 * 60 * 60; // 1 year TTL for completed conversations (persistent login)
 
   constructor(private readonly redis: RedisRepository) {
     super();
   }
 
   /**
-   * Store a session
-   * This will cancel any existing active sessions for the same loggedInUserId to ensure only one active session exists
+   * Store a conversation
+   * This will cancel any existing active conversations for the same loggedInUserId to ensure only one active conversation exists
    */
-  async setSession(session: SessionData): Promise<void> {
+  async setConversation(conversation: ConversationData): Promise<void> {
     try {
-      // Cancel any existing active sessions for this loggedInUserId
-      const existingActiveSession = await this.getActiveSessionByLoggedInUserId(session.loggedInUserId);
-      if (existingActiveSession && existingActiveSession.requestId !== session.requestId) {
-        // Mark existing session as failed since a new one is being created
-        existingActiveSession.state = 'failed';
+      // Cancel any existing active conversations for this loggedInUserId
+      const existingActiveConversation = await this.getActiveConversationByLoggedInUserId(conversation.loggedInUserId);
+      if (existingActiveConversation && existingActiveConversation.requestId !== conversation.requestId) {
+        // Mark existing conversation as failed since a new one is being created
+        existingActiveConversation.state = 'failed';
         await this.redis.set(
-          `${this.sessionKeyPrefix}${existingActiveSession.requestId}`,
-          JSON.stringify(existingActiveSession),
-          this.sessionTtlSeconds,
+          `${this.conversationKeyPrefix}${existingActiveConversation.requestId}`,
+          JSON.stringify(existingActiveConversation),
+          this.conversationTtlSeconds,
         );
         // Clear indexes
-        await this.redis.del(`${this.telegramUserIdIndexPrefix}${existingActiveSession.telegramUserId}`);
-        await this.redis.del(`${this.loggedInUserIdIndexPrefix}${existingActiveSession.loggedInUserId}`);
+        await this.redis.del(`${this.telegramUserIdIndexPrefix}${existingActiveConversation.telegramUserId}`);
+        await this.redis.del(`${this.loggedInUserIdIndexPrefix}${existingActiveConversation.loggedInUserId}`);
       }
 
-      const sessionKey = `${this.sessionKeyPrefix}${session.requestId}`;
-      const ttl = session.state === 'completed' ? this.completedSessionTtlSeconds : this.sessionTtlSeconds;
+      const conversationKey = `${this.conversationKeyPrefix}${conversation.requestId}`;
+      const ttl = conversation.state === 'completed' ? this.completedConversationTtlSeconds : this.conversationTtlSeconds;
 
-      // Store session data by requestId
+      // Store conversation data by requestId
       await this.redis.set(
-        sessionKey,
-        JSON.stringify(session),
+        conversationKey,
+        JSON.stringify(conversation),
         ttl,
       );
 
       // Store index: telegramUserId -> requestId (for quick lookup)
       await this.redis.set(
-        `${this.telegramUserIdIndexPrefix}${session.telegramUserId}`,
-        session.requestId,
+        `${this.telegramUserIdIndexPrefix}${conversation.telegramUserId}`,
+        conversation.requestId,
         ttl,
       );
 
       // Store index: loggedInUserId -> requestId (for quick lookup)
       await this.redis.set(
-        `${this.loggedInUserIdIndexPrefix}${session.loggedInUserId}`,
-        session.requestId,
+        `${this.loggedInUserIdIndexPrefix}${conversation.loggedInUserId}`,
+        conversation.requestId,
         ttl,
       );
     } catch (error) {
-      this.logger.error('Redis error in setSession', {
+      this.logger.error('Redis error in setConversation', {
         error: error instanceof Error ? error.message : String(error),
-        requestId: session.requestId,
-        loggedInUserId: session.loggedInUserId,
-        telegramUserId: session.telegramUserId,
+        requestId: conversation.requestId,
+        loggedInUserId: conversation.loggedInUserId,
+        telegramUserId: conversation.telegramUserId,
         stack: error instanceof Error ? error.stack : undefined,
       });
       throw error;
@@ -76,18 +76,18 @@ export class ConversationRedisStore extends ConversationRepository {
   }
 
   /**
-   * Get a session by requestId
+   * Get a conversation by requestId
    */
-  async getSession(requestId: string): Promise<SessionData | null> {
+  async getConversation(requestId: string): Promise<ConversationData | null> {
     try {
-      const sessionKey = `${this.sessionKeyPrefix}${requestId}`;
-      const data = await this.redis.get(sessionKey);
+      const conversationKey = `${this.conversationKeyPrefix}${requestId}`;
+      const data = await this.redis.get(conversationKey);
       if (!data) {
         return null;
       }
-      return JSON.parse(data) as SessionData;
+      return JSON.parse(data) as ConversationData;
     } catch (error) {
-      this.logger.error('Redis error in getSession', {
+      this.logger.error('Redis error in getConversation', {
         error: error instanceof Error ? error.message : String(error),
         requestId,
         stack: error instanceof Error ? error.stack : undefined,
@@ -97,19 +97,19 @@ export class ConversationRedisStore extends ConversationRepository {
   }
 
   /**
-   * Get a session by telegramUserId (the user interacting with the bot)
-   * Returns the most recent active session
+   * Get a conversation by telegramUserId (the user interacting with the bot)
+   * Returns the most recent active conversation
    */
-  async getSessionByTelegramUserId(telegramUserId: number): Promise<SessionData | null> {
+  async getConversationByTelegramUserId(telegramUserId: number): Promise<ConversationData | null> {
     try {
       const indexKey = `${this.telegramUserIdIndexPrefix}${telegramUserId}`;
       const requestId = await this.redis.get(indexKey);
       if (!requestId) {
         return null;
       }
-      return this.getSession(requestId);
+      return this.getConversation(requestId);
     } catch (error) {
-      this.logger.error('Redis error in getSessionByTelegramUserId', {
+      this.logger.error('Redis error in getConversationByTelegramUserId', {
         error: error instanceof Error ? error.message : String(error),
         telegramUserId,
         stack: error instanceof Error ? error.stack : undefined,
@@ -119,40 +119,40 @@ export class ConversationRedisStore extends ConversationRepository {
   }
 
   /**
-   * Get active session by loggedInUserId (returns the most recent non-completed session)
+   * Get active conversation by loggedInUserId (returns the most recent non-completed conversation)
    */
-  async getActiveSessionByLoggedInUserId(loggedInUserId: number): Promise<SessionData | null> {
+  async getActiveConversationByLoggedInUserId(loggedInUserId: number): Promise<ConversationData | null> {
     try {
       const indexKey = `${this.loggedInUserIdIndexPrefix}${loggedInUserId}`;
       const requestId = await this.redis.get(indexKey);
       if (requestId) {
-        const session = await this.getSession(requestId);
-        if (session && session.state !== 'completed' && session.state !== 'failed') {
-          return session;
+        const conversation = await this.getConversation(requestId);
+        if (conversation && conversation.state !== 'completed' && conversation.state !== 'failed') {
+          return conversation;
         }
       }
       
-      // Fallback: scan all sessions (for migration/backward compatibility)
-      const pattern = `${this.sessionKeyPrefix}*`;
+      // Fallback: scan all conversations (for migration/backward compatibility)
+      const pattern = `${this.conversationKeyPrefix}*`;
       const keys = await this.redis.keys(pattern);
       
       for (const key of keys) {
-        // Skip index keys - they only contain requestId, not full session data
+        // Skip index keys - they only contain requestId, not full conversation data
         if (key.startsWith(this.telegramUserIdIndexPrefix) || key.startsWith(this.loggedInUserIdIndexPrefix)) {
           continue;
         }
         const data = await this.redis.get(key);
         if (data) {
-          const session = JSON.parse(data) as SessionData;
-          if (session.loggedInUserId === loggedInUserId && session.state !== 'completed' && session.state !== 'failed') {
-            return session;
+          const conversation = JSON.parse(data) as ConversationData;
+          if (conversation.loggedInUserId === loggedInUserId && conversation.state !== 'completed' && conversation.state !== 'failed') {
+            return conversation;
           }
         }
       }
       
       return null;
     } catch (error) {
-      this.logger.error('Redis error in getActiveSessionByLoggedInUserId', {
+      this.logger.error('Redis error in getActiveConversationByLoggedInUserId', {
         error: error instanceof Error ? error.message : String(error),
         loggedInUserId,
         stack: error instanceof Error ? error.stack : undefined,
@@ -162,33 +162,33 @@ export class ConversationRedisStore extends ConversationRepository {
   }
 
   /**
-   * Get completed session by loggedInUserId (returns the most recent completed session)
+   * Get completed conversation by loggedInUserId (returns the most recent completed conversation)
    * Used to check if a telegram user is logged in as another user
    */
-  async getCompletedSessionByLoggedInUserId(loggedInUserId: number): Promise<SessionData | null> {
+  async getCompletedConversationByLoggedInUserId(loggedInUserId: number): Promise<ConversationData | null> {
     const indexKey = `${this.loggedInUserIdIndexPrefix}${loggedInUserId}`;
     const requestId = await this.redis.get(indexKey);
     if (requestId) {
-      const session = await this.getSession(requestId);
-      if (session && session.state === 'completed') {
-        return session;
+      const conversation = await this.getConversation(requestId);
+      if (conversation && conversation.state === 'completed') {
+        return conversation;
       }
     }
     
-    // Fallback: scan all sessions
-    const pattern = `${this.sessionKeyPrefix}*`;
+    // Fallback: scan all conversations
+    const pattern = `${this.conversationKeyPrefix}*`;
     const keys = await this.redis.keys(pattern);
     
     for (const key of keys) {
-      // Skip index keys - they only contain requestId, not full session data
+      // Skip index keys - they only contain requestId, not full conversation data
       if (key.startsWith(this.telegramUserIdIndexPrefix) || key.startsWith(this.loggedInUserIdIndexPrefix)) {
         continue;
       }
       const data = await this.redis.get(key);
       if (data) {
-        const session = JSON.parse(data) as SessionData;
-        if (session.loggedInUserId === loggedInUserId && session.state === 'completed') {
-          return session;
+        const conversation = JSON.parse(data) as ConversationData;
+        if (conversation.loggedInUserId === loggedInUserId && conversation.state === 'completed') {
+          return conversation;
         }
       }
     }
@@ -197,68 +197,68 @@ export class ConversationRedisStore extends ConversationRepository {
   }
 
   /**
-   * Check if a telegram user is logged in (has a completed session)
+   * Check if a telegram user is logged in (has a completed conversation)
    * Returns the logged-in user ID if logged in, null otherwise
    */
   async isLoggedIn(telegramUserId: number): Promise<number | null> {
-    const session = await this.getSessionByTelegramUserId(telegramUserId);
-    if (session && session.state === 'completed') {
-      return session.loggedInUserId;
+    const conversation = await this.getConversationByTelegramUserId(telegramUserId);
+    if (conversation && conversation.state === 'completed') {
+      return conversation.loggedInUserId;
     }
     return null;
   }
 
   /**
-   * Update session state
+   * Update conversation state
    */
-  async updateSessionState(
+  async updateConversationState(
     requestId: string,
-    state: SessionState,
+    state: ConversationState,
   ): Promise<void> {
-    const session = await this.getSession(requestId);
-    if (!session) {
-      throw new Error(`Session not found for requestId: ${requestId}`);
+    const conversation = await this.getConversation(requestId);
+    if (!conversation) {
+      throw new Error(`Conversation not found for requestId: ${requestId}`);
     }
-    session.state = state;
+    conversation.state = state;
     
     // Update TTL based on state
-    const ttl = state === 'completed' ? this.completedSessionTtlSeconds : this.sessionTtlSeconds;
-    const sessionKey = `${this.sessionKeyPrefix}${requestId}`;
-    await this.redis.set(sessionKey, JSON.stringify(session), ttl);
+    const ttl = state === 'completed' ? this.completedConversationTtlSeconds : this.conversationTtlSeconds;
+    const conversationKey = `${this.conversationKeyPrefix}${requestId}`;
+    await this.redis.set(conversationKey, JSON.stringify(conversation), ttl);
     
     // Update index TTLs
     await this.redis.set(
-      `${this.telegramUserIdIndexPrefix}${session.telegramUserId}`,
+      `${this.telegramUserIdIndexPrefix}${conversation.telegramUserId}`,
       requestId,
       ttl,
     );
     await this.redis.set(
-      `${this.loggedInUserIdIndexPrefix}${session.loggedInUserId}`,
+      `${this.loggedInUserIdIndexPrefix}${conversation.loggedInUserId}`,
       requestId,
       ttl,
     );
   }
 
   /**
-   * Delete a session
+   * Delete a conversation
    */
-  async deleteSession(requestId: string): Promise<void> {
-    const session = await this.getSession(requestId);
-    if (session) {
-      const sessionKey = `${this.sessionKeyPrefix}${requestId}`;
-      await this.redis.del(sessionKey);
+  async deleteConversation(requestId: string): Promise<void> {
+    const conversation = await this.getConversation(requestId);
+    if (conversation) {
+      const conversationKey = `${this.conversationKeyPrefix}${requestId}`;
+      await this.redis.del(conversationKey);
       
       // Clear indexes
-      await this.redis.del(`${this.telegramUserIdIndexPrefix}${session.telegramUserId}`);
-      await this.redis.del(`${this.loggedInUserIdIndexPrefix}${session.loggedInUserId}`);
+      await this.redis.del(`${this.telegramUserIdIndexPrefix}${conversation.telegramUserId}`);
+      await this.redis.del(`${this.loggedInUserIdIndexPrefix}${conversation.loggedInUserId}`);
     }
   }
 
   /**
-   * Check if a session exists
+   * Check if a conversation exists
    */
-  async sessionExists(requestId: string): Promise<boolean> {
-    const sessionKey = `${this.sessionKeyPrefix}${requestId}`;
-    return await this.redis.exists(sessionKey);
+  async conversationExists(requestId: string): Promise<boolean> {
+    const conversationKey = `${this.conversationKeyPrefix}${requestId}`;
+    return await this.redis.exists(conversationKey);
   }
 }

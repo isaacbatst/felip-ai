@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import type { Context } from 'grammy';
 import { QuoteFormatterService } from '../../../domain/services/quote-formatter.service';
 import { PriceTableProvider } from '@/domain/interfaces/price-table-provider.interface';
-import { ConversationRepository, SessionData } from '@/infrastructure/persistence/conversation.repository';
+import { ConversationRepository, ConversationData } from '@/infrastructure/persistence/conversation.repository';
 import { TelegramUserClientProxyService } from '../../tdlib/telegram-user-client-proxy.service';
 import { ActiveGroupsRepository } from '@/infrastructure/persistence/active-groups.repository';
 import type {
@@ -53,18 +53,25 @@ export class TelegramCommandHandler {
       return;
     }
 
-    // Create a session in waitingPhone state
+    // Check if there's already an active conversation (login in progress)
+    const existingConversation = await this.conversationRepository.getConversationByTelegramUserId(telegramUserId);
+    if (existingConversation && existingConversation.state !== 'completed' && existingConversation.state !== 'failed') {
+      // Delete existing active conversation to start fresh
+      await this.conversationRepository.deleteConversation(existingConversation.requestId);
+    }
+
+    // Create a conversation in waitingPhone state
     // Initially, loggedInUserId is set to telegramUserId (will be updated when login completes if different)
     const { randomUUID } = await import('node:crypto');
     const requestId = randomUUID();
-    const session: SessionData = {
+    const conversation: ConversationData = {
       requestId,
       loggedInUserId: telegramUserId, // Initially same as telegramUserId, updated when login completes
       telegramUserId,
       chatId,
       state: 'waitingPhone',
     };
-    await this.conversationRepository.setSession(session);
+    await this.conversationRepository.setConversation(conversation);
 
     const message =
       '📱 Por favor, envie seu número de telefone no formato internacional.\n\n' +

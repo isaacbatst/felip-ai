@@ -2,19 +2,19 @@ import { Injectable, Inject, Logger } from '@nestjs/common';
 import { eq, and, desc, notInArray } from 'drizzle-orm';
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import { DrizzleQueryError } from 'drizzle-orm';
-import { ConversationRepository, SessionData, SessionState } from '../conversation.repository';
+import { ConversationRepository, ConversationData, ConversationState } from '../conversation.repository';
 import { sessions } from '@/infrastructure/database/schema';
 import type * as schema from '@/infrastructure/database/schema';
 
 /**
  * Drizzle implementation of ConversationRepository
- * Single Responsibility: unified session data operations using Drizzle ORM with Neon PostgreSQL
+ * Single Responsibility: unified conversation data operations using Drizzle ORM with Neon PostgreSQL
  */
 @Injectable()
 export class ConversationDrizzleStore extends ConversationRepository {
   private readonly logger = new Logger(ConversationDrizzleStore.name);
-  private readonly sessionTtlSeconds = 30 * 60; // 30 minutes TTL for active sessions
-  private readonly completedSessionTtlSeconds = 365 * 24 * 60 * 60; // 1 year TTL for completed sessions (persistent login)
+  private readonly conversationTtlSeconds = 30 * 60; // 30 minutes TTL for active conversations
+  private readonly completedConversationTtlSeconds = 365 * 24 * 60 * 60; // 1 year TTL for completed conversations (persistent login)
 
   constructor(
     @Inject('DATABASE_CONNECTION')
@@ -24,46 +24,46 @@ export class ConversationDrizzleStore extends ConversationRepository {
   }
 
   /**
-   * Store a session
-   * This will cancel any existing active sessions for the same loggedInUserId to ensure only one active session exists
+   * Store a conversation
+   * This will cancel any existing active conversations for the same loggedInUserId to ensure only one active conversation exists
    */
-  async setSession(session: SessionData): Promise<void> {
-    // Cancel any existing active sessions for this loggedInUserId
-    const existingActiveSession = await this.getActiveSessionByLoggedInUserId(session.loggedInUserId);
-    if (existingActiveSession && existingActiveSession.requestId !== session.requestId) {
-      // Mark existing session as failed since a new one is being created
+  async setConversation(conversation: ConversationData): Promise<void> {
+    // Cancel any existing active conversations for this loggedInUserId
+    const existingActiveConversation = await this.getActiveConversationByLoggedInUserId(conversation.loggedInUserId);
+    if (existingActiveConversation && existingActiveConversation.requestId !== conversation.requestId) {
+      // Mark existing conversation as failed since a new one is being created
       await this.db
         .update(sessions)
         .set({
           state: 'failed',
           updatedAt: new Date(),
         })
-        .where(eq(sessions.requestId, existingActiveSession.requestId));
+        .where(eq(sessions.requestId, existingActiveConversation.requestId));
     }
 
-    const ttl = session.state === 'completed' ? this.completedSessionTtlSeconds : this.sessionTtlSeconds;
+    const ttl = conversation.state === 'completed' ? this.completedConversationTtlSeconds : this.conversationTtlSeconds;
     const expiresAt = new Date(Date.now() + ttl * 1000);
 
-    // Insert or update session
+    // Insert or update conversation
     await this.db
       .insert(sessions)
       .values({
-        requestId: session.requestId,
-        loggedInUserId: session.loggedInUserId,
-        telegramUserId: session.telegramUserId,
-        phoneNumber: session.phoneNumber,
-        chatId: session.chatId,
-        state: session.state,
+        requestId: conversation.requestId,
+        loggedInUserId: conversation.loggedInUserId,
+        telegramUserId: conversation.telegramUserId,
+        phoneNumber: conversation.phoneNumber,
+        chatId: conversation.chatId,
+        state: conversation.state,
         expiresAt,
       })
       .onConflictDoUpdate({
         target: [sessions.requestId],
         set: {
-          loggedInUserId: session.loggedInUserId,
-          telegramUserId: session.telegramUserId,
-          phoneNumber: session.phoneNumber,
-          chatId: session.chatId,
-          state: session.state,
+          loggedInUserId: conversation.loggedInUserId,
+          telegramUserId: conversation.telegramUserId,
+          phoneNumber: conversation.phoneNumber,
+          chatId: conversation.chatId,
+          state: conversation.state,
           updatedAt: new Date(),
           expiresAt,
         },
@@ -71,9 +71,9 @@ export class ConversationDrizzleStore extends ConversationRepository {
   }
 
   /**
-   * Get a session by requestId
+   * Get a conversation by requestId
    */
-  async getSession(requestId: string): Promise<SessionData | null> {
+  async getConversation(requestId: string): Promise<ConversationData | null> {
     const result = await this.db
       .select()
       .from(sessions)
@@ -91,14 +91,14 @@ export class ConversationDrizzleStore extends ConversationRepository {
       return null;
     }
 
-    return this.mapRowToSessionData(row);
+    return this.mapRowToConversationData(row);
   }
 
   /**
-   * Get a session by telegramUserId (the user interacting with the bot)
-   * Returns the most recent active session
+   * Get a conversation by telegramUserId (the user interacting with the bot)
+   * Returns the most recent active conversation
    */
-  async getSessionByTelegramUserId(telegramUserId: number): Promise<SessionData | null> {
+  async getConversationByTelegramUserId(telegramUserId: number): Promise<ConversationData | null> {
     const result = await this.db
       .select()
       .from(sessions)
@@ -117,13 +117,13 @@ export class ConversationDrizzleStore extends ConversationRepository {
       return null;
     }
 
-    return this.mapRowToSessionData(row);
+    return this.mapRowToConversationData(row);
   }
 
   /**
-   * Get active session by loggedInUserId (returns the most recent non-completed session)
+   * Get active conversation by loggedInUserId (returns the most recent non-completed conversation)
    */
-  async getActiveSessionByLoggedInUserId(loggedInUserId: number): Promise<SessionData | null> {
+  async getActiveConversationByLoggedInUserId(loggedInUserId: number): Promise<ConversationData | null> {
     try {
       const result = await this.db
         .select()
@@ -148,7 +148,7 @@ export class ConversationDrizzleStore extends ConversationRepository {
         return null;
       }
 
-      return this.mapRowToSessionData(row);
+      return this.mapRowToConversationData(row);
     } catch (error: unknown) {
       // Log all error properties to help debug
       const errorDetails: Record<string, unknown> = {
@@ -219,10 +219,10 @@ export class ConversationDrizzleStore extends ConversationRepository {
   }
 
   /**
-   * Get completed session by loggedInUserId (returns the most recent completed session)
+   * Get completed conversation by loggedInUserId (returns the most recent completed conversation)
    * Used to check if a telegram user is logged in as another user
    */
-  async getCompletedSessionByLoggedInUserId(loggedInUserId: number): Promise<SessionData | null> {
+  async getCompletedConversationByLoggedInUserId(loggedInUserId: number): Promise<ConversationData | null> {
     const result = await this.db
       .select()
       .from(sessions)
@@ -246,34 +246,34 @@ export class ConversationDrizzleStore extends ConversationRepository {
       return null;
     }
 
-    return this.mapRowToSessionData(row);
+    return this.mapRowToConversationData(row);
   }
 
   /**
-   * Check if a telegram user is logged in (has a completed session)
+   * Check if a telegram user is logged in (has a completed conversation)
    * Returns the logged-in user ID if logged in, null otherwise
    */
   async isLoggedIn(telegramUserId: number): Promise<number | null> {
-    const session = await this.getSessionByTelegramUserId(telegramUserId);
-    if (session && session.state === 'completed') {
-      return session.loggedInUserId;
+    const conversation = await this.getConversationByTelegramUserId(telegramUserId);
+    if (conversation && conversation.state === 'completed') {
+      return conversation.loggedInUserId;
     }
     return null;
   }
 
   /**
-   * Update session state
+   * Update conversation state
    */
-  async updateSessionState(
+  async updateConversationState(
     requestId: string,
-    state: SessionState,
+    state: ConversationState,
   ): Promise<void> {
-    const session = await this.getSession(requestId);
-    if (!session) {
-      throw new Error(`Session not found for requestId: ${requestId}`);
+    const conversation = await this.getConversation(requestId);
+    if (!conversation) {
+      throw new Error(`Conversation not found for requestId: ${requestId}`);
     }
 
-    const ttl = state === 'completed' ? this.completedSessionTtlSeconds : this.sessionTtlSeconds;
+    const ttl = state === 'completed' ? this.completedConversationTtlSeconds : this.conversationTtlSeconds;
     const expiresAt = new Date(Date.now() + ttl * 1000);
 
     await this.db
@@ -287,16 +287,16 @@ export class ConversationDrizzleStore extends ConversationRepository {
   }
 
   /**
-   * Delete a session
+   * Delete a conversation
    */
-  async deleteSession(requestId: string): Promise<void> {
+  async deleteConversation(requestId: string): Promise<void> {
     await this.db.delete(sessions).where(eq(sessions.requestId, requestId));
   }
 
   /**
-   * Check if a session exists
+   * Check if a conversation exists
    */
-  async sessionExists(requestId: string): Promise<boolean> {
+  async conversationExists(requestId: string): Promise<boolean> {
     const result = await this.db
       .select()
       .from(sessions)
@@ -317,16 +317,16 @@ export class ConversationDrizzleStore extends ConversationRepository {
   }
 
   /**
-   * Map database row to SessionData
+   * Map database row to ConversationData
    */
-  private mapRowToSessionData(row: typeof sessions.$inferSelect): SessionData {
+  private mapRowToConversationData(row: typeof sessions.$inferSelect): ConversationData {
     return {
       requestId: row.requestId,
       loggedInUserId: row.loggedInUserId,
       telegramUserId: row.telegramUserId,
       phoneNumber: row.phoneNumber ?? undefined,
       chatId: row.chatId,
-      state: row.state as SessionState,
+      state: row.state as ConversationState,
     };
   }
 }
