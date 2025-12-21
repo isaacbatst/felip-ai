@@ -3,7 +3,6 @@ version: "3.8"
 services:
   nest_api:
     image: ghcr.io/isaacbatst/felip-ai:${GIT_COMMIT_HASH:-latest}
-    user: "1000:1000"
     deploy:
       update_config:
         order: start-first
