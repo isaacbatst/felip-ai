@@ -5,8 +5,7 @@ import type {
   TdlibCommandType
 } from '@felip-ai/shared-types';
 import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { Queue } from 'bullmq';
+import { RabbitMQPublisherService } from '../queue/rabbitmq/rabbitmq-publisher.service';
 import { randomUUID } from 'node:crypto';
 
 // Re-export for convenience
@@ -26,48 +25,24 @@ interface TdlibHttpCommandResponse {
 /**
  * Proxy service that sends commands to tdlib_worker
  * - Uses HTTP for synchronous responses for commands available in http-api.ts
- * - Uses BullMQ for async commands (login, provideAuthCode, providePassword)
- * Single Responsibility: dispatching commands to tdlib_worker via HTTP or BullMQ
+ * - Uses RabbitMQ for async commands (login, provideAuthCode, providePassword)
+ * Single Responsibility: dispatching commands to tdlib_worker via HTTP or RabbitMQ
  */
 @Injectable()
 export class TelegramUserClientProxyService implements OnModuleDestroy {
   private readonly logger = new Logger(TelegramUserClientProxyService.name);
-  private readonly queues: Map<string, Queue> = new Map();
-  private readonly redisConfig: { host: string; port: number; password?: string };
 
   constructor(
-    private readonly configService: ConfigService,
     private readonly workerManager: WorkerManager,
-  ) {
-    this.redisConfig = {
-      host: this.configService.get<string>('REDIS_HOST') || 'localhost',
-      port: Number.parseInt(this.configService.get<string>('REDIS_PORT') || '6379', 10),
-      password: this.configService.get<string>('REDIS_PASSWORD'),
-    };
-  }
-
-  private getQueueForUser(userId: string): Queue {
-    if (!this.queues.has(userId)) {
-      const queueName = `tdlib-commands-${userId}`;
-      const queue = new Queue(queueName, {
-        connection: this.redisConfig,
-      });
-      this.queues.set(userId, queue);
-      this.logger.log(`Created queue for user ${userId}: ${queueName}`);
-      return queue;
-    }
-    const queue = this.queues.get(userId);
-    if (!queue) {
-      throw new Error(`Queue for user ${userId} not found`);
-    }
-    return queue;
-  }
+    private readonly rabbitmqPublisher: RabbitMQPublisherService,
+  ) {}
 
   async onModuleDestroy(): Promise<void> {
-    // Close all user queues
-    for (const queue of this.queues.values()) {
-      await queue.close();
-    }
+    // RabbitMQ connection is managed by RabbitMQPublisherService
+  }
+
+  getQueueNameForUser(userId: string): string {
+    return `tdlib-commands-${userId}`;
   }
 
   /**
@@ -111,7 +86,7 @@ export class TelegramUserClientProxyService implements OnModuleDestroy {
     command: TdlibCommand,
     context?: CommandContext,
   ): Promise<string> {
-    const queue = this.getQueueForUser(userId);
+    const queueName = this.getQueueNameForUser(userId);
     const requestId = command.requestId || randomUUID();
     const commandWithRequestId = { 
       ...command, 
@@ -119,7 +94,10 @@ export class TelegramUserClientProxyService implements OnModuleDestroy {
       context: context || command.context,
     };
 
-    await queue.add(command.type, commandWithRequestId);
+    await this.rabbitmqPublisher.publishToQueue(queueName, {
+      pattern: command.type,
+      data: commandWithRequestId,
+    });
     this.logger.debug(`Dispatched command ${command.type} for user ${userId} with requestId ${requestId}`);
     return requestId;
   }

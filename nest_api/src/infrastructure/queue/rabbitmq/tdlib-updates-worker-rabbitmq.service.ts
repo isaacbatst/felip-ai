@@ -1,45 +1,122 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { Processor, WorkerHost } from '@nestjs/bullmq';
-import { Job } from 'bullmq';
-import { TelegramUserQueueProcessorBullMQ } from '../queue/bullmq/telegram-user-queue-processor-bullmq.service';
-import { TelegramBotService } from '../telegram/telegram-bot-service';
-import { TdlibUpdateJobData } from './tdlib-update.types';
-import { TelegramBotLoginResultHandler } from '../telegram/handlers/telegram-bot-login-result.handler';
-import { ConversationRepository } from '../persistence/conversation.repository';
-import { TdlibCommandResponseHandler } from './tdlib-command-response.handler';
+import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { connect, Connection, Channel } from 'amqplib';
+import { TelegramUserQueueProcessorRabbitMQ } from './telegram-user-queue-processor-rabbitmq.service';
+import { TelegramBotService } from '../../telegram/telegram-bot-service';
+import { TdlibUpdateJobData } from '../../tdlib/tdlib-update.types';
+import { TelegramBotLoginResultHandler } from '../../telegram/handlers/telegram-bot-login-result.handler';
+import { ConversationRepository } from '../../persistence/conversation.repository';
+import { TdlibCommandResponseHandler } from '../../tdlib/tdlib-command-response.handler';
 
 /**
- * Worker that consumes updates from tdlib_worker via BullMQ
+ * Worker that consumes updates from tdlib_worker via RabbitMQ
  * Single Responsibility: consuming updates and forwarding them to the queue processor
  */
-@Processor('tdlib-updates')
 @Injectable()
-export class TdlibUpdatesWorkerService extends WorkerHost {
-  private readonly logger = new Logger(TdlibUpdatesWorkerService.name);
+export class TdlibUpdatesWorkerRabbitMQ implements OnModuleInit, OnModuleDestroy {
+  private readonly logger = new Logger(TdlibUpdatesWorkerRabbitMQ.name);
+  private connection: Connection | null = null;
+  private channel: Channel | null = null;
+  private readonly queueName = 'tdlib-updates';
+  private readonly rabbitmqConfig: {
+    urls: string[];
+    queueOptions: {
+      durable: boolean;
+    };
+  };
 
   constructor(
-    private readonly telegramUserQueueProcessor: TelegramUserQueueProcessorBullMQ,
+    private readonly configService: ConfigService,
+    private readonly telegramUserQueueProcessor: TelegramUserQueueProcessorRabbitMQ,
     private readonly botService: TelegramBotService,
     private readonly loginResultHandler: TelegramBotLoginResultHandler,
     private readonly conversationRepository: ConversationRepository,
     private readonly commandResponseHandler: TdlibCommandResponseHandler,
   ) {
-    super();
+    const host = this.configService.get<string>('RABBITMQ_HOST') || 'localhost';
+    const port = this.configService.get<string>('RABBITMQ_PORT') || '5672';
+    const user = this.configService.get<string>('RABBITMQ_USER') || 'guest';
+    const password = this.configService.get<string>('RABBITMQ_PASSWORD') || 'guest';
+    
+    const url = `amqp://${user}:${password}@${host}:${port}`;
+    
+    this.rabbitmqConfig = {
+      urls: [url],
+      queueOptions: {
+        durable: true,
+      },
+    };
+  }
+
+  async onModuleInit(): Promise<void> {
+    await this.connect();
+    await this.setupConsumer();
+  }
+
+  async onModuleDestroy(): Promise<void> {
+    await this.disconnect();
+  }
+
+  private async connect(): Promise<void> {
+    try {
+      this.connection = await connect(this.rabbitmqConfig.urls[0]);
+      this.channel = await this.connection.createChannel();
+      
+      // Assert queue exists
+      await this.channel.assertQueue(this.queueName, this.rabbitmqConfig.queueOptions);
+      
+      this.logger.log(`Connected to RabbitMQ and asserted queue: ${this.queueName}`);
+    } catch (error) {
+      this.logger.error(`Failed to connect to RabbitMQ: ${error}`);
+      throw error;
+    }
+  }
+
+  private async setupConsumer(): Promise<void> {
+    if (!this.channel) {
+      throw new Error('Channel not initialized');
+    }
+
+    await this.channel.consume(
+      this.queueName,
+      async (msg) => {
+        if (!msg) {
+          return;
+        }
+
+        try {
+          const jobData = JSON.parse(msg.content.toString()) as {
+            pattern: string;
+            data: TdlibUpdateJobData;
+          };
+          
+          await this.process(jobData.pattern, jobData.data);
+          
+          // Acknowledge message after successful processing
+          this.channel?.ack(msg);
+        } catch (error) {
+          this.logger.error(`[ERROR] Error processing update: ${error}`);
+          // Reject message and requeue on error
+          this.channel?.nack(msg, false, true);
+        }
+      },
+      {
+        noAck: false, // Manual acknowledgment
+      },
+    );
+
+    this.logger.log(`Consumer set up for queue: ${this.queueName}`);
   }
 
   /**
-   * Updates session state to waiting for auth code
+   * Processes a job from the queue
    */
-  private async updateSessionToWaitingAuthCode(session: { requestId: string; telegramUserId: number; loggedInUserId: number }): Promise<number | null> {
-    await this.conversationRepository.updateSessionState(session.requestId, 'waitingCode');
-    return session.telegramUserId;
-  }
-
-  async process(job: Job<TdlibUpdateJobData, unknown, string>): Promise<void> {
-    this.logger.log(`[DEBUG] Processing job: ${job.name}`);
-    switch (job.name) {
+  private async process(pattern: string, jobData: TdlibUpdateJobData): Promise<void> {
+    this.logger.log(`[DEBUG] Processing job: ${pattern}`);
+    
+    switch (pattern) {
       case 'new-message': {
-        const { update, userId } = job.data;
+        const { update, userId } = jobData;
         if (update) {
           // Forward update to the queue processor with userId
           await this.telegramUserQueueProcessor.enqueue({ update, userId: userId?.toString() });
@@ -47,7 +124,7 @@ export class TdlibUpdatesWorkerService extends WorkerHost {
         break;
       }
       case 'auth-code-request': {
-        const { botUserId, retry } = job.data;
+        const { botUserId, retry } = jobData;
         if (botUserId) {
           // Look up active session by loggedInUserId (botUserId is the loggedInUserId as string)
           const loggedInUserId = Number.parseInt(botUserId, 10);
@@ -80,7 +157,7 @@ export class TdlibUpdatesWorkerService extends WorkerHost {
         break;
       }
       case 'password-request': {
-        const { botUserId } = job.data;
+        const { botUserId } = jobData;
         if (botUserId) {
           // Look up active session by loggedInUserId (botUserId is the loggedInUserId as string)
           const loggedInUserId = Number.parseInt(botUserId, 10);
@@ -104,7 +181,7 @@ export class TdlibUpdatesWorkerService extends WorkerHost {
         break;
       }
       case 'authorization-state': {
-        const { update } = job.data;
+        const { update } = jobData;
         if (update) {
           // Log authorization state changes
           this.logger.log('[DEBUG] Authorization state update received');
@@ -112,7 +189,7 @@ export class TdlibUpdatesWorkerService extends WorkerHost {
         break;
       }
       case 'login-success': {
-        const { botUserId, userInfo, error } = job.data;
+        const { botUserId, userInfo, error } = jobData;
         if (botUserId) {
           // Look up active session by loggedInUserId (botUserId is the loggedInUserId as string)
           const loggedInUserId = Number.parseInt(botUserId, 10);
@@ -172,7 +249,7 @@ export class TdlibUpdatesWorkerService extends WorkerHost {
         break;
       }
       case 'login-failure': {
-        const { botUserId, error } = job.data;
+        const { botUserId, error } = jobData;
         if (botUserId) {
           // Look up active session by loggedInUserId (botUserId is the loggedInUserId as string)
           const loggedInUserId = Number.parseInt(botUserId, 10);
@@ -197,12 +274,12 @@ export class TdlibUpdatesWorkerService extends WorkerHost {
       case 'session-created': {
         // Sessions are now created in Nest API before dispatching login command
         // This event is kept for backward compatibility but is a no-op
-        const { requestId } = job.data;
+        const { requestId } = jobData;
         this.logger.log(`[DEBUG] session-created event received (no-op, session already created in Nest API): ${requestId}`);
         break;
       }
       case 'session-state-updated': {
-        const { botUserId, state } = job.data;
+        const { botUserId, state } = jobData;
         if (botUserId && state) {
           // Look up active session by loggedInUserId (botUserId is the loggedInUserId as string)
           const loggedInUserId = Number.parseInt(botUserId, 10);
@@ -222,7 +299,7 @@ export class TdlibUpdatesWorkerService extends WorkerHost {
         break;
       }
       case 'session-deleted': {
-        const { botUserId } = job.data;
+        const { botUserId } = jobData;
         if (botUserId) {
           // Look up active session by loggedInUserId (botUserId is the loggedInUserId as string)
           const loggedInUserId = Number.parseInt(botUserId, 10);
@@ -239,8 +316,8 @@ export class TdlibUpdatesWorkerService extends WorkerHost {
         break;
       }
       case 'command-response': {
-        const { requestId, commandType, result, error, context } = job.data;
-        console.log(JSON.stringify(job.data, null, 2));
+        const { requestId, commandType, result, error, context } = jobData;
+        console.log(JSON.stringify(jobData, null, 2));
         if (requestId && context) {
           // Use context from response (echoed back from worker)
           await this.commandResponseHandler.handleResponse({
@@ -256,7 +333,51 @@ export class TdlibUpdatesWorkerService extends WorkerHost {
         break;
       }
       default:
-        this.logger.warn(`[WARN] Unknown job name: ${job.name}`);
+        this.logger.warn(`[WARN] Unknown job pattern: ${pattern}`);
+    }
+  }
+
+  /**
+   * Updates session state to waiting for auth code
+   */
+  private async updateSessionToWaitingAuthCode(session: { requestId: string; telegramUserId: number; loggedInUserId: number }): Promise<number | null> {
+    await this.conversationRepository.updateSessionState(session.requestId, 'waitingCode');
+    return session.telegramUserId;
+  }
+
+  /**
+   * Enqueues an update to the tdlib-updates queue
+   */
+  async enqueue(pattern: string, data: TdlibUpdateJobData): Promise<void> {
+    if (!this.channel) {
+      throw new Error('Channel not initialized. Make sure RabbitMQ is connected.');
+    }
+
+    try {
+      await this.channel.assertQueue(this.queueName, this.rabbitmqConfig.queueOptions);
+      const message = Buffer.from(JSON.stringify({ pattern, data }));
+      this.channel.sendToQueue(this.queueName, message, {
+        persistent: true,
+      });
+    } catch (error) {
+      this.logger.error(`[ERROR] Error enqueueing update: ${error}`);
+      throw error;
+    }
+  }
+
+  private async disconnect(): Promise<void> {
+    try {
+      if (this.channel) {
+        await this.channel.close();
+        this.channel = null;
+      }
+      if (this.connection) {
+        await this.connection.close();
+        this.connection = null;
+      }
+      this.logger.log('Disconnected from RabbitMQ');
+    } catch (error) {
+      this.logger.error(`Error disconnecting from RabbitMQ: ${error}`);
     }
   }
 }

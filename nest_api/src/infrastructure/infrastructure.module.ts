@@ -1,5 +1,4 @@
 import { PersistenceModule } from '@/infrastructure/persistence/persistence.module';
-import { TdlibUpdatesWorkerService } from '@/infrastructure/tdlib/tdlib-updates-worker.service';
 import { TelegramBotService } from '@/infrastructure/telegram/telegram-bot-service';
 import { Module, forwardRef } from '@nestjs/common';
 import { AppConfigService } from '../config/app.config';
@@ -23,15 +22,16 @@ import { TelegramUserMessageProcessor } from './telegram/telegram-user-message-p
 import { WorkersModule } from '@/infrastructure/workers/workers.module';
 import { TdlibCommandResponseHandler } from '@/infrastructure/tdlib/tdlib-command-response.handler';
 import { TelegramUserClientProxyService } from '@/infrastructure/tdlib/telegram-user-client-proxy.service';
-import { TelegramBotQueueProcessorBullMQ } from '@/infrastructure/queue/bullmq/telegram-bot-queue-processor-bullmq.service';
-import { TelegramUserQueueProcessorBullMQ } from '@/infrastructure/queue/bullmq/telegram-user-queue-processor-bullmq.service';
+import { TelegramBotQueueProcessorRabbitMQ } from '@/infrastructure/queue/rabbitmq/telegram-bot-queue-processor-rabbitmq.service';
+import { TelegramUserQueueProcessorRabbitMQ } from '@/infrastructure/queue/rabbitmq/telegram-user-queue-processor-rabbitmq.service';
+import { TdlibUpdatesWorkerRabbitMQ } from '@/infrastructure/queue/rabbitmq/tdlib-updates-worker-rabbitmq.service';
 
 /**
  * Module responsável por serviços de infraestrutura
  * Agrupa serviços relacionados a integrações externas
  */
 @Module({
-  imports: [DomainModule, PersistenceModule, forwardRef(() => QueueModule), WorkersModule],
+  imports: [DomainModule, PersistenceModule, QueueModule, WorkersModule],
   providers: [
     AppConfigService,
     GoogleSheetsService,
@@ -61,7 +61,6 @@ import { TelegramUserQueueProcessorBullMQ } from '@/infrastructure/queue/bullmq/
     TelegramAuthCodeHandler,
     TelegramCommandHandler,
     TelegramBotLoginResultHandler,
-    TdlibUpdatesWorkerService,
     TelegramBotController,
     TelegramBotService,
     TelegramPurchaseHandler,
@@ -69,8 +68,9 @@ import { TelegramUserQueueProcessorBullMQ } from '@/infrastructure/queue/bullmq/
     PhoneWhitelistService,
     TdlibCommandResponseHandler,
     
-    TelegramUserQueueProcessorBullMQ,
-    TelegramBotQueueProcessorBullMQ,
+    TelegramUserQueueProcessorRabbitMQ,
+    TelegramBotQueueProcessorRabbitMQ,
+    TdlibUpdatesWorkerRabbitMQ,
   ],
   exports: [
     MessageParser,

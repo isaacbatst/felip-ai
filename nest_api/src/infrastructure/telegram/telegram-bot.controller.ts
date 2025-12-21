@@ -2,7 +2,7 @@ import { TelegramBotService } from '@/infrastructure/telegram/telegram-bot-servi
 import { type RunnerHandle, run, sequentialize } from '@grammyjs/runner';
 import { Injectable, Logger, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
 import { type Context } from 'grammy';
-import { TelegramBotQueueProcessorBullMQ } from '../queue/bullmq/telegram-bot-queue-processor-bullmq.service';
+import { TelegramBotQueueProcessorRabbitMQ } from '../queue/rabbitmq/telegram-bot-queue-processor-rabbitmq.service';
 import { TelegramCommandHandler } from './handlers/telegram-bot-command.handler';
 
 /**
@@ -17,7 +17,7 @@ export class TelegramBotController implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(TelegramBotController.name);
   constructor(
     private readonly commandHandler: TelegramCommandHandler,
-    private readonly messageQueueProcessor: TelegramBotQueueProcessorBullMQ,
+    private readonly messageQueueProcessor: TelegramBotQueueProcessorRabbitMQ,
     private readonly botService: TelegramBotService,
   ) {}
 

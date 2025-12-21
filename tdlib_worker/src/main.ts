@@ -14,9 +14,10 @@ interface Config {
     databaseDirectory?: string;
     filesDirectory?: string;
   };
-  redis: {
+  rabbitmq: {
     host: string;
     port: number;
+    user?: string;
     password?: string;
   };
   queues: {
@@ -58,10 +59,11 @@ function loadConfig(): Config {
       databaseDirectory: process.env.TELEGRAM_DATABASE_DIRECTORY,
       filesDirectory: process.env.TELEGRAM_FILES_DIRECTORY,
     },
-    redis: {
-      host: process.env.REDIS_HOST || 'host.docker.internal',
-      port: Number.parseInt(process.env.REDIS_PORT || '6379', 10),
-      password: process.env.REDIS_PASSWORD,
+    rabbitmq: {
+      host: process.env.RABBITMQ_HOST || 'host.docker.internal',
+      port: Number.parseInt(process.env.RABBITMQ_PORT || '5672', 10),
+      user: process.env.RABBITMQ_USER,
+      password: process.env.RABBITMQ_PASSWORD,
     },
     queues: {
       updates: process.env.QUEUE_TDLIB_UPDATES || 'tdlib-updates',
@@ -99,23 +101,25 @@ async function main() {
 
   await client.initialize();
 
-  // Initialize update handler (sends updates to nest_api via BullMQ)
+  // Initialize update handler (sends updates to nest_api via RabbitMQ)
   const updateHandler = new UpdateHandler(
     client,
-    config.redis,
+    config.rabbitmq,
     config.queues.updates,
     config.userId,
   );
+  await updateHandler.connect();
   updateHandler.setupHandlers();
 
-  // Initialize command processor (receives commands from nest_api via BullMQ)
+  // Initialize command processor (receives commands from nest_api via RabbitMQ)
   const commandProcessor = new CommandProcessor(
     client,
-    config.redis,
+    config.rabbitmq,
     config.queues.commands,
     config.queues.updates,
     config.userId, // Pass loggedInUserId to LoginSessionManager (USER_ID env var)
   );
+  await commandProcessor.start();
 
   // Initialize HTTP API (receives commands from nest_api via HTTP)
   const httpApi = new HttpApi(client, config.http.port);

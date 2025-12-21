@@ -1,5 +1,8 @@
-import { Queue } from 'bullmq';
 import { TelegramUserClient } from './telegram-user-client';
+
+interface RabbitMQPublisher {
+  publish(pattern: string, data: unknown): Promise<void>;
+}
 
 /**
  * Manages login sessions for queue-based login flow
@@ -10,14 +13,14 @@ export class LoginSessionManager {
   // loggedInUserId from worker config (USER_ID env var) - used to identify which worker/user this session belongs to
   // This is the user ID that the worker is configured to impersonate
   private readonly loggedInUserId: string | null;
-  private updatesQueue: Queue;
+  private updatesPublisher: RabbitMQPublisher;
 
   constructor(
     private readonly client: TelegramUserClient,
-    updatesQueue: Queue,
+    updatesPublisher: RabbitMQPublisher,
     loggedInUserId?: string,
   ) {
-    this.updatesQueue = updatesQueue;
+    this.updatesPublisher = updatesPublisher;
     this.loggedInUserId = loggedInUserId || null;
     this.setupAuthorizationStateHandler();
   }
@@ -46,7 +49,7 @@ export class LoginSessionManager {
         console.error(`[ERROR] Failed to set phone number:`, error);
         if (this.loggedInUserId) {
           // Dispatch failure event to Nest API (Nest API will look up active session by loggedInUserId)
-          this.updatesQueue.add('login-failure', {
+          this.updatesPublisher.publish('login-failure', {
             botUserId: this.loggedInUserId, // Keep botUserId in payload for backward compatibility with nest_api
             error: error instanceof Error ? error.message : String(error),
           }).catch((err) => {
@@ -87,13 +90,13 @@ export class LoginSessionManager {
     // Only one login can be active at a time per user, so it will return the active one
     if (authState === 'authorizationStateWaitCode') {
       // Send auth code request to nest_api (Nest API will look up active session by loggedInUserId)
-      await this.updatesQueue.add('auth-code-request', {
+      await this.updatesPublisher.publish('auth-code-request', {
         botUserId: this.loggedInUserId, // Keep botUserId in payload for backward compatibility with nest_api
         retry: false,
       });
     } else if (authState === 'authorizationStateWaitPassword') {
       // Send password request to nest_api (Nest API will look up active session by loggedInUserId)
-      await this.updatesQueue.add('password-request', {
+      await this.updatesPublisher.publish('password-request', {
         botUserId: this.loggedInUserId, // Keep botUserId in payload for backward compatibility with nest_api
       });
     } else if (authState === 'authorizationStateReady') {
@@ -101,14 +104,14 @@ export class LoginSessionManager {
       try {
         const userInfo = await this.client.getMe();
         // Dispatch login success event to nest_api (Nest API will look up active session by loggedInUserId)
-        await this.updatesQueue.add('login-success', {
+        await this.updatesPublisher.publish('login-success', {
           botUserId: this.loggedInUserId, // Keep botUserId in payload for backward compatibility with nest_api
           userInfo,
         });
       } catch (error) {
         console.error(`[ERROR] Error getting user info after login:`, error);
         // Still dispatch success but without user info
-        await this.updatesQueue.add('login-success', {
+        await this.updatesPublisher.publish('login-success', {
           botUserId: this.loggedInUserId, // Keep botUserId in payload for backward compatibility with nest_api
           userInfo: null,
           error: error instanceof Error ? error.message : String(error),
@@ -118,7 +121,7 @@ export class LoginSessionManager {
       // Login failed or closed - dispatch failure event
       const error = new Error('Authorization closed');
       // Dispatch login failure event to nest_api (Nest API will look up active session by loggedInUserId)
-      await this.updatesQueue.add('login-failure', {
+      this.updatesPublisher.publish('login-failure', {
         botUserId: this.loggedInUserId, // Keep botUserId in payload for backward compatibility with nest_api
         error: error.message,
       }).catch((err) => {
@@ -207,8 +210,8 @@ export class LoginSessionManager {
           await this.handleAuthorizationState(update);
 
           // Also send to nest_api
-          this.updatesQueue
-            .add('authorization-state', { update })
+          this.updatesPublisher
+            .publish('authorization-state', { update })
             .catch((error: unknown) => {
               console.error('[ERROR] Error enqueueing authorization state update:', error);
             });
@@ -217,4 +220,3 @@ export class LoginSessionManager {
     });
   }
 }
-

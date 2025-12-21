@@ -1,17 +1,41 @@
 import { NestFactory } from '@nestjs/core';
+import { AsyncMicroserviceOptions, Transport } from '@nestjs/microservices';
 import { AppModule } from './app.module';
-import { ConsoleLogger, Logger } from '@nestjs/common';
+import { ConsoleLogger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 
 async function bootstrap() {
   const logger = new ConsoleLogger();
   logger.log('Starting application initialization...');
 
-  // Create standalone application context (no HTTP server)
-  const app = await NestFactory.createApplicationContext(AppModule, {
-    logger,
+  // Create microservice with RabbitMQ transport using async options
+  const app = await NestFactory.createMicroservice<AsyncMicroserviceOptions>(AppModule, {
+    useFactory: (configService: ConfigService) => {
+      // Build RabbitMQ connection URL from ConfigService
+      const host = configService.get<string>('RABBITMQ_HOST') || 'localhost';
+      const port = configService.get<string>('RABBITMQ_PORT') || '5672';
+      const user = configService.get<string>('RABBITMQ_USER') || 'guest';
+      const password = configService.get<string>('RABBITMQ_PASSWORD') || 'guest';
+      const url = `amqp://${user}:${password}@${host}:${port}`;
+
+      logger.log(`Connecting to RabbitMQ at ${host}:${port}`);
+
+      return {
+        transport: Transport.RMQ,
+        options: {
+          urls: [url],
+          queue: 'nest-api-queue',
+          queueOptions: {
+            durable: true,
+          },
+          noAck: false, // Manual acknowledgment for reliability
+        },
+      };
+    },
+    inject: [ConfigService],
   });
 
-  logger.log('Application context created successfully');
+  logger.log('Microservice created successfully');
 
   // Graceful shutdown handler
   let isShuttingDown = false;
@@ -34,12 +58,12 @@ async function bootstrap() {
       // Ignore errors when closing stdin
     }
 
-    // Close the application context
+    // Close the microservice
     try {
       await app.close();
-      logger.log('Application context closed successfully');
+      logger.log('Microservice closed successfully');
     } catch (error) {
-      logger.error('Error closing application context:', error);
+      logger.error('Error closing microservice:', error);
     }
 
     logger.log('Shutdown complete');
@@ -55,6 +79,8 @@ async function bootstrap() {
     void shutdown('SIGTERM');
   });
 
+  // Start listening to messages
+  await app.listen();
   logger.log('Application started successfully');
 }
 

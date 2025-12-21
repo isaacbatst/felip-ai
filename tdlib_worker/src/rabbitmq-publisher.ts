@@ -1,7 +1,6 @@
 import { connect, ChannelModel, Channel } from 'amqplib';
-import { TelegramUserClient } from './telegram-user-client';
 
-interface RabbitMQConnection {
+export interface RabbitMQConnection {
   host: string;
   port: number;
   user?: string;
@@ -9,27 +8,24 @@ interface RabbitMQConnection {
 }
 
 /**
- * Handler responsável por receber eventos do Telegram Client e enviar para a fila RabbitMQ
+ * Helper class for publishing messages to RabbitMQ
  */
-export class UpdateHandler {
+export class RabbitMQPublisher {
   private connection: ChannelModel | null = null;
   private channel: Channel | null = null;
   private readonly queueName: string;
-  private readonly userId?: string;
   private readonly rabbitmqConfig: RabbitMQConnection;
 
-  constructor(
-    private readonly client: TelegramUserClient,
-    rabbitmqConnection: RabbitMQConnection,
-    queueName: string = 'tdlib-updates',
-    userId?: string,
-  ) {
-    this.queueName = queueName;
-    this.userId = userId;
+  constructor(rabbitmqConnection: RabbitMQConnection, queueName: string) {
     this.rabbitmqConfig = rabbitmqConnection;
+    this.queueName = queueName;
   }
 
   async connect(): Promise<void> {
+    if (this.connection) {
+      return; // Already connected
+    }
+
     try {
       const user = this.rabbitmqConfig.user || 'guest';
       const password = this.rabbitmqConfig.password || 'guest';
@@ -42,38 +38,13 @@ export class UpdateHandler {
       await this.channel.assertQueue(this.queueName, {
         durable: true,
       });
-      
-      console.log(`[DEBUG] ✅ UpdateHandler connected to RabbitMQ queue: ${this.queueName}`);
     } catch (error) {
-      console.error(`[ERROR] Failed to connect UpdateHandler to RabbitMQ: ${error}`);
+      console.error(`[ERROR] Failed to connect RabbitMQ publisher: ${error}`);
       throw error;
     }
   }
 
-  /**
-   * Configura handlers para mensagens recebidas e envia para a fila RabbitMQ
-   */
-  setupHandlers(): void {
-    this.client.onUpdate((update: unknown) => {
-      if (typeof update === 'object' && update !== null && '_' in update) {
-        const updateType = (update as { _: string })._;
-        if (updateType === 'updateNewMessage') {
-          this.publish('new-message', { update, userId: this.userId })
-            .catch((error: unknown) => {
-              console.error('[ERROR] Error enqueueing message to RabbitMQ:', error);
-            });
-        } else if (updateType === 'updateAuthorizationState') {
-          // Send authorization state updates
-          this.publish('authorization-state', { update, userId: this.userId })
-            .catch((error: unknown) => {
-              console.error('[ERROR] Error enqueueing authorization state update:', error);
-            });
-        }
-      }
-    });
-  }
-
-  private async publish(pattern: string, data: unknown): Promise<void> {
+  async publish(pattern: string, data: unknown): Promise<void> {
     if (!this.channel) {
       await this.connect();
     }
@@ -108,9 +79,9 @@ export class UpdateHandler {
         await this.connection.close();
         this.connection = null;
       }
-      console.log('[DEBUG] UpdateHandler closed successfully');
     } catch (error) {
-      console.error('[ERROR] Error closing UpdateHandler:', error);
+      console.error('[ERROR] Error closing RabbitMQ publisher:', error);
     }
   }
 }
+
