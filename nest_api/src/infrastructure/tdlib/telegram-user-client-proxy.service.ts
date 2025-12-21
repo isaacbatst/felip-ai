@@ -57,7 +57,7 @@ export class TelegramUserClientProxyService implements OnModuleDestroy {
       throw new Error(`No port found for worker user ${userId}. Worker may not be running.`);
     }
 
-    const url = `http://localhost:${port}/command`;
+    const url = `http://tdlib-${userId}:${port}/command`;
     const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
