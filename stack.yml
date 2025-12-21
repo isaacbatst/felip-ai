@@ -10,6 +10,7 @@ services:
         condition: on-failure
     networks:
       - traefik-public
+      - default
     depends_on:
       - rabbitmq
     env_file:
@@ -30,7 +31,7 @@ services:
         condition: on-failure
     networks:
       - traefik-public
-      - rabbitmq
+      - default
     volumes:
       - rabbitmq-data:/var/lib/rabbitmq
     environment:
@@ -57,5 +58,5 @@ volumes:
 networks:
   traefik-public:
     external: true
-  rabbitmq:
+  default:
     driver: overlay

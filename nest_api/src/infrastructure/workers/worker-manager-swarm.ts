@@ -64,7 +64,7 @@ export class WorkerManagerSwarm extends WorkerManager implements OnModuleDestroy
         Name: serviceName,
         Networks: [
           {
-            Target: 'felip-ai_rabbitmq',
+            Target: 'felip-ai_default',
           }
         ],
         TaskTemplate: {
