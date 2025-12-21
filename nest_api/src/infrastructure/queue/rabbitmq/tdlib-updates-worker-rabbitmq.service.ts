@@ -38,7 +38,13 @@ export class TdlibUpdatesWorkerRabbitMQ implements OnModuleInit, OnModuleDestroy
     const user = this.configService.get<string>('RABBITMQ_USER') || 'guest';
     const password = this.configService.get<string>('RABBITMQ_PASSWORD') || 'guest';
     
-    const url = `amqp://${user}:${password}@${host}:${port}`;
+    // URL encode username and password to handle special characters
+    const encodedUser = encodeURIComponent(user);
+    const encodedPassword = encodeURIComponent(password);
+    const url = `amqp://${encodedUser}:${encodedPassword}@${host}:${port}`;
+    
+    // Log connection details (without password) for debugging
+    this.logger.log(`RabbitMQ connection config: host=${host}, port=${port}, user=${user}`);
     
     this.rabbitmqConfig = {
       urls: [url],
@@ -59,7 +65,12 @@ export class TdlibUpdatesWorkerRabbitMQ implements OnModuleInit, OnModuleDestroy
 
   private async connect(): Promise<void> {
     try {
-      this.connection = await connect(this.rabbitmqConfig.urls[0]);
+      const connectionUrl = this.rabbitmqConfig.urls[0];
+      // Log connection URL without password for debugging
+      const urlWithoutPassword = connectionUrl.replace(/:[^:@]+@/, ':****@');
+      this.logger.log(`Attempting to connect to RabbitMQ: ${urlWithoutPassword}`);
+      
+      this.connection = await connect(connectionUrl);
       this.channel = await this.connection.createChannel();
       
       // Assert queue exists
@@ -68,6 +79,7 @@ export class TdlibUpdatesWorkerRabbitMQ implements OnModuleInit, OnModuleDestroy
       this.logger.log(`Connected to RabbitMQ and asserted queue: ${this.queueName}`);
     } catch (error) {
       this.logger.error(`Failed to connect to RabbitMQ: ${error}`);
+      this.logger.error(`Connection URL (masked): ${this.rabbitmqConfig.urls[0].replace(/:[^:@]+@/, ':****@')}`);
       throw error;
     }
   }

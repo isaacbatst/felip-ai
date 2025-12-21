@@ -14,6 +14,8 @@ services:
       - rabbitmq
     env_file:
       - envfile
+    environment:
+      - RABBITMQ_HOST=${RABBITMQ_HOST:-rabbitmq}
     volumes:
       - /home/felip-ai/service-account-key.json:/app/nest_api/service-account-key.json:ro
       - /var/run/docker.sock:/var/run/docker.sock

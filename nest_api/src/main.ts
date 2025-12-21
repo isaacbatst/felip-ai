@@ -16,9 +16,13 @@ async function bootstrap() {
       const port = configService.get<string>('RABBITMQ_PORT') || '5672';
       const user = configService.get<string>('RABBITMQ_USER') || 'guest';
       const password = configService.get<string>('RABBITMQ_PASSWORD') || 'guest';
-      const url = `amqp://${user}:${password}@${host}:${port}`;
+      
+      // URL encode username and password to handle special characters
+      const encodedUser = encodeURIComponent(user);
+      const encodedPassword = encodeURIComponent(password);
+      const url = `amqp://${encodedUser}:${encodedPassword}@${host}:${port}`;
 
-      logger.log(`Connecting to RabbitMQ at ${host}:${port}`);
+      logger.log(`Connecting to RabbitMQ at ${host}:${port} with user ${user}`);
 
       return {
         transport: Transport.RMQ,
