@@ -62,6 +62,11 @@ export class WorkerManagerSwarm extends WorkerManager implements OnModuleDestroy
     try {
       await this.docker.createService({
         Name: serviceName,
+        Networks: [
+          {
+            Target: 'felip-ai_rabbitmq',
+          }
+        ],
         TaskTemplate: {
           ContainerSpec: {
             Image: this.getImageName(),

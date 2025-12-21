@@ -30,6 +30,7 @@ services:
         condition: on-failure
     networks:
       - traefik-public
+      - rabbitmq
     volumes:
       - rabbitmq-data:/var/lib/rabbitmq
     environment:
@@ -56,4 +57,5 @@ volumes:
 networks:
   traefik-public:
     external: true
-
+  rabbitmq:
+    driver: overlay
