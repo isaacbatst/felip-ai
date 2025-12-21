@@ -73,7 +73,7 @@ jobs:
           echo "REDIS_HOST=redis" >> envfile
           echo "REDIS_PORT=6379" >> envfile
           echo "REDIS_PASSWORD=${{ secrets.REDIS_PASSWORD }}" >> envfile
-          echo "WORKER_MANAGER_TYPE=${{ secrets.WORKER_MANAGER_TYPE:-swarm }}" >> envfile
+          echo "WORKER_MANAGER_TYPE=${{ secrets.WORKER_MANAGER_TYPE }}" >> envfile
           echo "GIT_COMMIT_HASH=${{ github.sha }}" >> envfile
       - name: Docker Stack Deploy
         uses: cssnr/stack-deploy-action@v1
