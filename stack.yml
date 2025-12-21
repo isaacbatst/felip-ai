@@ -16,7 +16,6 @@ services:
     env_file:
       - envfile
     volumes:
-      - /home/felip-ai/database:/app/nest_api/drizzle
       - /home/felip-ai/service-account-key.json:/app/nest_api/service-account-key.json:ro
       - /var/run/docker.sock:/var/run/docker.sock
 
