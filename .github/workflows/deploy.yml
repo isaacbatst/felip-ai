@@ -63,19 +63,34 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Create env file
+        shell: bash
         run: |
-          echo "TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}" >> envfile
-          echo "GOOGLE_SPREADSHEET_ID=${{ secrets.GOOGLE_SPREADSHEET_ID }}" >> envfile
-          echo "GOOGLE_SERVICE_ACCOUNT_KEY_FILE=/app/nest_api/service-account-key.json" >> envfile
-          echo "WORKER_ENV_FILE=${{ secrets.WORKER_ENV_FILE }}" >> envfile
-          echo "OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}" >> envfile
-          echo "DATABASE_URL=${{ secrets.DATABASE_URL }}" >> envfile
-          echo "WORKER_MANAGER_TYPE=${{ secrets.WORKER_MANAGER_TYPE }}" >> envfile
-          echo "GIT_COMMIT_HASH=${{ github.sha }}" >> envfile
-          echo "RABBITMQ_HOST=${{ secrets.RABBITMQ_HOST }}" >> envfile
-          echo "RABBITMQ_PORT=${{ secrets.RABBITMQ_PORT }}" >> envfile
-          echo "RABBITMQ_USER=${{ secrets.RABBITMQ_USER }}" >> envfile
-          echo "RABBITMQ_PASSWORD=${{ secrets.RABBITMQ_PASSWORD }}" >> envfile
+          {
+            TELEGRAM_BOT_TOKEN="${{ secrets.TELEGRAM_BOT_TOKEN }}"
+            GOOGLE_SPREADSHEET_ID="${{ secrets.GOOGLE_SPREADSHEET_ID }}"
+            WORKER_ENV_FILE="${{ secrets.WORKER_ENV_FILE }}"
+            OPENAI_API_KEY="${{ secrets.OPENAI_API_KEY }}"
+            DATABASE_URL="${{ secrets.DATABASE_URL }}"
+            WORKER_MANAGER_TYPE="${{ secrets.WORKER_MANAGER_TYPE }}"
+            GIT_COMMIT_HASH="${{ github.sha }}"
+            RABBITMQ_HOST="${{ secrets.RABBITMQ_HOST }}"
+            RABBITMQ_PORT="${{ secrets.RABBITMQ_PORT }}"
+            RABBITMQ_USER="${{ secrets.RABBITMQ_USER }}"
+            RABBITMQ_PASSWORD="${{ secrets.RABBITMQ_PASSWORD }}"
+            
+            printf 'TELEGRAM_BOT_TOKEN=%q\n' "$TELEGRAM_BOT_TOKEN"
+            printf 'GOOGLE_SPREADSHEET_ID=%q\n' "$GOOGLE_SPREADSHEET_ID"
+            printf 'GOOGLE_SERVICE_ACCOUNT_KEY_FILE=/app/nest_api/service-account-key.json\n'
+            printf 'WORKER_ENV_FILE=%q\n' "$WORKER_ENV_FILE"
+            printf 'OPENAI_API_KEY=%q\n' "$OPENAI_API_KEY"
+            printf 'DATABASE_URL=%q\n' "$DATABASE_URL"
+            printf 'WORKER_MANAGER_TYPE=%q\n' "$WORKER_MANAGER_TYPE"
+            printf 'GIT_COMMIT_HASH=%q\n' "$GIT_COMMIT_HASH"
+            printf 'RABBITMQ_HOST=%q\n' "$RABBITMQ_HOST"
+            printf 'RABBITMQ_PORT=%q\n' "$RABBITMQ_PORT"
+            printf 'RABBITMQ_USER=%q\n' "$RABBITMQ_USER"
+            printf 'RABBITMQ_PASSWORD=%q\n' "$RABBITMQ_PASSWORD"
+          } > envfile
       - name: Docker Stack Deploy
         uses: cssnr/stack-deploy-action@v1
         with:
