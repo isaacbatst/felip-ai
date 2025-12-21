@@ -35,9 +35,9 @@ services:
       sh -c "
       mkdir -p /data/appendonlydir
       if [ -n \"$$REDIS_PASSWORD\" ]; then
-        redis-server --requirepass $$REDIS_PASSWORD --appendonly yes --dir /data --appendfilename appendonlydir/appendonly.aof
+        redis-server --requirepass $$REDIS_PASSWORD --appendonly yes --dir /data/appendonlydir --appendfilename appendonly.aof
       else
-        redis-server --appendonly yes --dir /data --appendfilename appendonlydir/appendonly.aof
+        redis-server --appendonly yes --dir /data/appendonlydir --appendfilename appendonly.aof
       fi
       "
     env_file:
