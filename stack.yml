@@ -18,6 +18,7 @@ services:
     volumes:
       - /home/felip-ai/database:/app/nest_api/drizzle
       - /home/felip-ai/service-account-key.json:/app/nest_api/service-account-key.json:ro
+      - /var/run/docker.sock:/var/run/docker.sock
 
   redis:
     image: redis:8.4-alpine
