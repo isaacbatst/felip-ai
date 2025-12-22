@@ -195,6 +195,15 @@ export class TelegramCommandHandler {
         return;
       }
 
+      const telegramUserId = ctx.from?.id;
+      if (telegramUserId) {
+        // Get and delete the conversation
+        const conversation = await this.conversationRepository.getConversationByTelegramUserId(telegramUserId);
+        if (conversation) {
+          await this.conversationRepository.deleteConversation(conversation.requestId);
+        }
+      }
+
       // Dispatch logout command with context
       const context: CommandContext = {
         userId,
