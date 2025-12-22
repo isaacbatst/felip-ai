@@ -109,9 +109,29 @@ export class TdlibCommandResponseHandler {
     this.logger.error(`Command ${commandType} failed: ${error}`, { context });
     
     if (context.chatId) {
+      // Check if this is a rate limit error and provide a more helpful message
+      const isRateLimitError = error.includes('Too Many Requests') || 
+                               error.includes('retry after') ||
+                               error.toLowerCase().includes('rate limit');
+      
+      let errorMessage: string;
+      if (isRateLimitError && commandType === 'provideAuthCode') {
+        // Extract retry after time if available
+        const retryMatch = error.match(/retry after (\d+)/i);
+        const retrySeconds = retryMatch ? parseInt(retryMatch[1], 10) : null;
+        const retryMinutes = retrySeconds ? Math.ceil(retrySeconds / 60) : null;
+        
+        errorMessage = '⏳ Muitas tentativas. Por favor, aguarde um momento antes de tentar novamente.';
+        if (retryMinutes) {
+          errorMessage += `\n\nTente novamente em aproximadamente ${retryMinutes} minuto(s).`;
+        }
+      } else {
+        errorMessage = `❌ Erro ao executar comando ${commandType}: ${error}`;
+      }
+      
       await this.botService.bot.api.sendMessage(
         context.chatId,
-        `❌ Erro ao executar comando ${commandType}: ${error}`,
+        errorMessage,
       );
     }
   }

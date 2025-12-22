@@ -112,18 +112,77 @@ export class CommandProcessor {
           } catch (error) {
             console.error(`[ERROR] ❌ Command failed: ${pattern} (requestId: ${command.requestId})`, error);
             
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            
             // Send error response back to nest_api via updates queue
             if (command.requestId) {
               await this.updatesPublisher.publish('command-response', {
                 requestId: command.requestId,
                 commandType: command.type,
-                error: error instanceof Error ? error.message : String(error),
+                error: errorMessage,
                 context: command.context, // Echo back context from command
               });
             }
             
-            // Reject message and requeue on error
-            this.channel?.nack(msg, false, true);
+            // Check if this is a rate limit error
+            const isRateLimitError = errorMessage.includes('Too Many Requests') || 
+                                     errorMessage.includes('retry after') ||
+                                     errorMessage.toLowerCase().includes('rate limit');
+            
+            // Extract retry-after time from error message (in seconds)
+            let retryAfterSeconds: number | null = null;
+            if (isRateLimitError) {
+              const retryMatch = errorMessage.match(/retry after (\d+)/i);
+              if (retryMatch) {
+                retryAfterSeconds = parseInt(retryMatch[1], 10);
+              }
+            }
+            
+            // For provideAuthCode commands, always acknowledge (don't requeue)
+            // Auth codes can expire and user needs to provide a new one
+            if (command.type === 'provideAuthCode') {
+              console.log(`[DEBUG] provideAuthCode error - acknowledging message (don't requeue auth codes): ${errorMessage}`);
+              this.channel?.ack(msg);
+            } else if (isRateLimitError && retryAfterSeconds !== null) {
+              // For rate limit errors with retry-after time, delay and republish
+              const delayMs = retryAfterSeconds * 1000;
+              console.log(`[DEBUG] Rate limit error - will republish after ${retryAfterSeconds}s delay (error: ${errorMessage})`);
+              
+              // Acknowledge the current message
+              this.channel?.ack(msg);
+              
+              // Republish after delay
+              setTimeout(async () => {
+                try {
+                  if (!this.channel) {
+                    console.error(`[ERROR] Channel not available for republishing command ${command.type}`);
+                    return;
+                  }
+                  
+                  await this.channel.assertQueue(this.queueName, {
+                    durable: true,
+                  });
+                  
+                  // Republish the original message
+                  const messageToRepublish = JSON.stringify({ pattern, data: command });
+                  this.channel.sendToQueue(this.queueName, Buffer.from(messageToRepublish), {
+                    persistent: true,
+                  });
+                  
+                  console.log(`[DEBUG] ✅ Republished command ${command.type} after ${retryAfterSeconds}s delay`);
+                } catch (republishError) {
+                  console.error(`[ERROR] Failed to republish command ${command.type} after delay:`, republishError);
+                }
+              }, delayMs);
+            } else if (isRateLimitError) {
+              // Rate limit error but no retry-after time specified - acknowledge to prevent loop
+              console.log(`[DEBUG] Rate limit error without retry-after time - acknowledging to prevent loop (error: ${errorMessage})`);
+              this.channel?.ack(msg);
+            } else {
+              // For other errors, reject and requeue immediately
+              console.log(`[DEBUG] Non-rate-limit error - requeuing immediately (error: ${errorMessage})`);
+              this.channel?.nack(msg, false, true);
+            }
           }
         } catch (error) {
           console.error(`[ERROR] Error processing message: ${error}`);
