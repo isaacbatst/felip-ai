@@ -15,6 +15,13 @@
       "when": 1766248134762,
       "tag": "0001_chemical_groot",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1766520503598,
+      "tag": "0002_handy_hellfire_club",
+      "breakpoints": true
     }
   ]
 }
