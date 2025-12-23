@@ -7,6 +7,7 @@ import { TdlibUpdateJobData } from '../../tdlib/tdlib-update.types';
 import { TelegramBotLoginResultHandler } from '../../telegram/handlers/telegram-bot-login-result.handler';
 import { ConversationRepository } from '../../persistence/conversation.repository';
 import { TdlibCommandResponseHandler } from '../../tdlib/tdlib-command-response.handler';
+import { MessageProcessedLogRepository } from '@/infrastructure/persistence/message-processed-log.repository';
 
 /**
  * Worker that consumes updates from tdlib_worker via RabbitMQ
@@ -34,6 +35,7 @@ export class TdlibUpdatesWorkerRabbitMQ implements OnModuleInit, OnModuleDestroy
     private readonly loginResultHandler: TelegramBotLoginResultHandler,
     private readonly conversationRepository: ConversationRepository,
     private readonly commandResponseHandler: TdlibCommandResponseHandler,
+    private readonly messageProcessedLogRepository: MessageProcessedLogRepository,
   ) {
     const host = this.configService.get<string>('RABBITMQ_HOST') || 'localhost';
     const port = this.configService.get<string>('RABBITMQ_PORT') || '5672';
@@ -103,14 +105,47 @@ export class TdlibUpdatesWorkerRabbitMQ implements OnModuleInit, OnModuleDestroy
             pattern: string;
             data: TdlibUpdateJobData;
           };
+          const retryCount = (msg.properties.headers?.['x-retry-count'] as number) || 0;
 
           await this.process(jobData.pattern, jobData.data);
+
+          // Log successful processing
+          await this.messageProcessedLogRepository.logProcessedMessage({
+            queueName: this.queueName,
+            messageData: jobData,
+            userId: jobData.data.userId,
+            status: 'success',
+            retryCount,
+          }).catch((logError) => {
+            this.logger.error(`[ERROR] Failed to log processed message: ${logError}`);
+          });
 
           // Acknowledge message after successful processing
           this.channel?.ack(msg);
         } catch (error) {
           this.logger.error(`[ERROR] Error processing update: ${error}`);
           const retryCount = (msg.properties.headers?.['x-retry-count'] as number) || 0;
+          
+          // Log failed processing
+          try {
+            const jobData = JSON.parse(msg.content.toString()) as {
+              pattern: string;
+              data: TdlibUpdateJobData;
+            };
+            await this.messageProcessedLogRepository.logProcessedMessage({
+              queueName: this.queueName,
+              messageData: jobData,
+              userId: jobData.data.userId,
+              status: 'failed',
+              errorMessage: error instanceof Error ? error.message : String(error),
+              retryCount,
+            }).catch((logError) => {
+              this.logger.error(`[ERROR] Failed to log failed message: ${logError}`);
+            });
+          } catch (parseError) {
+            this.logger.error(`[ERROR] Failed to parse message for logging: ${parseError}`);
+          }
+          
           this.handleMessageError(msg, retryCount, error);
         }
       },

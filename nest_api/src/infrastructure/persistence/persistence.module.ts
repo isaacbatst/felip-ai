@@ -6,6 +6,10 @@ import { ConversationRepository } from "@/infrastructure/persistence/conversatio
 import { ConversationDrizzleStore } from "@/infrastructure/persistence/drizzle/conversation-drizzle-store";
 import { WorkerRepository } from "@/infrastructure/persistence/worker.repository";
 import { WorkerDrizzleStore } from "@/infrastructure/persistence/drizzle/worker-drizzle-store";
+import { MessageProcessedLogRepository } from "@/infrastructure/persistence/message-processed-log.repository";
+import { MessageProcessedLogDrizzleStore } from "@/infrastructure/persistence/drizzle/message-processed-log-drizzle-store";
+import { MessageEnqueuedLogRepository } from "@/infrastructure/persistence/message-enqueued-log.repository";
+import { MessageEnqueuedLogDrizzleStore } from "@/infrastructure/persistence/drizzle/message-enqueued-log-drizzle-store";
 
 @Module({
   imports: [DatabaseModule],
@@ -22,11 +26,21 @@ import { WorkerDrizzleStore } from "@/infrastructure/persistence/drizzle/worker-
       provide: WorkerRepository,
       useClass: WorkerDrizzleStore,
     },
+    {
+      provide: MessageProcessedLogRepository,
+      useClass: MessageProcessedLogDrizzleStore,
+    },
+    {
+      provide: MessageEnqueuedLogRepository,
+      useClass: MessageEnqueuedLogDrizzleStore,
+    },
   ],
   exports: [
     ConversationRepository,
     ActiveGroupsRepository,
     WorkerRepository,
+    MessageProcessedLogRepository,
+    MessageEnqueuedLogRepository,
   ],
 })
 export class PersistenceModule {}

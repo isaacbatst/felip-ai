@@ -3,6 +3,8 @@ import { ConfigService } from '@nestjs/config';
 import { connect, Connection, Channel, ConsumeMessage } from 'amqplib';
 import { Context } from 'grammy';
 import { TelegramBotMessageHandler } from '../../telegram/handlers/telegram-bot-message.handler';
+import { MessageProcessedLogRepository } from '@/infrastructure/persistence/message-processed-log.repository';
+import { MessageEnqueuedLogRepository } from '@/infrastructure/persistence/message-enqueued-log.repository';
 
 /**
  * RabbitMQ-based queue processor for Telegram bot messages
@@ -28,6 +30,8 @@ export class TelegramBotQueueProcessorRabbitMQ implements OnModuleInit, OnModule
   constructor(
     private readonly configService: ConfigService,
     private readonly messageHandler: TelegramBotMessageHandler,
+    private readonly messageProcessedLogRepository: MessageProcessedLogRepository,
+    private readonly messageEnqueuedLogRepository: MessageEnqueuedLogRepository,
   ) {
     const host = this.configService.get<string>('RABBITMQ_HOST') || 'localhost';
     const port = this.configService.get<string>('RABBITMQ_PORT') || '5672';
@@ -164,10 +168,34 @@ export class TelegramBotQueueProcessorRabbitMQ implements OnModuleInit, OnModule
           // Get retry count from message headers (x-retry-count)
           const retryCount = (msg.properties.headers?.['x-retry-count'] as number) || 0;
 
-          await this.messageHandler.handleMessage(data).catch((error: unknown) => {
+          await this.messageHandler.handleMessage(data).catch(async (error: unknown) => {
             this.logger.error('[ERROR] Error handling message:', error);
+            
+            // Log failed processing
+            await this.messageProcessedLogRepository.logProcessedMessage({
+              queueName: this.queueName,
+              messageData: data,
+              userId: data?.from?.id?.toString(),
+              status: 'failed',
+              errorMessage: error instanceof Error ? error.message : String(error),
+              retryCount,
+            }).catch((logError) => {
+              this.logger.error(`[ERROR] Failed to log failed message: ${logError}`);
+            });
+            
             this.handleMessageError(msg, retryCount, error);
             return;
+          });
+
+          // Log successful processing
+          await this.messageProcessedLogRepository.logProcessedMessage({
+            queueName: this.queueName,
+            messageData: data,
+            userId: data?.from?.id?.toString(),
+            status: 'success',
+            retryCount,
+          }).catch((logError) => {
+            this.logger.error(`[ERROR] Failed to log processed message: ${logError}`);
           });
 
           // Acknowledge message after successful processing
@@ -175,6 +203,24 @@ export class TelegramBotQueueProcessorRabbitMQ implements OnModuleInit, OnModule
         } catch (error) {
           this.logger.error(`[ERROR] Error processing message: ${error}`);
           const retryCount = (msg.properties.headers?.['x-retry-count'] as number) || 0;
+          
+          // Log failed processing
+          try {
+            const data = JSON.parse(msg.content.toString()) as Context['update']['message'];
+            await this.messageProcessedLogRepository.logProcessedMessage({
+              queueName: this.queueName,
+              messageData: data,
+              userId: data?.from?.id?.toString(),
+              status: 'failed',
+              errorMessage: error instanceof Error ? error.message : String(error),
+              retryCount,
+            }).catch((logError) => {
+              this.logger.error(`[ERROR] Failed to log failed message: ${logError}`);
+            });
+          } catch (parseError) {
+            this.logger.error(`[ERROR] Failed to parse message for logging: ${parseError}`);
+          }
+          
           this.handleMessageError(msg, retryCount, error);
         }
       },
@@ -264,6 +310,15 @@ export class TelegramBotQueueProcessorRabbitMQ implements OnModuleInit, OnModule
         headers: {
           'x-retry-count': 0, // Initialize retry count
         },
+      });
+
+      // Log enqueued message
+      await this.messageEnqueuedLogRepository.logEnqueuedMessage({
+        queueName: this.queueName,
+        messageData: item,
+        userId: item?.from?.id?.toString(),
+      }).catch((logError) => {
+        this.logger.error(`[ERROR] Failed to log enqueued message: ${logError}`);
       });
     } catch (error) {
       this.logger.error(`[ERROR] Error enqueueing message: ${error}`);

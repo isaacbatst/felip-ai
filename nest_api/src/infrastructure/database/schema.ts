@@ -1,4 +1,4 @@
-import { pgTable, text, integer, bigint, timestamp, index, unique } from 'drizzle-orm/pg-core';
+import { pgTable, text, integer, bigint, timestamp, index, unique, jsonb } from 'drizzle-orm/pg-core';
 
 /**
  * Sessions table - stores conversation and login session data
@@ -16,11 +16,11 @@ export const sessions = pgTable(
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
     expiresAt: timestamp('expires_at'),
   },
-  (table) => ({
-    telegramUserIdIdx: index('sessions_telegram_user_id_idx').on(table.telegramUserId),
-    loggedInUserIdIdx: index('sessions_logged_in_user_id_idx').on(table.loggedInUserId),
-    stateIdx: index('sessions_state_idx').on(table.state),
-  }),
+  (table) => [
+    index('sessions_telegram_user_id_idx').on(table.telegramUserId),
+    index('sessions_logged_in_user_id_idx').on(table.loggedInUserId),
+    index('sessions_state_idx').on(table.state),
+  ],
 );
 
 /**
@@ -34,11 +34,11 @@ export const activeGroups = pgTable(
     groupId: bigint('group_id', { mode: 'number' }).notNull(),
     createdAt: timestamp('created_at').defaultNow().notNull(),
   },
-  (table) => ({
-    userIdIdx: index('active_groups_user_id_idx').on(table.userId),
-    userIdGroupIdIdx: index('active_groups_user_id_group_id_idx').on(table.userId, table.groupId),
-    userIdGroupIdUnique: unique('active_groups_user_id_group_id_unique').on(table.userId, table.groupId),
-  }),
+  (table) => [
+    index('active_groups_user_id_idx').on(table.userId),
+    index('active_groups_user_id_group_id_idx').on(table.userId, table.groupId),
+    unique('active_groups_user_id_group_id_unique').on(table.userId, table.groupId),
+  ],
 );
 
 /**
@@ -53,5 +53,47 @@ export const workerPorts = pgTable(
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
+);
+
+/**
+ * Messages processed table - logs all messages that have been processed from queues
+ */
+export const messagesProcessed = pgTable(
+  'messages_processed',
+  {
+    id: integer('id').primaryKey().generatedAlwaysAsIdentity(),
+    queueName: text('queue_name').notNull(),
+    messageData: jsonb('message_data').notNull(),
+    userId: text('user_id'),
+    status: text('status').notNull(), // 'success' | 'failed'
+    errorMessage: text('error_message'),
+    retryCount: integer('retry_count').default(0).notNull(),
+    processedAt: timestamp('processed_at').defaultNow().notNull(),
+  },
+  (table) => [
+    index('messages_processed_queue_name_idx').on(table.queueName),
+    index('messages_processed_user_id_idx').on(table.userId),
+    index('messages_processed_status_idx').on(table.status),
+    index('messages_processed_processed_at_idx').on(table.processedAt),
+  ],
+);
+
+/**
+ * Messages enqueued table - logs all messages that have been enqueued to queues
+ */
+export const messagesEnqueued = pgTable(
+  'messages_enqueued',
+  {
+    id: integer('id').primaryKey().generatedAlwaysAsIdentity(),
+    queueName: text('queue_name').notNull(),
+    messageData: jsonb('message_data').notNull(),
+    userId: text('user_id'),
+    enqueuedAt: timestamp('enqueued_at').defaultNow().notNull(),
+  },
+  (table) => [
+    index('messages_enqueued_queue_name_idx').on(table.queueName),
+    index('messages_enqueued_user_id_idx').on(table.userId),
+    index('messages_enqueued_enqueued_at_idx').on(table.enqueuedAt),
+  ],
 );
 

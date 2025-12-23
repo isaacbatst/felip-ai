@@ -3,6 +3,8 @@ import { ConfigService } from '@nestjs/config';
 import { connect, Connection, Channel, ConsumeMessage } from 'amqplib';
 import { QueuedMessage } from '../../telegram/interfaces/queued-message';
 import { TelegramUserMessageProcessor } from '../../telegram/telegram-user-message-processor';
+import { MessageProcessedLogRepository } from '@/infrastructure/persistence/message-processed-log.repository';
+import { MessageEnqueuedLogRepository } from '@/infrastructure/persistence/message-enqueued-log.repository';
 
 /**
  * RabbitMQ-based queue processor for Telegram user messages
@@ -26,6 +28,8 @@ export class TelegramUserQueueProcessorRabbitMQ implements OnModuleInit, OnModul
   constructor(
     private readonly configService: ConfigService,
     private readonly messageProcessor: TelegramUserMessageProcessor,
+    private readonly messageProcessedLogRepository: MessageProcessedLogRepository,
+    private readonly messageEnqueuedLogRepository: MessageEnqueuedLogRepository,
   ) {
     const host = this.configService.get<string>('RABBITMQ_HOST') || 'localhost';
     const port = this.configService.get<string>('RABBITMQ_PORT') || '5672';
@@ -92,14 +96,44 @@ export class TelegramUserQueueProcessorRabbitMQ implements OnModuleInit, OnModul
 
         try {
           const message = JSON.parse(msg.content.toString()) as QueuedMessage;
+          const retryCount = (msg.properties.headers?.['x-retry-count'] as number) || 0;
 
           await this.messageProcessor.processMessage(message);
+
+          // Log successful processing
+          await this.messageProcessedLogRepository.logProcessedMessage({
+            queueName: this.queueName,
+            messageData: message,
+            userId: message.userId,
+            status: 'success',
+            retryCount,
+          }).catch((logError) => {
+            this.logger.error(`[ERROR] Failed to log processed message: ${logError}`);
+          });
 
           // Acknowledge message after successful processing
           this.channel?.ack(msg);
         } catch (error) {
           this.logger.error(`[ERROR] Error processing message: ${error}`);
           const retryCount = (msg.properties.headers?.['x-retry-count'] as number) || 0;
+          
+          // Log failed processing
+          try {
+            const message = JSON.parse(msg.content.toString()) as QueuedMessage;
+            await this.messageProcessedLogRepository.logProcessedMessage({
+              queueName: this.queueName,
+              messageData: message,
+              userId: message.userId,
+              status: 'failed',
+              errorMessage: error instanceof Error ? error.message : String(error),
+              retryCount,
+            }).catch((logError) => {
+              this.logger.error(`[ERROR] Failed to log failed message: ${logError}`);
+            });
+          } catch (parseError) {
+            this.logger.error(`[ERROR] Failed to parse message for logging: ${parseError}`);
+          }
+          
           this.handleMessageError(msg, retryCount, error);
         }
       },
@@ -127,6 +161,15 @@ export class TelegramUserQueueProcessorRabbitMQ implements OnModuleInit, OnModul
         headers: {
           'x-retry-count': 0, // Initialize retry count
         },
+      });
+
+      // Log enqueued message
+      await this.messageEnqueuedLogRepository.logEnqueuedMessage({
+        queueName: this.queueName,
+        messageData: item,
+        userId: item.userId,
+      }).catch((logError) => {
+        this.logger.error(`[ERROR] Failed to log enqueued message: ${logError}`);
       });
     } catch (error) {
       this.logger.error(`[ERROR] Error enqueueing message: ${error}`);
