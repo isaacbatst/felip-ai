@@ -1,6 +1,6 @@
 import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { connect, Connection, Channel, ConsumeMessage } from 'amqplib';
+import { connect, Connection, Channel } from 'amqplib';
 import { TelegramUserQueueProcessorRabbitMQ } from './telegram-user-queue-processor-rabbitmq.service';
 import { TelegramBotService } from '../../telegram/telegram-bot-service';
 import { TdlibUpdateJobData } from '../../tdlib/tdlib-update.types';
@@ -19,8 +19,6 @@ export class TdlibUpdatesWorkerRabbitMQ implements OnModuleInit, OnModuleDestroy
   private connection: Connection | null = null;
   private channel: Channel | null = null;
   private readonly queueName = 'tdlib-updates';
-  private readonly maxRetries = 3;
-  private readonly baseDelayMs = 1000; // Base delay of 1 second
   private readonly rabbitmqConfig: {
     urls: string[];
     queueOptions: {
@@ -105,7 +103,6 @@ export class TdlibUpdatesWorkerRabbitMQ implements OnModuleInit, OnModuleDestroy
             pattern: string;
             data: TdlibUpdateJobData;
           };
-          const retryCount = (msg.properties.headers?.['x-retry-count'] as number) || 0;
 
           await this.process(jobData.pattern, jobData.data);
 
@@ -115,7 +112,6 @@ export class TdlibUpdatesWorkerRabbitMQ implements OnModuleInit, OnModuleDestroy
             messageData: jobData,
             userId: jobData.data.userId,
             status: 'success',
-            retryCount,
           }).catch((logError) => {
             this.logger.error(`[ERROR] Failed to log processed message: ${logError}`);
           });
@@ -124,7 +120,6 @@ export class TdlibUpdatesWorkerRabbitMQ implements OnModuleInit, OnModuleDestroy
           this.channel?.ack(msg);
         } catch (error) {
           this.logger.error(`[ERROR] Error processing update: ${error}`);
-          const retryCount = (msg.properties.headers?.['x-retry-count'] as number) || 0;
           
           // Log failed processing
           try {
@@ -138,7 +133,6 @@ export class TdlibUpdatesWorkerRabbitMQ implements OnModuleInit, OnModuleDestroy
               userId: jobData.data.userId,
               status: 'failed',
               errorMessage: error instanceof Error ? error.message : String(error),
-              retryCount,
             }).catch((logError) => {
               this.logger.error(`[ERROR] Failed to log failed message: ${logError}`);
             });
@@ -146,7 +140,8 @@ export class TdlibUpdatesWorkerRabbitMQ implements OnModuleInit, OnModuleDestroy
             this.logger.error(`[ERROR] Failed to parse message for logging: ${parseError}`);
           }
           
-          this.handleMessageError(msg, retryCount, error);
+          // Acknowledge message to remove from queue (accept failure)
+          this.channel?.ack(msg);
         }
       },
       {
@@ -407,75 +402,10 @@ export class TdlibUpdatesWorkerRabbitMQ implements OnModuleInit, OnModuleDestroy
       const message = Buffer.from(JSON.stringify({ pattern, data }));
       this.channel.sendToQueue(this.queueName, message, {
         persistent: true,
-        headers: {
-          'x-retry-count': 0, // Initialize retry count
-        },
       });
     } catch (error) {
       this.logger.error(`[ERROR] Error enqueueing update: ${error}`);
       throw error;
-    }
-  }
-
-  /**
-   * Calculates exponential backoff delay based on retry attempt
-   * Formula: baseDelay * 2^(retryCount) with a max cap
-   */
-  private calculateDelayMs(retryCount: number): number {
-    const exponentialDelay = this.baseDelayMs * 2 ** retryCount;
-    const maxDelayMs = 30000; // Cap at 30 seconds
-    return Math.min(exponentialDelay, maxDelayMs);
-  }
-
-  /**
-   * Handles message processing errors with retry logic and exponential backoff
-   * Prevents infinite loops by tracking retry count
-   */
-  private handleMessageError(msg: ConsumeMessage, retryCount: number, error: unknown): void {
-    if (retryCount >= this.maxRetries) {
-      this.logger.error(
-        `[ERROR] Message exceeded max retries (${this.maxRetries}). Discarding message to prevent infinite loop.`,
-        error,
-      );
-      // Acknowledge to remove from queue (or send to DLQ if configured)
-      this.channel?.ack(msg);
-      return;
-    }
-
-    // Increment retry count
-    const newRetryCount = retryCount + 1;
-    const delayMs = this.calculateDelayMs(retryCount);
-
-    this.logger.warn(
-      `[WARN] Message processing failed (attempt ${newRetryCount}/${this.maxRetries}). Will requeue after ${delayMs}ms delay...`,
-    );
-
-    // Republish message with updated retry count header after delay
-    // This is necessary because RabbitMQ doesn't allow modifying headers on nack
-    if (this.channel) {
-      setTimeout(() => {
-        if (!this.channel) {
-          this.logger.error('[ERROR] Channel not available when trying to republish message');
-          return;
-        }
-
-        const headers = {
-          ...(msg.properties.headers || {}),
-          'x-retry-count': newRetryCount,
-        };
-
-        this.channel.sendToQueue(this.queueName, msg.content, {
-          persistent: true,
-          headers,
-        });
-
-        this.logger.log(
-          `[DEBUG] Republished message after ${delayMs}ms delay (attempt ${newRetryCount})`,
-        );
-      }, delayMs);
-
-      // Acknowledge the original message to remove it from queue
-      this.channel.ack(msg);
     }
   }
 

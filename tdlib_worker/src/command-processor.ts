@@ -124,85 +124,14 @@ export class CommandProcessor {
               });
             }
             
-            // Check if this is a rate limit error
-            const isRateLimitError = errorMessage.includes('Too Many Requests') || 
-                                     errorMessage.includes('retry after') ||
-                                     errorMessage.toLowerCase().includes('rate limit');
-            
-            // Check if this is an invalid code error (should not retry)
-            const isInvalidCodeError = errorMessage.includes('PHONE_CODE_INVALID') ||
-                                       errorMessage.includes('phone code invalid') ||
-                                       errorMessage.toLowerCase().includes('invalid code') ||
-                                       errorMessage.toLowerCase().includes('code is invalid');
-            
-            // Extract retry-after time from error message (in seconds)
-            let retryAfterSeconds: number | null = null;
-            if (isRateLimitError) {
-              const retryMatch = errorMessage.match(/retry after (\d+)/i);
-              if (retryMatch) {
-                retryAfterSeconds = parseInt(retryMatch[1], 10);
-              }
-            }
-            
-            // For provideAuthCode commands, always acknowledge (don't requeue)
-            // Auth codes can expire and user needs to provide a new one
-            // Invalid codes should never be retried
-            if (command.type === 'provideAuthCode') {
-              if (isInvalidCodeError) {
-                console.log(`[DEBUG] provideAuthCode PHONE_CODE_INVALID error - acknowledging message (don't retry invalid codes): ${errorMessage}`);
-              } else {
-                console.log(`[DEBUG] provideAuthCode error - acknowledging message (don't requeue auth codes): ${errorMessage}`);
-              }
-              this.channel?.ack(msg);
-            } else if (isInvalidCodeError) {
-              // For other commands with invalid code errors, also don't retry
-              console.log(`[DEBUG] Invalid code error - acknowledging message (don't retry): ${errorMessage}`);
-              this.channel?.ack(msg);
-            } else if (isRateLimitError && retryAfterSeconds !== null) {
-              // For rate limit errors with retry-after time, delay and republish
-              const delayMs = retryAfterSeconds * 1000;
-              console.log(`[DEBUG] Rate limit error - will republish after ${retryAfterSeconds}s delay (error: ${errorMessage})`);
-              
-              // Acknowledge the current message
-              this.channel?.ack(msg);
-              
-              // Republish after delay
-              setTimeout(async () => {
-                try {
-                  if (!this.channel) {
-                    console.error(`[ERROR] Channel not available for republishing command ${command.type}`);
-                    return;
-                  }
-                  
-                  await this.channel.assertQueue(this.queueName, {
-                    durable: true,
-                  });
-                  
-                  // Republish the original message
-                  const messageToRepublish = JSON.stringify({ pattern, data: command });
-                  this.channel.sendToQueue(this.queueName, Buffer.from(messageToRepublish), {
-                    persistent: true,
-                  });
-                  
-                  console.log(`[DEBUG] ✅ Republished command ${command.type} after ${retryAfterSeconds}s delay`);
-                } catch (republishError) {
-                  console.error(`[ERROR] Failed to republish command ${command.type} after delay:`, republishError);
-                }
-              }, delayMs);
-            } else if (isRateLimitError) {
-              // Rate limit error but no retry-after time specified - acknowledge to prevent loop
-              console.log(`[DEBUG] Rate limit error without retry-after time - acknowledging to prevent loop (error: ${errorMessage})`);
-              this.channel?.ack(msg);
-            } else {
-              // For other errors, reject and requeue immediately
-              console.log(`[DEBUG] Non-rate-limit error - requeuing immediately (error: ${errorMessage})`);
-              this.channel?.nack(msg, false, true);
-            }
+            // Acknowledge message to remove from queue (accept failure)
+            console.log(`[DEBUG] Command failed - acknowledging message (accept failure): ${errorMessage}`);
+            this.channel?.ack(msg);
           }
         } catch (error) {
           console.error(`[ERROR] Error processing message: ${error}`);
-          // Reject message and requeue on error
-          this.channel?.nack(msg, false, true);
+          // Acknowledge message to remove from queue (accept failure)
+          this.channel?.ack(msg);
         }
       },
       {
