@@ -11,6 +11,8 @@ export class RabbitMQPublisherService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(RabbitMQPublisherService.name);
   private connection: Connection | null = null;
   private channel: Channel | null = null;
+  private isConnecting = false;
+  private reconnectTimeout: NodeJS.Timeout | null = null;
   private readonly rabbitmqConfig: {
     urls: string[];
     queueOptions: {
@@ -45,10 +47,20 @@ export class RabbitMQPublisherService implements OnModuleInit, OnModuleDestroy {
   }
 
   async onModuleDestroy(): Promise<void> {
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout);
+      this.reconnectTimeout = null;
+    }
     await this.disconnect();
   }
 
   private async connect(): Promise<void> {
+    if (this.isConnecting) {
+      return;
+    }
+
+    this.isConnecting = true;
+
     try {
       const connectionUrl = this.rabbitmqConfig.urls[0];
       // Log connection URL without password for debugging
@@ -57,18 +69,77 @@ export class RabbitMQPublisherService implements OnModuleInit, OnModuleDestroy {
       
       this.connection = await connect(connectionUrl);
       this.channel = await this.connection.createChannel();
+      
+      // Set up error handlers
+      this.connection.on('error', (err) => {
+        this.logger.error(`RabbitMQ connection error: ${err}`);
+        this.handleConnectionError();
+      });
+
+      this.connection.on('close', () => {
+        this.logger.warn('RabbitMQ connection closed');
+        this.handleConnectionError();
+      });
+
+      this.channel.on('error', (err) => {
+        this.logger.error(`RabbitMQ channel error: ${err}`);
+        this.handleConnectionError();
+      });
+
+      this.channel.on('close', () => {
+        this.logger.warn('RabbitMQ channel closed');
+        this.handleConnectionError();
+      });
+
       this.logger.log('Connected to RabbitMQ for publishing');
+      this.isConnecting = false;
     } catch (error) {
+      this.isConnecting = false;
       this.logger.error(`Failed to connect to RabbitMQ: ${error}`);
       this.logger.error(`Connection URL (masked): ${this.rabbitmqConfig.urls[0].replace(/:[^:@]+@/, ':****@')}`);
+      // Schedule reconnection
+      this.scheduleReconnect();
       throw error;
     }
+  }
+
+  private handleConnectionError(): void {
+    if (this.channel) {
+      this.channel = null;
+    }
+    if (this.connection) {
+      this.connection = null;
+    }
+    this.scheduleReconnect();
+  }
+
+  private scheduleReconnect(): void {
+    if (this.reconnectTimeout) {
+      return; // Already scheduled
+    }
+
+    this.logger.log('Scheduling RabbitMQ reconnection in 5 seconds...');
+    this.reconnectTimeout = setTimeout(async () => {
+      this.reconnectTimeout = null;
+      if (!this.connection || !this.channel) {
+        try {
+          await this.connect();
+        } catch (error) {
+          this.logger.error(`Reconnection failed, will retry: ${error}`);
+        }
+      }
+    }, 5000);
   }
 
   /**
    * Publishes a message to a queue
    */
   async publishToQueue<T>(queueName: string, data: T): Promise<void> {
+    // Ensure connection is established
+    if (!this.channel || !this.connection) {
+      await this.connect();
+    }
+
     if (!this.channel) {
       throw new Error('Channel not initialized. Make sure RabbitMQ is connected.');
     }
@@ -81,6 +152,24 @@ export class RabbitMQPublisherService implements OnModuleInit, OnModuleDestroy {
       });
     } catch (error) {
       this.logger.error(`[ERROR] Error publishing to queue ${queueName}: ${error}`);
+      // Try to reconnect and retry once
+      if (!this.isConnecting) {
+        this.handleConnectionError();
+        // Wait a bit and retry
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        if (this.channel) {
+          try {
+            await this.channel.assertQueue(queueName, this.rabbitmqConfig.queueOptions);
+            const message = Buffer.from(JSON.stringify(data));
+            this.channel.sendToQueue(queueName, message, {
+              persistent: true,
+            });
+            return;
+          } catch (retryError) {
+            this.logger.error(`[ERROR] Retry failed: ${retryError}`);
+          }
+        }
+      }
       throw error;
     }
   }
