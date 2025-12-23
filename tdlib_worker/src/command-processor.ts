@@ -129,6 +129,12 @@ export class CommandProcessor {
                                      errorMessage.includes('retry after') ||
                                      errorMessage.toLowerCase().includes('rate limit');
             
+            // Check if this is an invalid code error (should not retry)
+            const isInvalidCodeError = errorMessage.includes('PHONE_CODE_INVALID') ||
+                                       errorMessage.includes('phone code invalid') ||
+                                       errorMessage.toLowerCase().includes('invalid code') ||
+                                       errorMessage.toLowerCase().includes('code is invalid');
+            
             // Extract retry-after time from error message (in seconds)
             let retryAfterSeconds: number | null = null;
             if (isRateLimitError) {
@@ -140,8 +146,17 @@ export class CommandProcessor {
             
             // For provideAuthCode commands, always acknowledge (don't requeue)
             // Auth codes can expire and user needs to provide a new one
+            // Invalid codes should never be retried
             if (command.type === 'provideAuthCode') {
-              console.log(`[DEBUG] provideAuthCode error - acknowledging message (don't requeue auth codes): ${errorMessage}`);
+              if (isInvalidCodeError) {
+                console.log(`[DEBUG] provideAuthCode PHONE_CODE_INVALID error - acknowledging message (don't retry invalid codes): ${errorMessage}`);
+              } else {
+                console.log(`[DEBUG] provideAuthCode error - acknowledging message (don't requeue auth codes): ${errorMessage}`);
+              }
+              this.channel?.ack(msg);
+            } else if (isInvalidCodeError) {
+              // For other commands with invalid code errors, also don't retry
+              console.log(`[DEBUG] Invalid code error - acknowledging message (don't retry): ${errorMessage}`);
               this.channel?.ack(msg);
             } else if (isRateLimitError && retryAfterSeconds !== null) {
               // For rate limit errors with retry-after time, delay and republish

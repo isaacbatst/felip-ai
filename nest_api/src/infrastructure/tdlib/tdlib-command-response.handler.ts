@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { TelegramBotService } from '../telegram/telegram-bot-service';
 import { TelegramUserClientProxyService } from './telegram-user-client-proxy.service';
 import { ActiveGroupsRepository } from '../persistence/active-groups.repository';
+import { ConversationRepository } from '../persistence/conversation.repository';
 import type {
   CommandContext,
   GetChatCommandContext,
@@ -34,24 +35,45 @@ interface BatchState {
   context: Omit<CommandContext, 'metadata'> & { metadata?: BatchStateMetadata };
 }
 
+/**
+ * Tracks sent error messages to prevent duplicates
+ * Key: `${requestId}:${commandType}:${errorMessage}`
+ * Value: timestamp when error was sent
+ */
+interface SentError {
+  timestamp: number;
+  chatId: number;
+}
+
 @Injectable()
 export class TdlibCommandResponseHandler {
   private readonly logger = new Logger(TdlibCommandResponseHandler.name);
   // In-memory batch state tracking (for aggregation across multiple async responses)
   // Note: For multi-instance deployments, this should be moved to Redis
   private readonly batchStates = new Map<string, BatchState>();
+  // Track sent error messages to prevent duplicates (key: requestId:commandType:error, value: timestamp)
+  private readonly sentErrors = new Map<string, SentError>();
+  // Cleanup old error entries every 5 minutes
+  private readonly errorCleanupInterval = 5 * 60 * 1000; // 5 minutes
+  private readonly errorRetentionTime = 10 * 60 * 1000; // Keep errors for 10 minutes
+  // Rate limiting: max 1 error message per chatId per 30 seconds
+  private readonly errorRateLimitMs = 30 * 1000; // 30 seconds
 
   constructor(
     private readonly botService: TelegramBotService,
     private readonly telegramUserClient: TelegramUserClientProxyService,
     private readonly activeGroupsRepository: ActiveGroupsRepository,
-  ) {}
+    private readonly conversationRepository: ConversationRepository,
+  ) {
+    // Start cleanup interval
+    setInterval(() => this.cleanupOldErrors(), this.errorCleanupInterval);
+  }
 
   async handleResponse(response: CommandResponse): Promise<void> {
-    const { commandType, result, error, context } = response;
+    const { commandType, result, error, context, requestId } = response;
 
     if (error) {
-      await this.handleError(commandType, error, context);
+      await this.handleError(commandType, error, context, requestId);
       return;
     }
 
@@ -105,34 +127,108 @@ export class TdlibCommandResponseHandler {
     }
   }
 
-  private async handleError(commandType: string, error: string, context: CommandContext): Promise<void> {
-    this.logger.error(`Command ${commandType} failed: ${error}`, { context });
+  private async handleError(commandType: string, error: string, context: CommandContext, requestId: string): Promise<void> {
+    this.logger.error(`Command ${commandType} failed: ${error}`, { context, requestId });
     
-    if (context.chatId) {
-      // Check if this is a rate limit error and provide a more helpful message
-      const isRateLimitError = error.includes('Too Many Requests') || 
-                               error.includes('retry after') ||
-                               error.toLowerCase().includes('rate limit');
-      
-      let errorMessage: string;
-      if (isRateLimitError && commandType === 'provideAuthCode') {
-        // Extract retry after time if available
-        const retryMatch = error.match(/retry after (\d+)/i);
-        const retrySeconds = retryMatch ? parseInt(retryMatch[1], 10) : null;
-        const retryMinutes = retrySeconds ? Math.ceil(retrySeconds / 60) : null;
-        
-        errorMessage = '⏳ Muitas tentativas. Por favor, aguarde um momento antes de tentar novamente.';
-        if (retryMinutes) {
-          errorMessage += `\n\nTente novamente em aproximadamente ${retryMinutes} minuto(s).`;
-        }
-      } else {
-        errorMessage = `❌ Erro ao executar comando ${commandType}: ${error}`;
+    if (!context.chatId) {
+      return;
+    }
+
+    const effectiveRequestId = requestId || 'unknown';
+    const errorKey = `${effectiveRequestId}:${commandType}:${error}`;
+    const now = Date.now();
+
+    // Check if we've already sent this exact error recently (deduplication)
+    const sentError = this.sentErrors.get(errorKey);
+    if (sentError && sentError.chatId === context.chatId) {
+      const timeSinceSent = now - sentError.timestamp;
+      if (timeSinceSent < this.errorRetentionTime) {
+        this.logger.debug(`Skipping duplicate error message: ${errorKey} (sent ${timeSinceSent}ms ago)`);
+        return;
       }
-      
+    }
+
+    // Rate limiting: check if we've sent any error to this chat recently
+    const recentErrors = Array.from(this.sentErrors.values())
+      .filter(e => e.chatId === context.chatId && (now - e.timestamp) < this.errorRateLimitMs);
+    if (recentErrors.length > 0) {
+      this.logger.debug(`Rate limiting error message to chatId ${context.chatId} (${recentErrors.length} recent errors)`);
+      return;
+    }
+
+    // Handle PHONE_CODE_INVALID errors specially - clear session and prevent retries
+    const isPhoneCodeInvalid = error.includes('PHONE_CODE_INVALID') || 
+                               error.includes('phone code invalid') ||
+                               error.toLowerCase().includes('invalid code');
+    
+    if (isPhoneCodeInvalid && commandType === 'provideAuthCode') {
+      // Clear the session to allow user to start fresh
+      if (effectiveRequestId && effectiveRequestId !== 'unknown') {
+        try {
+          const session = await this.conversationRepository.getConversation(effectiveRequestId);
+          if (session) {
+            await this.conversationRepository.deleteConversation(effectiveRequestId);
+            this.logger.log(`Cleared session ${effectiveRequestId} due to PHONE_CODE_INVALID error`);
+          }
+        } catch (sessionError) {
+          this.logger.error(`Failed to clear session ${effectiveRequestId}:`, sessionError);
+        }
+      }
+
+      // Track that we've sent this error
+      this.sentErrors.set(errorKey, { timestamp: now, chatId: context.chatId });
+
       await this.botService.bot.api.sendMessage(
         context.chatId,
-        errorMessage,
+        '❌ Código de autenticação inválido.\n\n' +
+        'Por favor, inicie o processo de login novamente com /login.',
       );
+      return;
+    }
+
+    // Check if this is a rate limit error and provide a more helpful message
+    const isRateLimitError = error.includes('Too Many Requests') || 
+                             error.includes('retry after') ||
+                             error.toLowerCase().includes('rate limit');
+    
+    let errorMessage: string;
+    if (isRateLimitError && commandType === 'provideAuthCode') {
+      // Extract retry after time if available
+      const retryMatch = error.match(/retry after (\d+)/i);
+      const retrySeconds = retryMatch ? parseInt(retryMatch[1], 10) : null;
+      const retryMinutes = retrySeconds ? Math.ceil(retrySeconds / 60) : null;
+      
+      errorMessage = '⏳ Muitas tentativas. Por favor, aguarde um momento antes de tentar novamente.';
+      if (retryMinutes) {
+        errorMessage += `\n\nTente novamente em aproximadamente ${retryMinutes} minuto(s).`;
+      }
+    } else {
+      errorMessage = `❌ Erro ao executar comando ${commandType}: ${error}`;
+    }
+    
+    // Track that we've sent this error
+    this.sentErrors.set(errorKey, { timestamp: now, chatId: context.chatId });
+
+    await this.botService.bot.api.sendMessage(
+      context.chatId,
+      errorMessage,
+    );
+  }
+
+  /**
+   * Cleanup old error entries to prevent memory leaks
+   */
+  private cleanupOldErrors(): void {
+    const now = Date.now();
+    let cleaned = 0;
+    for (const [key, sentError] of this.sentErrors.entries()) {
+      if (now - sentError.timestamp > this.errorRetentionTime) {
+        this.sentErrors.delete(key);
+        cleaned++;
+      }
+    }
+    if (cleaned > 0) {
+      this.logger.debug(`Cleaned up ${cleaned} old error entries`);
     }
   }
 
