@@ -50,7 +50,7 @@ services:
       - "traefik.http.services.rabbitmq.loadbalancer.server.port=15672"
       - "traefik.http.routers.rabbitmq.entrypoints=websecure"
       - "traefik.http.routers.rabbitmq.tls.certresolver=myresolver"
-
+      - "traefik.docker.network=traefik-public"
 volumes:
   rabbitmq-data:
     driver: local
