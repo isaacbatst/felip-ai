@@ -117,4 +117,37 @@ export class RedisRepository implements OnModuleInit, OnModuleDestroy {
       throw error;
     }
   }
+
+  /**
+   * Set a value only if the key does not exist (atomic operation)
+   * Returns true if the key was set, false if it already existed
+   * @param key - The key to set
+   * @param value - The value to set
+   * @param ttlSeconds - Optional TTL in seconds
+   * @returns true if key was set, false if key already existed
+   */
+  async setIfNotExists(key: string, value: string, ttlSeconds?: number): Promise<boolean> {
+    try {
+      let result: string | null;
+      if (ttlSeconds !== undefined) {
+        // SET key value NX EX ttl - atomic operation: only set if not exists, with expiration
+        // Returns "OK" if set, null if key already exists
+        result = await this.redis.set(key, value, {
+          NX: true,
+          EX: ttlSeconds,
+        });
+      } else {
+        // SET key value NX - atomic operation: only set if not exists
+        // Returns "OK" if set, null if key already exists
+        result = await this.redis.set(key, value, {
+          NX: true,
+        });
+      }
+      // Return true if result is "OK" (key was set), false if null (key already existed)
+      return result === 'OK';
+    } catch (error) {
+      this.logger.error(`Failed to set key ${key} if not exists`, error);
+      throw error;
+    }
+  }
 }

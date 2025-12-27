@@ -2,6 +2,7 @@ import { TelegramUserInfo } from '@/infrastructure/tdlib/telegram-user-info.type
 import { TelegramBotService } from '@/infrastructure/telegram/telegram-bot-service';
 import { TelegramUserClientProxyService } from '@/infrastructure/tdlib/telegram-user-client-proxy.service';
 import { ConversationRepository, ConversationData } from '@/infrastructure/persistence/conversation.repository';
+import { RedisRepository } from '@/infrastructure/persistence/redis/redis.repository';
 import { Injectable, Logger } from '@nestjs/common';
 
 /**
@@ -12,11 +13,13 @@ import { Injectable, Logger } from '@nestjs/common';
 @Injectable()
 export class TelegramBotLoginResultHandler {
   private readonly logger = new Logger(TelegramBotLoginResultHandler.name);
+  private readonly submittedCodeKeyPrefix = 'auth-code-submitted:';
 
   constructor(
     private readonly conversationRepository: ConversationRepository,
     private readonly botService: TelegramBotService,
     private readonly client: TelegramUserClientProxyService,
+    private readonly redis: RedisRepository,
   ) {}
 
   async handleLoginSuccess(input: {
@@ -70,6 +73,12 @@ export class TelegramBotLoginResultHandler {
         await this.conversationRepository.updateSessionState(session.requestId, 'completed');
         this.logger.log('Conversation marked as completed', { telegramUserId, loggedInUserId });
       }
+      
+      // Clear submitted code flag on success to allow future login attempts
+      const submittedCodeKey = `${this.submittedCodeKeyPrefix}${session.requestId}`;
+      await this.redis.del(submittedCodeKey).catch((redisError) => {
+        this.logger.error(`Failed to clear submitted code flag on success: ${redisError}`);
+      });
     } else {
       this.logger.warn('Conversation not found when handling login success', { telegramUserId, loggedInUserId, chatId });
     }
@@ -138,15 +147,59 @@ export class TelegramBotLoginResultHandler {
       session = await this.conversationRepository.getActiveSessionByLoggedInUserId(loggedInUserId);
     }
     
+    // Check if this is an expired code error - automatically resend code
+    const isPhoneCodeExpired = error && (
+      error.includes('PHONE_CODE_EXPIRED') || 
+      error.includes('phone code expired') ||
+      error.includes('code expired') ||
+      (error.includes('expired') && error.toLowerCase().includes('code')) ||
+      error.includes('compartilhado anteriormente') || // Portuguese: "shared previously"
+      error.includes('shared previously')
+    );
+    
+    if (isPhoneCodeExpired && session && session.state === 'waitingCode') {
+      // Clear submitted code flag to allow user to enter new code
+      const submittedCodeKey = `${this.submittedCodeKeyPrefix}${session.requestId}`;
+      await this.redis.del(submittedCodeKey).catch((redisError) => {
+        this.logger.error(`Failed to clear submitted code flag on expired code: ${redisError}`);
+      });
+
+      // Automatically resend authentication code
+      this.logger.log(`Automatically resending auth code for requestId: ${session.requestId} due to expired code`);
+      try {
+        await this.client.resendAuthenticationCode(loggedInUserId.toString());
+        
+        await this.botService.bot.api.sendMessage(
+          chatId,
+          '⏰ O código expirou. Um novo código foi enviado automaticamente.\n\n' +
+          'Por favor, envie o novo código que você recebeu no Telegram.',
+        );
+        return;
+      } catch (resendError) {
+        this.logger.error(`Failed to resend authentication code: ${resendError}`, { requestId: session.requestId });
+        // Fall through to show error message
+      }
+    }
+    
     if (session) {
-      await this.conversationRepository.updateSessionState(session.requestId, 'failed');
-      this.logger.log('Conversation marked as failed', { telegramUserId, loggedInUserId, requestId: session.requestId });
+      // Only mark as failed if it's not an expired code (expired codes keep the session in waitingCode state)
+      if (!isPhoneCodeExpired) {
+        await this.conversationRepository.updateSessionState(session.requestId, 'failed');
+        this.logger.log('Conversation marked as failed', { telegramUserId, loggedInUserId, requestId: session.requestId });
+      }
+      
+      // Clear submitted code flag on failure to allow retry
+      const submittedCodeKey = `${this.submittedCodeKeyPrefix}${session.requestId}`;
+      await this.redis.del(submittedCodeKey).catch((redisError) => {
+        this.logger.error(`Failed to clear submitted code flag on failure: ${redisError}`);
+      });
     } else {
       this.logger.warn('Conversation not found when handling login failure', { telegramUserId, loggedInUserId });
     }
 
-    const failureMessage =
-      '❌ Erro ao realizar login. Por favor, tente novamente mais tarde ou entre em contato com o suporte.';
+    const failureMessage = isPhoneCodeExpired
+      ? '⏰ O código expirou.\n\nPor favor, inicie o processo de login novamente com /login para receber um novo código.'
+      : '❌ Erro ao realizar login. Por favor, tente novamente mais tarde ou entre em contato com o suporte.';
 
     await this.botService.bot.api.sendMessage(chatId, failureMessage);
   }

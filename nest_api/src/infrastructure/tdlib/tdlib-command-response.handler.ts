@@ -3,6 +3,7 @@ import { TelegramBotService } from '../telegram/telegram-bot-service';
 import { TelegramUserClientProxyService } from './telegram-user-client-proxy.service';
 import { ActiveGroupsRepository } from '../persistence/active-groups.repository';
 import { ConversationRepository } from '../persistence/conversation.repository';
+import { RedisRepository } from '../persistence/redis/redis.repository';
 import type {
   CommandContext,
   GetChatCommandContext,
@@ -64,6 +65,7 @@ export class TdlibCommandResponseHandler {
     private readonly telegramUserClient: TelegramUserClientProxyService,
     private readonly activeGroupsRepository: ActiveGroupsRepository,
     private readonly conversationRepository: ConversationRepository,
+    private readonly redis: RedisRepository,
   ) {
     // Start cleanup interval
     setInterval(() => this.cleanupOldErrors(), this.errorCleanupInterval);
@@ -156,6 +158,60 @@ export class TdlibCommandResponseHandler {
       return;
     }
 
+    // Handle PHONE_CODE_EXPIRED errors specially - automatically resend code
+    const isPhoneCodeExpired = error.includes('PHONE_CODE_EXPIRED') || 
+                               error.includes('phone code expired') ||
+                               error.includes('code expired') ||
+                               (error.includes('expired') && error.includes('code')) ||
+                               error.includes('compartilhado anteriormente') || // Portuguese: "shared previously"
+                               error.includes('shared previously');
+    
+    if (isPhoneCodeExpired && commandType === 'provideAuthCode') {
+      // Try to automatically resend the authentication code
+      if (effectiveRequestId && effectiveRequestId !== 'unknown' && context.userId) {
+        try {
+          const session = await this.conversationRepository.getConversation(effectiveRequestId);
+          if (session && session.state === 'waitingCode') {
+            // Clear submitted code flag to allow user to enter new code
+            const submittedCodeKey = `auth-code-submitted:${effectiveRequestId}`;
+            await this.redis.del(submittedCodeKey).catch((redisError) => {
+              this.logger.error(`Failed to clear submitted code flag on expired code: ${redisError}`);
+            });
+
+            // Automatically resend authentication code
+            this.logger.log(`Automatically resending auth code for requestId: ${effectiveRequestId} due to expired code`);
+            try {
+              await this.telegramUserClient.resendAuthenticationCode(context.userId);
+              
+              // Track that we've sent this error
+              this.sentErrors.set(errorKey, { timestamp: now, chatId: context.chatId });
+
+              await this.botService.bot.api.sendMessage(
+                context.chatId,
+                '⏰ O código expirou. Um novo código foi enviado automaticamente.\n\n' +
+                'Por favor, envie o novo código que você recebeu no Telegram.',
+              );
+              return;
+            } catch (resendError) {
+              this.logger.error(`Failed to resend authentication code: ${resendError}`, { requestId: effectiveRequestId });
+              // Fall through to show error message
+            }
+          }
+        } catch (sessionError) {
+          this.logger.error(`Failed to handle expired code for ${effectiveRequestId}:`, sessionError);
+        }
+      }
+
+      // If resend failed or session not found, show error message
+      this.sentErrors.set(errorKey, { timestamp: now, chatId: context.chatId });
+      await this.botService.bot.api.sendMessage(
+        context.chatId,
+        '⏰ O código expirou.\n\n' +
+        'Por favor, inicie o processo de login novamente com /login para receber um novo código.',
+      );
+      return;
+    }
+
     // Handle PHONE_CODE_INVALID errors specially - clear session and prevent retries
     const isPhoneCodeInvalid = error.includes('PHONE_CODE_INVALID') || 
                                error.includes('phone code invalid') ||
@@ -169,6 +225,12 @@ export class TdlibCommandResponseHandler {
           if (session) {
             await this.conversationRepository.deleteConversation(effectiveRequestId);
             this.logger.log(`Cleared session ${effectiveRequestId} due to PHONE_CODE_INVALID error`);
+            
+            // Clear submitted code flag to allow retry with new code
+            const submittedCodeKey = `auth-code-submitted:${effectiveRequestId}`;
+            await this.redis.del(submittedCodeKey).catch((redisError) => {
+              this.logger.error(`Failed to clear submitted code flag on invalid code: ${redisError}`);
+            });
           }
         } catch (sessionError) {
           this.logger.error(`Failed to clear session ${effectiveRequestId}:`, sessionError);
