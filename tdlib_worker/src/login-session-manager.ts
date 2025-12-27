@@ -200,21 +200,18 @@ export class LoginSessionManager {
 
   /**
    * Sets up handler for authorization state updates
+   * Note: UpdateHandler already publishes authorization state updates to the queue.
+   * This handler only processes login-specific logic (requesting auth codes, etc.)
    */
   setupAuthorizationStateHandler(): void {
     this.client.onUpdate(async (update: unknown) => {
       if (typeof update === 'object' && update !== null && '_' in update) {
         const updateType = (update as { _: string })._;
         if (updateType === 'updateAuthorizationState') {
-          // Handle authorization state for login sessions
+          // Handle authorization state for login sessions (triggers auth-code-request, etc.)
+          // Note: UpdateHandler.setupHandlers() already publishes the raw update to the queue,
+          // so we don't need to publish it again here to avoid duplicates.
           await this.handleAuthorizationState(update);
-
-          // Also send to nest_api
-          this.updatesPublisher
-            .publish('authorization-state', { update })
-            .catch((error: unknown) => {
-              console.error('[ERROR] Error enqueueing authorization state update:', error);
-            });
         }
       }
     });
