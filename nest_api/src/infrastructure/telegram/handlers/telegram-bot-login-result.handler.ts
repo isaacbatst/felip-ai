@@ -2,7 +2,7 @@ import { TelegramUserInfo } from '@/infrastructure/tdlib/telegram-user-info.type
 import { TelegramBotService } from '@/infrastructure/telegram/telegram-bot-service';
 import { TelegramUserClientProxyService } from '@/infrastructure/tdlib/telegram-user-client-proxy.service';
 import { ConversationRepository, ConversationData } from '@/infrastructure/persistence/conversation.repository';
-import { RedisRepository } from '@/infrastructure/persistence/redis/redis.repository';
+import { AuthCodeDeduplicationService } from '../auth-code-deduplication.service';
 import { Injectable, Logger } from '@nestjs/common';
 
 /**
@@ -13,13 +13,12 @@ import { Injectable, Logger } from '@nestjs/common';
 @Injectable()
 export class TelegramBotLoginResultHandler {
   private readonly logger = new Logger(TelegramBotLoginResultHandler.name);
-  private readonly submittedCodeKeyPrefix = 'auth-code-submitted:';
 
   constructor(
     private readonly conversationRepository: ConversationRepository,
     private readonly botService: TelegramBotService,
     private readonly client: TelegramUserClientProxyService,
-    private readonly redis: RedisRepository,
+    private readonly authCodeDedup: AuthCodeDeduplicationService,
   ) {}
 
   async handleLoginSuccess(input: {
@@ -75,10 +74,7 @@ export class TelegramBotLoginResultHandler {
       }
       
       // Clear submitted code flag on success to allow future login attempts
-      const submittedCodeKey = `${this.submittedCodeKeyPrefix}${session.requestId}`;
-      await this.redis.del(submittedCodeKey).catch((redisError) => {
-        this.logger.error(`Failed to clear submitted code flag on success: ${redisError}`);
-      });
+      this.authCodeDedup.delete(session.requestId);
     } else {
       this.logger.warn('Conversation not found when handling login success', { telegramUserId, loggedInUserId, chatId });
     }
@@ -159,10 +155,7 @@ export class TelegramBotLoginResultHandler {
     
     if (isPhoneCodeExpired && session && session.state === 'waitingCode') {
       // Clear submitted code flag to allow user to enter new code
-      const submittedCodeKey = `${this.submittedCodeKeyPrefix}${session.requestId}`;
-      await this.redis.del(submittedCodeKey).catch((redisError) => {
-        this.logger.error(`Failed to clear submitted code flag on expired code: ${redisError}`);
-      });
+      this.authCodeDedup.delete(session.requestId);
 
       // Automatically resend authentication code
       this.logger.log(`Automatically resending auth code for requestId: ${session.requestId} due to expired code`);
@@ -189,10 +182,7 @@ export class TelegramBotLoginResultHandler {
       }
       
       // Clear submitted code flag on failure to allow retry
-      const submittedCodeKey = `${this.submittedCodeKeyPrefix}${session.requestId}`;
-      await this.redis.del(submittedCodeKey).catch((redisError) => {
-        this.logger.error(`Failed to clear submitted code flag on failure: ${redisError}`);
-      });
+      this.authCodeDedup.delete(session.requestId);
     } else {
       this.logger.warn('Conversation not found when handling login failure', { telegramUserId, loggedInUserId });
     }

@@ -1,6 +1,6 @@
 import { PersistenceModule } from '@/infrastructure/persistence/persistence.module';
 import { TelegramBotService } from '@/infrastructure/telegram/telegram-bot-service';
-import { Module, forwardRef } from '@nestjs/common';
+import { Module } from '@nestjs/common';
 import { AppConfigService } from '../config/app.config';
 import { DomainModule } from '../domain/domain.module';
 import { MessageParser } from '../domain/interfaces/message-parser.interface';
@@ -25,7 +25,7 @@ import { TelegramUserClientProxyService } from '@/infrastructure/tdlib/telegram-
 import { TelegramBotQueueProcessorRabbitMQ } from '@/infrastructure/queue/rabbitmq/telegram-bot-queue-processor-rabbitmq.service';
 import { TelegramUserQueueProcessorRabbitMQ } from '@/infrastructure/queue/rabbitmq/telegram-user-queue-processor-rabbitmq.service';
 import { TdlibUpdatesWorkerRabbitMQ } from '@/infrastructure/queue/rabbitmq/tdlib-updates-worker-rabbitmq.service';
-import { RedisRepository } from '@/infrastructure/persistence/redis/redis.repository';
+import { AuthCodeDeduplicationService } from './telegram/auth-code-deduplication.service';
 
 /**
  * Module responsável por serviços de infraestrutura
@@ -68,7 +68,7 @@ import { RedisRepository } from '@/infrastructure/persistence/redis/redis.reposi
     TelegramUserMessageProcessor,
     PhoneWhitelistService,
     TdlibCommandResponseHandler,
-    RedisRepository,
+    AuthCodeDeduplicationService,
     TelegramUserQueueProcessorRabbitMQ,
     TelegramBotQueueProcessorRabbitMQ,
     TdlibUpdatesWorkerRabbitMQ,

@@ -3,7 +3,7 @@ import { TelegramBotService } from '../telegram/telegram-bot-service';
 import { TelegramUserClientProxyService } from './telegram-user-client-proxy.service';
 import { ActiveGroupsRepository } from '../persistence/active-groups.repository';
 import { ConversationRepository } from '../persistence/conversation.repository';
-import { RedisRepository } from '../persistence/redis/redis.repository';
+import { AuthCodeDeduplicationService } from '../telegram/auth-code-deduplication.service';
 import type {
   CommandContext,
   GetChatCommandContext,
@@ -65,7 +65,7 @@ export class TdlibCommandResponseHandler {
     private readonly telegramUserClient: TelegramUserClientProxyService,
     private readonly activeGroupsRepository: ActiveGroupsRepository,
     private readonly conversationRepository: ConversationRepository,
-    private readonly redis: RedisRepository,
+    private readonly authCodeDedup: AuthCodeDeduplicationService,
   ) {
     // Start cleanup interval
     setInterval(() => this.cleanupOldErrors(), this.errorCleanupInterval);
@@ -173,10 +173,7 @@ export class TdlibCommandResponseHandler {
           const session = await this.conversationRepository.getConversation(effectiveRequestId);
           if (session && session.state === 'waitingCode') {
             // Clear submitted code flag to allow user to enter new code
-            const submittedCodeKey = `auth-code-submitted:${effectiveRequestId}`;
-            await this.redis.del(submittedCodeKey).catch((redisError) => {
-              this.logger.error(`Failed to clear submitted code flag on expired code: ${redisError}`);
-            });
+            this.authCodeDedup.delete(effectiveRequestId);
 
             // Automatically resend authentication code
             this.logger.log(`Automatically resending auth code for requestId: ${effectiveRequestId} due to expired code`);
@@ -227,10 +224,7 @@ export class TdlibCommandResponseHandler {
             this.logger.log(`Cleared session ${effectiveRequestId} due to PHONE_CODE_INVALID error`);
             
             // Clear submitted code flag to allow retry with new code
-            const submittedCodeKey = `auth-code-submitted:${effectiveRequestId}`;
-            await this.redis.del(submittedCodeKey).catch((redisError) => {
-              this.logger.error(`Failed to clear submitted code flag on invalid code: ${redisError}`);
-            });
+            this.authCodeDedup.delete(effectiveRequestId);
           }
         } catch (sessionError) {
           this.logger.error(`Failed to clear session ${effectiveRequestId}:`, sessionError);
