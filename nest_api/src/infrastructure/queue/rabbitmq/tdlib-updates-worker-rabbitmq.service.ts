@@ -182,6 +182,12 @@ export class TdlibUpdatesWorkerRabbitMQ implements OnModuleInit, OnModuleDestroy
             break;
           }
 
+          // Prevent duplicate auth code requests: if session is already waiting for code and this is not a retry, skip
+          if (session.state === 'waitingCode' && !retry) {
+            this.logger.log(`[DEBUG] Skipping duplicate auth-code-request for session ${session.requestId} (already in waitingCode state)`);
+            break;
+          }
+
           // Update session state to waiting for auth code
           const telegramUserId = await this.updateSessionToWaitingAuthCode(session);
           if (!telegramUserId) {
