@@ -57,6 +57,21 @@ export class TelegramAuthCodeHandler {
 
     const requestId = session.requestId;
 
+    // CRITICAL: Validate that this requestId is still the active session
+    // This prevents using codes from old sessions that were replaced by new login attempts
+    const currentSession = await this.conversationRepository.getSessionByTelegramUserId(userId);
+    if (!currentSession || currentSession.requestId !== requestId) {
+      // Session was replaced (user started a new login)
+      this.logger.warn(`Auth code submitted for old session requestId: ${requestId}, current session: ${currentSession?.requestId}`);
+      this.authCodeDedup.delete(requestId); // Clean up old session's dedup flag
+      await this.botService.bot.api.sendMessage(
+        chatId,
+        '❌ Esta sessão de login foi substituída por uma nova.\n\n' +
+        'Por favor, use o código da nova sessão ou inicie o processo novamente com /login.',
+      );
+      return;
+    }
+
     // CRITICAL: Prevent duplicate code submissions using atomic in-memory operation
     // This prevents race conditions where two requests could both pass the check
     const wasSet = this.authCodeDedup.setIfNotExists(requestId, normalizedCode);

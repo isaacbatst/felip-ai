@@ -57,7 +57,12 @@ export class TelegramCommandHandler {
     const existingConversation = await this.conversationRepository.getConversationByTelegramUserId(telegramUserId);
     if (existingConversation && existingConversation.state !== 'completed' && existingConversation.state !== 'failed') {
       // Delete existing active conversation to start fresh
+      // This will invalidate any pending auth codes from the previous login attempt
       await this.conversationRepository.deleteConversation(existingConversation.requestId);
+      
+      // Clear any submitted code flags for the old session to prevent confusion
+      // Note: AuthCodeDeduplicationService will be injected if needed, but for now we rely on requestId mismatch
+      // The old requestId will be different from the new one, so codes won't conflict
     }
 
     // Create a conversation in waitingPhone state

@@ -76,6 +76,18 @@ export class TelegramPhoneNumberHandler {
     // CRITICAL: A telegram user must have only one conversation at a time
     let session = await this.conversationRepository.getSessionByTelegramUserId(userId);
     
+    // Prevent duplicate login attempts: if session is already waiting for code or password, 
+    // don't start a new login (user should wait for code or use /login to restart)
+    if (session && (session.state === 'waitingCode' || session.state === 'waitingPassword')) {
+      this.logger.warn(`Login attempt blocked: session ${session.requestId} is already in ${session.state} state`);
+      await this.botService.bot.api.sendMessage(
+        chatId,
+        '⏳ Você já tem um login em andamento.\n\n' +
+        'Por favor, aguarde o código de autenticação ou use /login para iniciar um novo processo.',
+      );
+      return;
+    }
+    
     if (!session) {
       // Create new conversation for this telegram user
       // Initially, loggedInUserId is set to telegramUserId (will be updated when login completes if different)
@@ -91,6 +103,7 @@ export class TelegramPhoneNumberHandler {
     } else {
       // Update existing conversation with phone number
       // This ensures we reuse the same conversation for the same telegram user
+      // Only update if not already in a waiting state (checked above)
       session.phoneNumber = normalizedPhone;
       session.chatId = chatId; // Update chatId in case it changed
       session.state = 'waitingPhone';
