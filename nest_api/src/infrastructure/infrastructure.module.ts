@@ -25,6 +25,7 @@ import { TelegramUserClientProxyService } from '@/infrastructure/tdlib/telegram-
 import { TelegramBotQueueProcessorRabbitMQ } from '@/infrastructure/queue/rabbitmq/telegram-bot-queue-processor-rabbitmq.service';
 import { TelegramUserQueueProcessorRabbitMQ } from '@/infrastructure/queue/rabbitmq/telegram-user-queue-processor-rabbitmq.service';
 import { TdlibUpdatesWorkerRabbitMQ } from '@/infrastructure/queue/rabbitmq/tdlib-updates-worker-rabbitmq.service';
+import { RedisRepository } from '@/infrastructure/persistence/redis/redis.repository';
 
 /**
  * Module responsável por serviços de infraestrutura
@@ -67,7 +68,7 @@ import { TdlibUpdatesWorkerRabbitMQ } from '@/infrastructure/queue/rabbitmq/tdli
     TelegramUserMessageProcessor,
     PhoneWhitelistService,
     TdlibCommandResponseHandler,
-    
+    RedisRepository,
     TelegramUserQueueProcessorRabbitMQ,
     TelegramBotQueueProcessorRabbitMQ,
     TdlibUpdatesWorkerRabbitMQ,
