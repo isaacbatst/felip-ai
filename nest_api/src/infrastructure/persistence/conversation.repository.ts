@@ -35,7 +35,8 @@ export interface ConversationData {
 export abstract class ConversationRepository {
   /**
    * Store a conversation
-   * This will cancel any existing active conversations for the same loggedInUserId to ensure only one active conversation exists
+   * This will cancel any existing active conversations for the same telegramUserId to ensure only one conversation exists per telegram user.
+   * Also cancels any existing active conversations for the same loggedInUserId to ensure only one active conversation exists per logged-in user.
    */
   abstract setConversation(conversation: ConversationData): Promise<void>;
 

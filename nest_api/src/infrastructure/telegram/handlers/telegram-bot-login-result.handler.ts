@@ -30,37 +30,48 @@ export class TelegramBotLoginResultHandler {
 
     this.logger.log('Handling login success', { telegramUserId, loggedInUserId, chatId, hasUserInfo: !!userInfo });
 
-    // Update session with logged-in user ID and mark as completed
-    // First try to find session by the loggedInUserId from input (which might be the initial telegramUserId)
-    let session = await this.conversationRepository.getActiveSessionByLoggedInUserId(loggedInUserId);
+    // CRITICAL: Find conversation by telegramUserId first (primary constraint - one conversation per telegram user)
+    // This ensures we're updating the correct conversation for the telegram user
+    let session = await this.conversationRepository.getSessionByTelegramUserId(telegramUserId);
     
-    // If not found, try to find by telegramUserId (in case loggedInUserId changed)
+    // If not found, try to find by loggedInUserId (fallback for edge cases)
     if (!session) {
-      this.logger.debug('Session not found by loggedInUserId, trying telegramUserId', { loggedInUserId, telegramUserId });
-      session = await this.conversationRepository.getSessionByTelegramUserId(telegramUserId);
+      this.logger.debug('Conversation not found by telegramUserId, trying loggedInUserId', { telegramUserId, loggedInUserId });
+      session = await this.conversationRepository.getActiveSessionByLoggedInUserId(loggedInUserId);
     }
     
     if (session) {
-      this.logger.log('Session found for login success', { requestId: session.requestId, state: session.state, chatId: session.chatId });
+      this.logger.log('Conversation found for login success', { requestId: session.requestId, state: session.state, chatId: session.chatId, telegramUserId: session.telegramUserId, loggedInUserId: session.loggedInUserId });
+      
+      // Ensure we're updating the conversation for the correct telegram user
+      if (session.telegramUserId !== telegramUserId) {
+        this.logger.warn('Conversation telegramUserId mismatch, this should not happen', { 
+          sessionTelegramUserId: session.telegramUserId, 
+          inputTelegramUserId: telegramUserId,
+          requestId: session.requestId 
+        });
+      }
+      
       // Update loggedInUserId if it changed (e.g., if user logged in as a different user)
       const actualLoggedInUserId = userInfo?.id ?? loggedInUserId;
       if (actualLoggedInUserId !== session.loggedInUserId) {
-        // Need to update the session with the new loggedInUserId
-        // Delete old session and create new one with updated loggedInUserId
-        await this.conversationRepository.deleteSession(session.requestId);
+        // Update the conversation with the new loggedInUserId
+        // setConversation will ensure uniqueness per telegramUserId
         const updatedConversation: ConversationData = {
           ...session,
           loggedInUserId: actualLoggedInUserId,
           state: 'completed',
+          chatId: session.chatId ?? chatId, // Preserve chatId from session
         };
         await this.conversationRepository.setConversation(updatedConversation);
-        this.logger.log('Session updated with new logged-in user ID', { telegramUserId, oldLoggedInUserId: session.loggedInUserId, newLoggedInUserId: actualLoggedInUserId });
+        this.logger.log('Conversation updated with new logged-in user ID', { telegramUserId, oldLoggedInUserId: session.loggedInUserId, newLoggedInUserId: actualLoggedInUserId });
       } else {
+        // Just update the state to completed
         await this.conversationRepository.updateSessionState(session.requestId, 'completed');
-        this.logger.log('Session marked as completed', { telegramUserId, loggedInUserId });
+        this.logger.log('Conversation marked as completed', { telegramUserId, loggedInUserId });
       }
     } else {
-      this.logger.warn('Session not found when handling login success', { telegramUserId, loggedInUserId, chatId });
+      this.logger.warn('Conversation not found when handling login success', { telegramUserId, loggedInUserId, chatId });
     }
 
     // Use chatId from session if available, otherwise use chatId from input
@@ -119,10 +130,19 @@ export class TelegramBotLoginResultHandler {
 
     this.logger.error('Login failed', { error, telegramUserId, loggedInUserId });
     
-    // Update session state to failed
-    const session = await this.conversationRepository.getActiveSessionByLoggedInUserId(loggedInUserId);
+    // CRITICAL: Find conversation by telegramUserId first (primary constraint)
+    let session = await this.conversationRepository.getSessionByTelegramUserId(telegramUserId);
+    
+    // If not found, try to find by loggedInUserId (fallback)
+    if (!session) {
+      session = await this.conversationRepository.getActiveSessionByLoggedInUserId(loggedInUserId);
+    }
+    
     if (session) {
       await this.conversationRepository.updateSessionState(session.requestId, 'failed');
+      this.logger.log('Conversation marked as failed', { telegramUserId, loggedInUserId, requestId: session.requestId });
+    } else {
+      this.logger.warn('Conversation not found when handling login failure', { telegramUserId, loggedInUserId });
     }
 
     const failureMessage =

@@ -21,14 +21,36 @@ export class ConversationRedisStore extends ConversationRepository {
 
   /**
    * Store a conversation
-   * This will cancel any existing active conversations for the same loggedInUserId to ensure only one active conversation exists
+   * This will cancel any existing active conversations for the same telegramUserId to ensure only one conversation exists per telegram user.
+   * Also cancels any existing active conversations for the same loggedInUserId to ensure only one active conversation exists per logged-in user.
    */
   async setConversation(conversation: ConversationData): Promise<void> {
     try {
-      // Cancel any existing active conversations for this loggedInUserId
+      // CRITICAL: Cancel any existing active conversations for this telegramUserId to ensure uniqueness per telegram user
+      // This is the primary constraint - a telegram user must have only one conversation at a time
+      const existingConversationByTelegramUserId = await this.getConversationByTelegramUserId(conversation.telegramUserId);
+      if (existingConversationByTelegramUserId && 
+          existingConversationByTelegramUserId.requestId !== conversation.requestId &&
+          existingConversationByTelegramUserId.state !== 'completed' &&
+          existingConversationByTelegramUserId.state !== 'failed') {
+        // Mark existing conversation as failed since a new one is being created for the same telegram user
+        existingConversationByTelegramUserId.state = 'failed';
+        await this.redis.set(
+          `${this.conversationKeyPrefix}${existingConversationByTelegramUserId.requestId}`,
+          JSON.stringify(existingConversationByTelegramUserId),
+          this.conversationTtlSeconds,
+        );
+        // Clear indexes
+        await this.redis.del(`${this.telegramUserIdIndexPrefix}${existingConversationByTelegramUserId.telegramUserId}`);
+        await this.redis.del(`${this.loggedInUserIdIndexPrefix}${existingConversationByTelegramUserId.loggedInUserId}`);
+      }
+
+      // Also cancel any existing active conversations for this loggedInUserId (in case user logs in as different user)
       const existingActiveConversation = await this.getActiveConversationByLoggedInUserId(conversation.loggedInUserId);
-      if (existingActiveConversation && existingActiveConversation.requestId !== conversation.requestId) {
-        // Mark existing conversation as failed since a new one is being created
+      if (existingActiveConversation && 
+          existingActiveConversation.requestId !== conversation.requestId &&
+          existingActiveConversation.telegramUserId !== conversation.telegramUserId) {
+        // Mark existing conversation as failed since a new one is being created for a different telegram user
         existingActiveConversation.state = 'failed';
         await this.redis.set(
           `${this.conversationKeyPrefix}${existingActiveConversation.requestId}`,

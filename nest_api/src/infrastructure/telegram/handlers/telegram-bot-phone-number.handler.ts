@@ -72,11 +72,12 @@ export class TelegramPhoneNumberHandler {
       return;
     }
 
-    // Get or create session
+    // Get existing conversation for this telegram user
+    // CRITICAL: A telegram user must have only one conversation at a time
     let session = await this.conversationRepository.getSessionByTelegramUserId(userId);
     
     if (!session) {
-      // Create new session
+      // Create new conversation for this telegram user
       // Initially, loggedInUserId is set to telegramUserId (will be updated when login completes if different)
       const requestId = randomUUID();
       session = {
@@ -88,12 +89,14 @@ export class TelegramPhoneNumberHandler {
         state: 'waitingPhone',
       };
     } else {
-      // Update existing session with phone number
+      // Update existing conversation with phone number
+      // This ensures we reuse the same conversation for the same telegram user
       session.phoneNumber = normalizedPhone;
+      session.chatId = chatId; // Update chatId in case it changed
       session.state = 'waitingPhone';
     }
     
-    // Store session in Redis before dispatching login command
+    // Store conversation - setConversation will ensure uniqueness per telegramUserId
     await this.conversationRepository.setSession(session);
     this.logger.log('Session created/updated', { requestId: session.requestId, phoneNumber, loggedInUserId: session.loggedInUserId });
 
