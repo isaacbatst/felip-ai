@@ -17,6 +17,10 @@ export class WorkerManagerCompose extends WorkerManager {
     super();
   }
 
+  async getHostname(_userId: string): Promise<string> {
+    return `localhost`;
+  }
+
   /**
    * Get or assign a port for a worker
    */
@@ -170,7 +174,7 @@ export class WorkerManagerCompose extends WorkerManager {
   }
 
   private getImageName(): string {
-    return 'worker-test:latest';
+    return 'isaacbatst/tdlib-worker:latest';
   }
 
   private async getEnvFromPath(path: string): Promise<string[]> {

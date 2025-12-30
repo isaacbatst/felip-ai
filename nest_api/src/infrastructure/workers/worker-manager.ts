@@ -9,4 +9,5 @@ export abstract class WorkerManager {
   abstract getStatus(userId: string): Promise<{ state: 'running' | 'stopped' } | null>;
   abstract waitUntilHealthy(userId: string): Promise<boolean>;
   abstract getWorkerPort(userId: string): Promise<number | null>;
+  abstract getHostname(userId: string): Promise<string>;
 }

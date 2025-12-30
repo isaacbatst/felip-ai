@@ -479,4 +479,8 @@ export class WorkerManagerSwarm extends WorkerManager implements OnModuleDestroy
     const content = await fs.promises.readFile(path, 'utf8');
     return content.split('\n').filter((line) => line.trim() !== '');
   }
+
+  async getHostname(userId: string): Promise<string> {
+    return `tdlib-${userId}`;
+  }
 }

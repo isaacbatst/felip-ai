@@ -199,6 +199,7 @@ export class TelegramUserClient {
     text: string,
     replyToMessageId?: number,
   ): Promise<unknown> {
+    console.log('[DEBUG] Sending message:', { chatId, text, replyToMessageId });
     const client = this.ensureClient();
     const messageParams: Record<string, unknown> = {
       _: 'sendMessage',
@@ -212,11 +213,20 @@ export class TelegramUserClient {
       },
     };
 
-    if (replyToMessageId !== undefined) {
-      messageParams.reply_to_message_id = replyToMessageId;
+    if (replyToMessageId !== undefined && replyToMessageId !== null && replyToMessageId > 0) {
+      messageParams.reply_to = {
+        _: 'inputMessageReplyToMessage',
+        message_id: replyToMessageId,
+      };
+      console.log('[DEBUG] Reply parameters:', JSON.stringify(messageParams.reply_to, null, 2));
+    } else if (replyToMessageId !== undefined) {
+      console.log('[DEBUG] Invalid replyToMessageId:', replyToMessageId, '- skipping reply');
     }
 
-    return client.invoke(messageParams as Parameters<typeof client.invoke>[0]);
+    console.log('[DEBUG] Full message params:', JSON.stringify(messageParams, null, 2));
+    const result = await client.invoke(messageParams as Parameters<typeof client.invoke>[0]);
+    console.log('[DEBUG] sendMessage result:', JSON.stringify(result, null, 2));
+    return result;
   }
 
   /**

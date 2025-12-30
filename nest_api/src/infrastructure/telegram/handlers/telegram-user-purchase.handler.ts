@@ -57,7 +57,7 @@ export class TelegramPurchaseHandler {
       return;
     }
 
-    const priceTable = priceTables[selectedProvider];
+      const priceTable = priceTables[selectedProvider];
 
     if (!priceTable || Object.keys(priceTable).length === 0) {
       console.warn('No price table found for the selected provider');
@@ -85,11 +85,16 @@ export class TelegramPurchaseHandler {
       return;
     }
 
+    this.logger.log("Message to reply:", messageId);
+
     // Verifica se o usuário forneceu valores aceitos e se o menor valor aceito é maior que o preço calculado
       if (validatedRequest.acceptedPrices.length > 0 && priceResult.success) {
       const minAcceptedPrice = Math.min(...validatedRequest.acceptedPrices);
-      if (minAcceptedPrice > priceResult.price) {
+      console.log("Min accepted price:", minAcceptedPrice);
+      console.log("Price result:", priceResult.price);
+      if (minAcceptedPrice >= priceResult.price) {
         // O usuário aceita pagar mais que nosso preço - responder com mensagem customizada
+
         await this.tdlibUserClient.sendMessage(botUserId, chatId, 'Vamos!', messageId);
         return;
       }
@@ -129,10 +134,7 @@ export class TelegramPurchaseHandler {
       const normalizedProvider = provider.trim().toUpperCase();
 
       // Verifica se um contém o outro
-      if (
-        normalizedProvider.includes(normalizedMentioned) ||
-        normalizedMentioned.includes(normalizedProvider)
-      ) {
+      if(normalizedProvider === normalizedMentioned) {
         return provider;
       }
     }

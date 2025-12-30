@@ -130,7 +130,7 @@ export class TdlibCommandResponseHandler {
   }
 
   private async handleError(commandType: string, error: string, context: CommandContext, requestId: string): Promise<void> {
-    this.logger.error(`Command ${commandType} failed: ${error}`, { context, requestId });
+    this.logger.error(`dcommandType} failed: ${error}`, { context, requestId });
     
     if (!context.chatId) {
       return;
@@ -167,30 +167,33 @@ export class TdlibCommandResponseHandler {
                                error.includes('shared previously');
     
     if (isPhoneCodeExpired && commandType === 'provideAuthCode') {
-      // Try to automatically resend the authentication code
+      // Try to automatically restart login to generate a new code
+      // Note: resendAuthenticationCode doesn't work for expired codes, so we restart the login process
       if (effectiveRequestId && effectiveRequestId !== 'unknown' && context.userId) {
         try {
           const session = await this.conversationRepository.getConversation(effectiveRequestId);
-          if (session && session.state === 'waitingCode') {
+          if (session && session.state === 'waitingCode' && session.phoneNumber) {
             // Clear submitted code flag to allow user to enter new code
             this.authCodeDedup.delete(effectiveRequestId);
 
-            // Automatically resend authentication code
-            this.logger.log(`Automatically resending auth code for requestId: ${effectiveRequestId} due to expired code`);
+            // Restart login process to generate a new code
+            // This will call setAuthenticationPhoneNumber again, which triggers a new code
+            this.logger.log(`Restarting login to generate new code for requestId: ${effectiveRequestId} due to expired code`);
             try {
-              await this.telegramUserClient.resendAuthenticationCode(context.userId);
+              // Restart login with the same phone number to get a new code
+              await this.telegramUserClient.login(context.userId, session.phoneNumber, session.requestId);
               
               // Track that we've sent this error
               this.sentErrors.set(errorKey, { timestamp: now, chatId: context.chatId });
 
               await this.botService.bot.api.sendMessage(
                 context.chatId,
-                '⏰ O código expirou. Um novo código foi enviado automaticamente.\n\n' +
-                'Por favor, envie o novo código que você recebeu no Telegram.',
+                '⏰ O código expirou. Um novo código está sendo gerado automaticamente...\n\n' +
+                'Por favor, aguarde alguns segundos e envie o novo código que você receberá no Telegram.',
               );
               return;
-            } catch (resendError) {
-              this.logger.error(`Failed to resend authentication code: ${resendError}`, { requestId: effectiveRequestId });
+            } catch (restartError) {
+              this.logger.error(`Failed to restart login for new code: ${restartError}`, { requestId: effectiveRequestId });
               // Fall through to show error message
             }
           }
@@ -199,7 +202,7 @@ export class TdlibCommandResponseHandler {
         }
       }
 
-      // If resend failed or session not found, show error message
+      // If restart failed or session not found, show error message
       this.sentErrors.set(errorKey, { timestamp: now, chatId: context.chatId });
       await this.botService.bot.api.sendMessage(
         context.chatId,

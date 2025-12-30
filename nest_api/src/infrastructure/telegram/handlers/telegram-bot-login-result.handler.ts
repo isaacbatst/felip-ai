@@ -153,23 +153,25 @@ export class TelegramBotLoginResultHandler {
       error.includes('shared previously')
     );
     
-    if (isPhoneCodeExpired && session && session.state === 'waitingCode') {
+    if (isPhoneCodeExpired && session && session.state === 'waitingCode' && session.phoneNumber) {
       // Clear submitted code flag to allow user to enter new code
       this.authCodeDedup.delete(session.requestId);
 
-      // Automatically resend authentication code
-      this.logger.log(`Automatically resending auth code for requestId: ${session.requestId} due to expired code`);
+      // Restart login process to generate a new code
+      // Note: resendAuthenticationCode doesn't work for expired codes, so we restart the login process
+      this.logger.log(`Restarting login to generate new code for requestId: ${session.requestId} due to expired code`);
       try {
-        await this.client.resendAuthenticationCode(loggedInUserId.toString());
+        // Restart login with the same phone number to get a new code
+        await this.client.login(loggedInUserId.toString(), session.phoneNumber, session.requestId);
         
         await this.botService.bot.api.sendMessage(
           chatId,
-          '⏰ O código expirou. Um novo código foi enviado automaticamente.\n\n' +
-          'Por favor, envie o novo código que você recebeu no Telegram.',
+          '⏰ O código expirou. Um novo código está sendo gerado automaticamente...\n\n' +
+          'Por favor, aguarde alguns segundos e envie o novo código que você receberá no Telegram.',
         );
         return;
-      } catch (resendError) {
-        this.logger.error(`Failed to resend authentication code: ${resendError}`, { requestId: session.requestId });
+      } catch (restartError) {
+        this.logger.error(`Failed to restart login for new code: ${restartError}`, { requestId: session.requestId });
         // Fall through to show error message
       }
     }

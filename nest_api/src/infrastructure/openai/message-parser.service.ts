@@ -26,13 +26,30 @@ export class MessageParserService extends MessageParser {
     super();
     this.config = {
       model: 'gpt-5-nano',
-      systemPrompt:
-        'Você é um assistente que identifica mensagens de compra de milhas aéreas. ' +
-        'Analise a mensagem e identifique se é uma proposta de compra. ' +
-        'Se for, extraia a quantidade (em milhares), número de CPFs, companhia aérea/programa de milhas e valores que o usuário aceita pagar (se mencionados). ' +
-        "Exemplos de mensagens de compra: 'COMPRO LATAM 27k 2CPF', 'compro 42.6k 1cpf', 'quero comprar 60k latam 3cpf', 'compro 50k aceito até 1.50'. " +
-        'Se o usuário mencionar valores que aceita pagar (ex: "aceito até 1.50", "aceito 1.20 ou 1.30"), extraia esses valores no campo acceptedPrices. ' +
-        'Se não for uma proposta de compra, retorne isPurchaseProposal: false.',
+      systemPrompt: `Você é um assistente que identifica mensagens de compra de milhas aéreas. 
+Analise a mensagem e identifique se é uma proposta de compra. 
+Se for, extraia a quantidade (em milhares), número de CPFs, companhia aérea/programa de milhas e valores que o usuário aceita pagar (se mencionados). 
+Exemplos de mensagens de compra: 
+
+69,4k
+Latam 
+1 CPF
+26
+
+
+Esse usuário quer comprar 69,4k de milhas da Latam com 1 CPF e está disposto a pagar até $26.
+---
+
+Compro 133.600 Smiles
+6 cpf
+15,00
+
+Esse usuário quer comprar 133.600 de milhas da Smiles com 6 CPF e está disposto a pagar até $15.
+---
+
+. 
+Se o usuário mencionar valores que aceita pagar extraia esses valores no campo acceptedPrices. 
+Se não for uma proposta de compra, retorne isPurchaseProposal: false.`,
     };
   }
 
@@ -44,9 +61,8 @@ export class MessageParserService extends MessageParser {
 
     if (availableProviders && availableProviders.length > 0) {
       const providersList = availableProviders.join(', ');
-      prompt +=
-        `\n\nContexto: Os seguintes programas/providers podem ser mencionados nas mensagens: ${providersList}. ` +
-        'Reconheça e extraia o nome do programa/provider mencionado na mensagem, se for um dos programas/providers fornecidos acima, retorne o texto como está na lista de providers fornecida acima.';
+      prompt += `\n\nContexto: Os seguintes programas/providers podem ser mencionados nas mensagens: ${providersList}. 
+Reconheça e extraia o nome do programa/provider mencionado na mensagem, se for um dos programas/providers fornecidos acima, retorne o texto como está na lista de providers fornecida acima.`;
     }
 
     return prompt;
@@ -69,7 +85,11 @@ export class MessageParserService extends MessageParser {
             content: text,
           },
         ],
+        reasoning: {
+          effort: 'minimal',
+        },
         text: {
+          verbosity: 'low',
           format: zodTextFormat(PurchaseRequestSchema, 'purchaseRequest'),
         },
       });

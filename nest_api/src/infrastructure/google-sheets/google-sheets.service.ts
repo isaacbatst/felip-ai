@@ -97,7 +97,7 @@ export class GoogleSheetsService {
     // Tabelas de preços dinâmicas - detectadas da planilha
     const priceTables: Record<Provider, PriceTableV2> = {};
     const customMaxPrices: Record<Provider, number | undefined> = {};
-    const providerColumns: Array<{ provider: Provider; quantityCol: number; valueCol: number }> = [];
+    const providerColumns: Array<{ provider: Provider; quantityCol: number; valueCol: number; headerRow: number }> = [];
 
     // Procura pela linha que contém os nomes dos provedores
     // E pela linha seguinte que contém os cabeçalhos QUANTIDADE/CPF e VALOR
@@ -142,14 +142,9 @@ export class GoogleSheetsService {
           }
           
           if (provider) {
-            // Inicializa a tabela se ainda não existir
-            if (!priceTables[provider]) {
-              priceTables[provider] = {};
-            }
-            
-            // Evita duplicatas verificando se já existe esta coluna para este provider
+            // Evita duplicatas verificando se já existe esta coluna para este provider na mesma seção
             const exists = providerColumns.some(
-              (pc) => pc.provider === provider && pc.quantityCol === j,
+              (pc) => pc.provider === provider && pc.quantityCol === j && pc.headerRow === i + 1,
             );
             
             if (!exists) {
@@ -157,6 +152,7 @@ export class GoogleSheetsService {
                 provider,
                 quantityCol: j,
                 valueCol: j + 1,
+                headerRow: i + 1, // Linha onde está o cabeçalho QUANTIDADE/CPF
               });
             }
           }
@@ -166,34 +162,26 @@ export class GoogleSheetsService {
 
     // Lê os valores para cada provedor
     // Para cada provedor, encontra a linha de início dos dados (após PREÇO TETO ou diretamente após cabeçalho)
-    for (const { provider, quantityCol, valueCol } of providerColumns) {
+    for (const { provider, quantityCol, valueCol, headerRow } of providerColumns) {
       const priceTable: PriceTableV2 = {};
 
-      // Encontra a linha de início dos dados para este provedor
-      // Procura pela linha de cabeçalho QUANTIDADE/CPF correspondente
-      let dataStartRow = 0;
+      // Encontra a linha de início dos dados para esta seção específica
+      // Usa headerRow para garantir que processamos apenas a seção correta
+      let dataStartRow = headerRow + 1; // Linha após o cabeçalho QUANTIDADE/CPF
       let priceTetoRow = -1;
-      for (let i = 0; i < rows.length - 1; i++) {
-        const row = rows[i];
-        const nextRow = rows[i + 1];
-        if (
-          row &&
-          Array.isArray(row) &&
-          nextRow &&
-          Array.isArray(nextRow) &&
-          nextRow[quantityCol]?.toString().toUpperCase().trim().includes('QUANTIDADE/CPF')
-        ) {
-          // Verifica se a linha seguinte contém PREÇO TETO
-          // O texto "PREÇO TETO" pode estar na coluna quantityCol ou valueCol-1
-          // O valor numérico está na coluna valueCol
-          const priceTetoCellQuantity = nextRow[quantityCol]?.toString().toUpperCase().trim() || '';
-          const priceTetoCellValue = nextRow[valueCol]?.toString().toUpperCase().trim() || '';
+      
+      // Verifica se a linha após o cabeçalho contém PREÇO TETO
+      if (dataStartRow < rows.length) {
+        const priceTetoRowData = rows[dataStartRow];
+        if (priceTetoRowData && Array.isArray(priceTetoRowData)) {
+          const priceTetoCellQuantity = priceTetoRowData[quantityCol]?.toString().toUpperCase().trim() || '';
+          const priceTetoCellValue = priceTetoRowData[valueCol]?.toString().toUpperCase().trim() || '';
           const hasPriceTeto = priceTetoCellQuantity.includes('PREÇO TETO') || priceTetoCellValue.includes('PREÇO TETO');
           
           if (hasPriceTeto) {
-            priceTetoRow = i + 1;
+            priceTetoRow = dataStartRow;
             // O valor numérico do PREÇO TETO está na coluna valueCol
-            const priceTetoValue = nextRow[valueCol]?.toString().trim() || '';
+            const priceTetoValue = priceTetoRowData[valueCol]?.toString().trim() || '';
             if (priceTetoValue) {
               // Extrai número da string (remove texto "PREÇO TETO:" etc se houver)
               const numberMatch = priceTetoValue.match(/(\d+[.,]?\d*)/);
@@ -205,45 +193,27 @@ export class GoogleSheetsService {
                 }
               }
             }
-          }
-          // A linha de dados começa 2 linhas depois do cabeçalho (pula PREÇO TETO se existir)
-          dataStartRow = i + 2;
-          break;
-        }
-      }
-      
-      // Se não encontrou PREÇO TETO na primeira busca, procura em qualquer linha que contém "PREÇO TETO"
-      // nas colunas relacionadas a este provider (quantityCol ou valueCol)
-      if (priceTetoRow === -1) {
-        for (let i = 0; i < rows.length; i++) {
-          const row = rows[i];
-          if (!row || !Array.isArray(row)) {
-            continue;
-          }
-          const cellQuantity = row[quantityCol]?.toString().toUpperCase().trim() || '';
-          const cellValue = row[valueCol]?.toString().toUpperCase().trim() || '';
-          const hasPriceTeto = cellQuantity.includes('PREÇO TETO') || cellValue.includes('PREÇO TETO');
-          
-          if (hasPriceTeto) {
-            // O valor numérico está na coluna valueCol
-            const priceTetoValue = row[valueCol]?.toString().trim() || '';
-            if (priceTetoValue) {
-              // Extrai número da string
-              const numberMatch = priceTetoValue.match(/(\d+[.,]?\d*)/);
-              if (numberMatch) {
-                const cleanValue = numberMatch[1].replace(',', '.');
-                const parsedValue = parseFloat(cleanValue);
-                if (!Number.isNaN(parsedValue) && parsedValue > 0) {
-                  customMaxPrices[provider] = parsedValue;
-                  break;
-                }
-              }
-            }
+            // Se encontrou PREÇO TETO, os dados começam na próxima linha
+            dataStartRow = priceTetoRow + 1;
           }
         }
       }
 
-      for (let i = dataStartRow; i < rows.length; i++) {
+      // Encontra onde termina esta seção (próxima linha com cabeçalhos QUANTIDADE/CPF ou fim do arquivo)
+      let dataEndRow = rows.length;
+      for (let i = headerRow + 1; i < rows.length; i++) {
+        const row = rows[i];
+        if (!row || !Array.isArray(row)) {
+          continue;
+        }
+        // Verifica se encontrou uma nova seção (nova linha com QUANTIDADE/CPF na mesma coluna)
+        if (i > headerRow + 1 && row[quantityCol]?.toString().toUpperCase().trim().includes('QUANTIDADE/CPF')) {
+          dataEndRow = i;
+          break;
+        }
+      }
+
+      for (let i = dataStartRow; i < dataEndRow; i++) {
         const row = rows[i];
         if (!row || row.length <= Math.max(quantityCol, valueCol)) {
           continue;
@@ -305,12 +275,25 @@ export class GoogleSheetsService {
       }
 
       // Mescla com a tabela existente (pode haver múltiplas seções)
+      // Só inclui o provider se tiver pelo menos uma entrada válida de preço
       if (Object.keys(priceTable).length > 0) {
+        if (!priceTables[provider]) {
+          priceTables[provider] = {};
+        }
         priceTables[provider] = { ...priceTables[provider], ...priceTable };
       }
     }
 
-    return { priceTables, customMaxPrices };
+    // Remove customMaxPrices de providers que não têm tabela de preços válida
+    const validProviders = new Set(Object.keys(priceTables) as Provider[]);
+    const filteredCustomMaxPrices: Record<Provider, number | undefined> = {};
+    for (const provider of validProviders) {
+      if (customMaxPrices[provider] !== undefined) {
+        filteredCustomMaxPrices[provider] = customMaxPrices[provider];
+      }
+    }
+
+    return { priceTables, customMaxPrices: filteredCustomMaxPrices };
   }
 
   /**
@@ -399,7 +382,6 @@ export class GoogleSheetsService {
         spreadsheetId,
         range: fullRange,
       });
-
       const rows = programsResponse.data.values;
       if (rows && rows.length > 0) {
         // Pula a primeira linha (cabeçalho)
