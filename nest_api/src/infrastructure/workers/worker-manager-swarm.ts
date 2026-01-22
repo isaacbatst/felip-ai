@@ -10,6 +10,8 @@ export class WorkerManagerSwarm extends WorkerManager implements OnModuleDestroy
   private docker = new Docker();
   private readonly logger = new Logger(WorkerManagerSwarm.name);
   private readonly activeIntervals = new Set<NodeJS.Timeout>();
+  // Network ID for RabbitMQ network (felip-ai_default)
+  private readonly RABBITMQ_NETWORK_ID = 'e7488pknkxsgiiu3qnfm9ysuj';
 
   constructor(
     private readonly appConfigService: AppConfigService,
@@ -66,8 +68,7 @@ export class WorkerManagerSwarm extends WorkerManager implements OnModuleDestroy
     // Ensure volume exists before creating service
     await this.ensureVolumeExists(userId);
     
-    // Use the RabbitMQ network ID directly
-    const networkId = 'e7488pknkxsgiiu3qnfm9ysuj';
+    this.logger.log(`Creating service ${serviceName} on network ${this.RABBITMQ_NETWORK_ID}`);
     
     const envVars = await this.getEnvFromPath(this.appConfigService.getWorkerEnvFile());
     // Add USER_ID to environment variables so worker knows which queue to listen to
@@ -75,25 +76,23 @@ export class WorkerManagerSwarm extends WorkerManager implements OnModuleDestroy
     // Assign and set HTTP port for this worker
     const httpPort = await this.getPortForWorker(userId);
     envVars.push(`HTTP_PORT=${httpPort}`);
-    // Override RABBITMQ_HOST to use the full service name (works across overlay networks)
+    // Override RABBITMQ_HOST to use the full service name
     // Remove any existing RABBITMQ_HOST from envVars first
     const filteredEnvVars = envVars.filter(env => !env.startsWith('RABBITMQ_HOST='));
     filteredEnvVars.push(`RABBITMQ_HOST=felip-ai_rabbitmq`);
-    const finalEnvVars = filteredEnvVars;
 
     try {
       await this.docker.createService({
         Name: serviceName,
-        Networks: [
-          {
-            Target: networkId,
-            Aliases: [], // Network aliases are not needed for workers, RabbitMQ has the alias
-          }
-        ],
         TaskTemplate: {
+          Networks: [
+            {
+              Target: this.RABBITMQ_NETWORK_ID,
+            }
+          ],
           ContainerSpec: {
             Image: this.getImageName(),
-            Env: finalEnvVars,
+            Env: filteredEnvVars,
             Mounts: [
               {
                 Type: 'volume',
@@ -186,9 +185,11 @@ export class WorkerManagerSwarm extends WorkerManager implements OnModuleDestroy
       const inspect = await service.inspect();
       
       // Ensure service is on the correct network
-      const networkId = 'e7488pknkxsgiiu3qnfm9ysuj';
       const currentNetworks = inspect.Spec.TaskTemplate?.Networks || [];
-      const isOnCorrectNetwork = currentNetworks.some(n => n.Target === networkId);
+      const isOnCorrectNetwork = currentNetworks.some(n => n.Target === this.RABBITMQ_NETWORK_ID);
+      
+      this.logger.log(`Service ${serviceName} current networks: ${JSON.stringify(currentNetworks.map(n => n.Target))}`);
+      this.logger.log(`Service ${serviceName} is on correct network: ${isOnCorrectNetwork}`);
       
       // Update environment variables to ensure RABBITMQ_HOST is correct
       const currentEnv = inspect.Spec.TaskTemplate?.ContainerSpec?.Env || [];
@@ -196,9 +197,10 @@ export class WorkerManagerSwarm extends WorkerManager implements OnModuleDestroy
       updatedEnv.push(`RABBITMQ_HOST=felip-ai_rabbitmq`);
       
       // Update TaskTemplate with correct network and env
+      // Explicitly set Networks to ensure it's correct
       const updatedTaskTemplate = {
         ...inspect.Spec.TaskTemplate,
-        Networks: isOnCorrectNetwork ? currentNetworks : [{ Target: networkId }],
+        Networks: [{ Target: this.RABBITMQ_NETWORK_ID }], // Always set to correct network
         ContainerSpec: {
           ...inspect.Spec.TaskTemplate?.ContainerSpec,
           Env: updatedEnv,
@@ -222,7 +224,7 @@ export class WorkerManagerSwarm extends WorkerManager implements OnModuleDestroy
           Labels: inspect.Spec.Labels,
         });
         if (!isOnCorrectNetwork) {
-          this.logger.log(`Updated service ${serviceName} network to ${networkId}`);
+          this.logger.log(`Updated service ${serviceName} network to ${this.RABBITMQ_NETWORK_ID}`);
         }
         this.logger.log(`Scaled service ${serviceName} to 1 replica`);
       }
@@ -340,9 +342,8 @@ export class WorkerManagerSwarm extends WorkerManager implements OnModuleDestroy
       const serviceName = this.getServiceNameByUserId(userId);
       const service = this.docker.getService(serviceName);
       const inspect = await service.inspect();
-      const networkId = 'e7488pknkxsgiiu3qnfm9ysuj';
       const currentNetworks = inspect.Spec.TaskTemplate?.Networks || [];
-      return currentNetworks.some(n => n.Target === networkId);
+      return currentNetworks.some(n => n.Target === this.RABBITMQ_NETWORK_ID);
     } catch (error: unknown) {
       const statusCode = (error as { statusCode?: number }).statusCode;
       if (statusCode === 404) {
@@ -400,7 +401,7 @@ export class WorkerManagerSwarm extends WorkerManager implements OnModuleDestroy
    * Ensure volume exists for the worker (create if it doesn't exist)
    */
   private async ensureVolumeExists(userId: string): Promise<void> {
-    const volumeName = `tdlib-${userId}`;
+    const volumeName = `felip-tdlib-${userId}`;
     try {
       const volume = this.docker.getVolume(volumeName);
       await volume.inspect();
@@ -447,11 +448,10 @@ export class WorkerManagerSwarm extends WorkerManager implements OnModuleDestroy
     }
     
     // Assign port to worker
-    const assignedPort = nextPort;
-    await this.workerRepository.setWorkerPort(userId, assignedPort);
+    await this.workerRepository.setWorkerPort(userId, nextPort);
     
-    this.logger.log(`Assigned port ${assignedPort} to worker for user ${userId}`);
-    return assignedPort;
+    this.logger.log(`Assigned port ${nextPort} to worker for user ${userId}`);
+    return nextPort;
   }
 
   private async isHealthy(userId: string): Promise<boolean> {
