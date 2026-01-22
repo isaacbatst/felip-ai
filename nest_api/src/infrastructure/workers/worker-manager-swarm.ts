@@ -851,7 +851,7 @@ export class WorkerManagerSwarm extends WorkerManager implements OnModuleDestroy
         throw new Error(`Service ${serviceName} does not have a valid version index. Got: ${version}`);
       }
 
-      this.logger.log(`Service ${serviceName} current version: ${version}`);
+      this.logger.log(`Service ${serviceName} current version: ${version} (type: ${typeof version})`);
       
       // Update the image in TaskTemplate
       const updatedTaskTemplate = {
@@ -870,13 +870,47 @@ export class WorkerManagerSwarm extends WorkerManager implements OnModuleDestroy
         UpdateConfig: currentSpec.UpdateConfig,
         EndpointSpec: currentSpec.EndpointSpec,
         Labels: currentSpec.Labels,
+        Version: version,
       };
 
-      // Use dockerode's service.update() method
-      // dockerode handles version automatically from the inspect object
-      // We need to ensure we're using the inspect that was just fetched
-      // The update method will use inspect.Version.Index automatically
-      await service.update(updateSpec);
+      // Use dockerode's modem directly to ensure version is passed correctly
+      // According to dockerode issue #333, version must be passed in options._query
+      const versionNumber = Number(version);
+      if (Number.isNaN(versionNumber) || versionNumber <= 0) {
+        throw new Error(`Invalid version number: ${version}`);
+      }
+
+      // Build the update path without query parameters (dockerode will add them from _query)
+      const updatePath = `/services/${inspect.ID}/update`;
+      this.logger.log(`Update path: ${updatePath}, version: ${versionNumber} (type: ${typeof versionNumber})`);
+      
+      // dockerode expects version in options._query for query parameters
+      // updateSpec goes in the body as JSON
+      await new Promise<void>((resolve, reject) => {
+        this.docker.modem.dial(
+          {
+            path: updatePath,
+            method: 'POST',
+            options: {
+              ...updateSpec, // Body content
+              _query: {
+                version: versionNumber, // Query parameter
+              },
+            },
+            statusCodes: {
+              200: true,
+              201: true,
+            },
+          },
+          (err: Error | null) => {
+            if (err) {
+              reject(err);
+            } else {
+              resolve();
+            }
+          },
+        );
+      });
 
       this.logger.log(`Service ${serviceName} update initiated with version ${version}`);
       
