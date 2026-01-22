@@ -869,18 +869,13 @@ export class WorkerManagerSwarm extends WorkerManager implements OnModuleDestroy
         UpdateConfig: currentSpec.UpdateConfig,
         EndpointSpec: currentSpec.EndpointSpec,
         Labels: currentSpec.Labels,
+        version: version,
       };
-
-      const versionNumber = Number(version);
-      if (Number.isNaN(versionNumber) || versionNumber <= 0) {
-        throw new Error(`Invalid version number: ${version}`);
-      }
 
       await service.update(updateSpec)
 
       this.logger.log(`Service ${serviceName} update initiated with version ${version}`);
       
-      // Wait a bit for the update to propagate
       await new Promise(resolve => setTimeout(resolve, 2000));
       
       // Verify the service is still healthy after update
