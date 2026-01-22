@@ -665,13 +665,27 @@ export class WorkerManagerSwarm extends WorkerManager implements OnModuleDestroy
       // Use cached digest if available, otherwise use oldDigest from inspect
       const previousDigest = this.currentImageDigest || oldDigest;
 
-      // Compare digests
+      // If image didn't exist locally (oldDigest === null), it was just downloaded
+      // In this case, we should update services even on first check
+      const imageWasJustDownloaded = oldDigest === null;
+      
+      // If this is the first check ever (no cached digest and no old digest)
       if (previousDigest === null) {
         this.logger.log(`First check - caching digest: ${newDigest.substring(0, 20)}...`);
         this.currentImageDigest = newDigest;
-        return false; // Don't update on first check
+        
+        // If image was just downloaded (didn't exist locally), update services
+        if (imageWasJustDownloaded) {
+          this.logger.log('Image was downloaded for the first time (did not exist locally), updating services...');
+          return true;
+        }
+        
+        // Otherwise, don't update on first check (image already existed locally)
+        this.logger.log('First check - image already existed locally, skipping update');
+        return false;
       }
 
+      // Compare digests or check if new image was downloaded
       if (previousDigest !== newDigest || pullResult.hasNewImage) {
         this.logger.log(`New image detected! Old: ${previousDigest?.substring(0, 20) || 'none'}..., New: ${newDigest.substring(0, 20)}...`);
         this.currentImageDigest = newDigest;
@@ -765,81 +779,52 @@ export class WorkerManagerSwarm extends WorkerManager implements OnModuleDestroy
 
   /**
    * Updates a single service to use the new image
+   * Strategy: Remove and recreate the service to avoid version conflicts
    */
   private async updateService(userId: string): Promise<void> {
     const serviceName = this.getServiceNameByUserId(userId);
-    this.logger.log(`Updating service ${serviceName}...`);
+    this.logger.log(`Updating service ${serviceName} by removing and recreating...`);
 
     try {
-      const service = this.docker.getService(serviceName);
-      const inspect = await service.inspect();
-
-      // Get current spec
-      const currentSpec = inspect.Spec;
-      const version = inspect.Version?.Index;
-      
-      if (version === undefined || version === null) {
-        this.logger.error(`Service ${serviceName} version: ${JSON.stringify(inspect.Version)}`);
-        throw new Error(`Service ${serviceName} does not have a valid version index. Got: ${version}`);
+      // Check if service exists and get its status
+      const status = await this.getStatus(userId);
+      if (!status) {
+        this.logger.warn(`Service ${serviceName} does not exist, skipping update`);
+        return;
       }
 
-      this.logger.log(`Service ${serviceName} current version: ${version}`);
-      
-      // Update the image in TaskTemplate
-      const updatedTaskTemplate = {
-        ...currentSpec.TaskTemplate,
-        ContainerSpec: {
-          ...currentSpec.TaskTemplate?.ContainerSpec,
-          Image: this.getImageName(), // This will use the newly pulled image
-        },
-      };
+      const wasRunning = status.state === 'running';
+      this.logger.log(`Service ${serviceName} current state: ${status.state}`);
 
-      // Update the service using dockerode's update method
-      // dockerode requires version to be passed via query parameter in the URL
-      // We'll use the service's internal modem to make the request with proper version header
-      const updateOpts = {
-        Name: currentSpec.Name,
-        TaskTemplate: updatedTaskTemplate,
-        Mode: currentSpec.Mode,
-        UpdateConfig: currentSpec.UpdateConfig,
-        EndpointSpec: currentSpec.EndpointSpec,
-        Labels: currentSpec.Labels,
-      };
+      // Remove the existing service
+      try {
+        const service = this.docker.getService(serviceName);
+        await service.remove();
+        this.logger.log(`Removed service ${serviceName}`);
+        
+        // Wait a bit for the service to be fully removed
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      } catch (error: unknown) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        const statusCode = (error as { statusCode?: number }).statusCode;
+        if (statusCode === 404) {
+          this.logger.log(`Service ${serviceName} was already removed`);
+        } else {
+          throw new Error(`Failed to remove service ${serviceName}: ${errorMessage}`);
+        }
+      }
 
-      // Use dockerode's internal modem to update with version query parameter
-      const updatePath = `/services/${inspect.ID}/update?version=${version}`;
-      await new Promise<void>((resolve, reject) => {
-        this.docker.modem.dial(
-          {
-            path: updatePath,
-            method: 'POST',
-            options: updateOpts,
-            statusCodes: {
-              200: true,
-              201: true,
-            },
-          },
-          (err: Error | null) => {
-            if (err) {
-              reject(err);
-            } else {
-              resolve();
-            }
-          },
-        );
-      });
-
-      this.logger.log(`Service ${serviceName} update initiated`);
-      
-      // Wait a bit for the update to propagate
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      // Verify the service is still healthy after update
-      const isHealthy = await this.waitUntilHealthy(userId, { timeout: 120000, interval: 5000 });
-      if (isHealthy) {
-        this.logger.log(`Service ${serviceName} is healthy after update`);
+      // Recreate the service using the existing run method (which uses the new image)
+      if (wasRunning) {
+        this.logger.log(`Recreating service ${serviceName} with new image...`);
+        const success = await this.run(userId);
+        if (success) {
+          this.logger.log(`Service ${serviceName} successfully recreated and started`);
+        } else {
+          throw new Error(`Failed to recreate service ${serviceName}`);
+        }
       } else {
-        this.logger.warn(`Service ${serviceName} may not be healthy after update`);
+        this.logger.log(`Service ${serviceName} was stopped, not recreating (will be created on next start)`);
       }
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : String(error);
