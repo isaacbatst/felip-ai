@@ -77,12 +77,14 @@ jobs:
           echo "RABBITMQ_PORT=${{ secrets.RABBITMQ_PORT }}" >> envfile
           echo "RABBITMQ_USER=${{ secrets.RABBITMQ_USER }}" >> envfile
           echo "RABBITMQ_PASSWORD=${{ secrets.RABBITMQ_PASSWORD }}" >> envfile
-      - name: Docker Stack Deploy
-        uses: cssnr/stack-deploy-action@v1
-        with:
-          name: felip-ai
-          file: stack.yml
-          host: 72.61.25.136
-          user: root
-          ssh_key: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}
-          env_file: ./envfile
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H  72.61.25.136 >> ~/.ssh/known_hosts
+
+      - name: Update Nest API service only
+        run: |
+          ssh -i ~/.ssh/deploy_key root@72.61.25.136 \
+            "docker service update --image ghcr.io/isaacbatst/felip-ai:${{ github.sha }} felip-ai_nest_api"

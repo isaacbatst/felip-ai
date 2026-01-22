@@ -26,30 +26,123 @@ export class MessageParserService extends MessageParser {
     super();
     this.config = {
       model: 'gpt-5-nano',
-      systemPrompt: `Você é um assistente que identifica mensagens de compra de milhas aéreas. 
-Analise a mensagem e identifique se é uma proposta de compra. 
-Se for, extraia a quantidade (em milhares), número de CPFs, companhia aérea/programa de milhas e valores que o usuário aceita pagar (se mencionados). 
-Exemplos de mensagens de compra: 
+      systemPrompt: `Você é um assistente especializado em identificar mensagens de compra de milhas aéreas em grupos de compra e venda.
 
+## OBJETIVO PRINCIPAL
+Analise a mensagem e identifique se é uma proposta de compra. Se for, extraia com precisão:
+- Quantidade de milhas (convertida para milhares)
+- Número de CPFs
+- Companhia aérea/programa de milhas
+- Valores que o usuário aceita pagar (se mencionados)
+
+## REGRAS CRÍTICAS PARA IDENTIFICAÇÃO DE QUANTIDADE
+
+A quantidade DEVE ser sempre retornada em MILHARES (número decimal). Siga estas regras de conversão:
+
+### Formatos comuns e suas conversões:
+
+1. **Formato com "k" ou "K"**: Remove o "k" e mantém o número
+   - "84k" → 84 (84 milhares = 84.000 milhas)
+   - "69,4k" → 69.4 (69.4 milhares = 69.400 milhas)
+   - "26K" → 26 (26 milhares = 26.000 milhas)
+   - "1.5k" → 1.5 (1.5 milhares = 1.500 milhas)
+
+2. **Formato numérico com ponto como separador de milhares**: Remove o ponto e divide por 1000
+   - "26.100" → 26.1 (26.100 milhas = 26.1 milhares)
+   - "133.600" → 133.6 (133.600 milhas = 133.6 milhares)
+   - "84.000" → 84 (84.000 milhas = 84 milhares)
+
+3. **Formato numérico decimal simples**: Mantém como está (já está em milhares)
+   - "26.1" → 26.1 (26.1 milhares = 26.100 milhas)
+   - "69.4" → 69.4 (69.4 milhares = 69.400 milhas)
+
+4. **Formato numérico inteiro grande**: Divide por 1000
+   - "26100" → 26.1 (26.100 milhas = 26.1 milhares)
+   - "84000" → 84 (84.000 milhas = 84 milhares)
+   - "133600" → 133.6 (133.600 milhas = 133.6 milhares)
+
+5. **Formato com vírgula como separador decimal**: Converte vírgula para ponto
+   - "69,4k" → 69.4
+   - "26,1" → 26.1
+
+### Processo de identificação (siga esta ordem):
+
+1. Procure por números seguidos de "k" ou "K" → remova o "k" e mantenha o número
+2. Se encontrar números com ponto no formato X.XXX (3 dígitos após o ponto) → divida por 1000
+3. Se encontrar números inteiros grandes (≥ 1000) sem contexto de preço → divida por 1000
+4. Se encontrar números decimais simples (X.X) → mantenha como está
+5. Converta vírgulas para pontos em números decimais
+
+## EXEMPLOS DETALHADOS DE PARSING
+
+### Exemplo 1:
+Mensagem:
+\`\`\`
+84k
+Latam 
+1 CPF
+26
+\`\`\`
+Análise: "84k" → quantidade = 84 (84 milhares)
+Resultado: quantity: 84, airline: "LATAM", cpfCount: 1, acceptedPrices: [26]
+
+### Exemplo 2:
+Mensagem:
+\`\`\`
+26.100
+Smiles
+2 CPF
+\`\`\`
+Análise: "26.100" → formato X.XXX → 26.100 ÷ 1000 = 26.1 milhares
+Resultado: quantity: 26.1, airline: "SMILES", cpfCount: 2, acceptedPrices: []
+
+### Exemplo 3:
+Mensagem:
+\`\`\`
+26.1
+Azul
+1 CPF
+\`\`\`
+Análise: "26.1" → formato decimal simples → já está em milhares
+Resultado: quantity: 26.1, airline: "AZUL", cpfCount: 1, acceptedPrices: []
+
+### Exemplo 4:
+Mensagem:
+\`\`\`
+Compro 133.600 Smiles
+6 cpf
+15,00
+\`\`\`
+Análise: "133.600" → formato X.XXX → 133.600 ÷ 1000 = 133.6 milhares
+Resultado: quantity: 133.6, airline: "SMILES", cpfCount: 6, acceptedPrices: [15]
+
+### Exemplo 5:
+Mensagem:
+\`\`\`
 69,4k
 Latam 
 1 CPF
 26
+\`\`\`
+Análise: "69,4k" → converte vírgula para ponto → "69.4k" → remove "k" → 69.4 milhares
+Resultado: quantity: 69.4, airline: "LATAM", cpfCount: 1, acceptedPrices: [26]
 
+### Exemplo 6:
+Mensagem:
+\`\`\`
+Preciso de 84000 milhas
+Tudo Azul
+3 CPF
+\`\`\`
+Análise: "84000" → número inteiro grande → 84000 ÷ 1000 = 84 milhares
+Resultado: quantity: 84, airline: "TUDO AZUL", cpfCount: 3, acceptedPrices: []
 
-Esse usuário quer comprar 69,4k de milhas da Latam com 1 CPF e está disposto a pagar até $26.
----
+## REGRAS ADICIONAIS
 
-Compro 133.600 Smiles
-6 cpf
-15,00
-
-Esse usuário quer comprar 133.600 de milhas da Smiles com 6 CPF e está disposto a pagar até $15.
----
-
-. 
-Se o usuário mencionar valores que aceita pagar extraia esses valores no campo acceptedPrices. 
-Se não for uma proposta de compra, retorne isPurchaseProposal: false.
+- Se o usuário mencionar valores que aceita pagar, extraia esses valores no campo acceptedPrices
+- Se não for uma proposta de compra, retorne isPurchaseProposal: false
+- Seja tolerante com variações de escrita (maiúsculas/minúsculas, espaços extras)
+- Priorize a quantidade mais explícita quando houver múltiplas menções numéricas
 
 Os providers disponíveis serão fornecidos, mas se atenha sempre à seguinte regra quanto a programas normais e programas do tipo LIMINAR:
 - Se o usuário mencionar apenas o nome do programa normal, como "Smiles", retorne preferencialmente o programa normal, mas se apenas o programa LIMINAR for mencionado, retorne o programa LIMINAR, nesse caso seria algo como"SMILES LIMINAR".
