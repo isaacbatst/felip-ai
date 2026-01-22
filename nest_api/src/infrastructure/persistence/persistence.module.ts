@@ -10,6 +10,8 @@ import { MessageProcessedLogRepository } from "@/infrastructure/persistence/mess
 import { MessageProcessedLogDrizzleStore } from "@/infrastructure/persistence/drizzle/message-processed-log-drizzle-store";
 import { MessageEnqueuedLogRepository } from "@/infrastructure/persistence/message-enqueued-log.repository";
 import { MessageEnqueuedLogDrizzleStore } from "@/infrastructure/persistence/drizzle/message-enqueued-log-drizzle-store";
+import { BotStatusRepository } from "@/infrastructure/persistence/bot-status.repository";
+import { BotStatusDrizzleStore } from "@/infrastructure/persistence/drizzle/bot-status-drizzle-store";
 
 @Module({
   imports: [DatabaseModule],
@@ -34,6 +36,10 @@ import { MessageEnqueuedLogDrizzleStore } from "@/infrastructure/persistence/dri
       provide: MessageEnqueuedLogRepository,
       useClass: MessageEnqueuedLogDrizzleStore,
     },
+    {
+      provide: BotStatusRepository,
+      useClass: BotStatusDrizzleStore,
+    },
   ],
   exports: [
     ConversationRepository,
@@ -41,6 +47,7 @@ import { MessageEnqueuedLogDrizzleStore } from "@/infrastructure/persistence/dri
     WorkerRepository,
     MessageProcessedLogRepository,
     MessageEnqueuedLogRepository,
+    BotStatusRepository,
   ],
 })
 export class PersistenceModule {}

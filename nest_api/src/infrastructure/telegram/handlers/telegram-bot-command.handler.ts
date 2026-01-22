@@ -5,6 +5,7 @@ import { PriceTableProvider } from '@/domain/interfaces/price-table-provider.int
 import { ConversationRepository, ConversationData } from '@/infrastructure/persistence/conversation.repository';
 import { TelegramUserClientProxyService } from '../../tdlib/telegram-user-client-proxy.service';
 import { ActiveGroupsRepository } from '@/infrastructure/persistence/active-groups.repository';
+import { BotStatusRepository } from '@/infrastructure/persistence/bot-status.repository';
 import type {
   CommandContext,
 } from '@felip-ai/shared-types';
@@ -23,6 +24,7 @@ export class TelegramCommandHandler {
     private readonly conversationRepository: ConversationRepository,
     private readonly telegramUserClient: TelegramUserClientProxyService,
     private readonly activeGroupsRepository: ActiveGroupsRepository,
+    private readonly botStatusRepository: BotStatusRepository,
   ) {}
 
   async handleStart(ctx: Context): Promise<void> {
@@ -635,6 +637,58 @@ export class TelegramCommandHandler {
       }
     } else {
       await ctx.reply(message, { parse_mode: 'Markdown' });
+    }
+  }
+
+  async handleOn(ctx: Context): Promise<void> {
+    try {
+      const telegramUserId = ctx.from?.id;
+      if (!telegramUserId) {
+        await ctx.reply('❌ Não foi possível identificar seu usuário.');
+        return;
+      }
+
+      // Check if user is logged in
+      const loggedInUserId = await this.conversationRepository.isLoggedIn(telegramUserId);
+      if (!loggedInUserId) {
+        await ctx.reply('❌ Você precisa estar logado para usar este comando.\n\nUse /login para fazer login.');
+        return;
+      }
+
+      // Set bot status to enabled
+      const loggedInUserIdStr = loggedInUserId.toString();
+      await this.botStatusRepository.setBotStatus(loggedInUserIdStr, true);
+
+      await ctx.reply('✅ Bot ativado!\n\nO bot agora processará mensagens dos grupos ativos.');
+    } catch (error) {
+      this.logger.error('Error handling /on command', { error });
+      await ctx.reply('❌ Erro ao ativar o bot. Tente novamente.');
+    }
+  }
+
+  async handleOff(ctx: Context): Promise<void> {
+    try {
+      const telegramUserId = ctx.from?.id;
+      if (!telegramUserId) {
+        await ctx.reply('❌ Não foi possível identificar seu usuário.');
+        return;
+      }
+
+      // Check if user is logged in
+      const loggedInUserId = await this.conversationRepository.isLoggedIn(telegramUserId);
+      if (!loggedInUserId) {
+        await ctx.reply('❌ Você precisa estar logado para usar este comando.\n\nUse /login para fazer login.');
+        return;
+      }
+
+      // Set bot status to disabled
+      const loggedInUserIdStr = loggedInUserId.toString();
+      await this.botStatusRepository.setBotStatus(loggedInUserIdStr, false);
+
+      await ctx.reply('⏸️ Bot desativado!\n\nO bot não processará mais mensagens dos grupos ativos.\n\nUse /on para reativar.');
+    } catch (error) {
+      this.logger.error('Error handling /off command', { error });
+      await ctx.reply('❌ Erro ao desativar o bot. Tente novamente.');
     }
   }
 }

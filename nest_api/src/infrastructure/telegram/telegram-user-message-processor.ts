@@ -4,6 +4,7 @@ import { TelegramUserClientProxyService } from '../tdlib/telegram-user-client-pr
 import { QueuedMessage } from './interfaces/queued-message';
 import { ActiveGroupsRepository } from '@/infrastructure/persistence/active-groups.repository';
 import { ConversationRepository } from '@/infrastructure/persistence/conversation.repository';
+import { BotStatusRepository } from '@/infrastructure/persistence/bot-status.repository';
 import { TdlibUpdateNewMessage } from '../tdlib/tdlib-update.types';
 
 /**
@@ -19,6 +20,7 @@ export class TelegramUserMessageProcessor {
     private readonly activeGroupsRepository: ActiveGroupsRepository,
     private readonly telegramUserClient: TelegramUserClientProxyService,
     private readonly conversationRepository: ConversationRepository,
+    private readonly botStatusRepository: BotStatusRepository,
   ) {}
 
   /**
@@ -143,9 +145,16 @@ export class TelegramUserMessageProcessor {
         return;
       }
 
+      // Check if bot is enabled for this user (default is true if no record exists)
+      const loggedInUserIdStr = loggedInUserId.toString();
+      const isBotEnabled = await this.botStatusRepository.getBotStatus(loggedInUserIdStr);
+      if (!isBotEnabled) {
+        this.logger.warn(`Bot is disabled for loggedInUserId ${loggedInUserId}, ignoring message...`);
+        return;
+      }
+
       // Check if group is activated (only process messages from activated groups)
       // Use loggedInUserId to get active groups
-      const loggedInUserIdStr = loggedInUserId.toString();
       const activeGroups = await this.activeGroupsRepository.getActiveGroups(loggedInUserIdStr);
       if (activeGroups === null || !activeGroups.includes(chatId)) {
         this.logger.warn(`Group ${chatId} is not activated for loggedInUserId ${loggedInUserId}, ignoring message...`);

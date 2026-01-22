@@ -82,6 +82,16 @@ export class TelegramBotController implements OnModuleInit, OnModuleDestroy {
       await this.commandHandler.handleGruposAtivos(ctx);
     });
 
+    // Register /on command handler
+    this.botService.bot.command('on', async (ctx: Context) => {
+      await this.commandHandler.handleOn(ctx);
+    });
+
+    // Register /off command handler
+    this.botService.bot.command('off', async (ctx: Context) => {
+      await this.commandHandler.handleOff(ctx);
+    });
+
     // Register message:text handler with sequentialization (only for login flow now)
     this.botService.bot.on(
       'message:text',

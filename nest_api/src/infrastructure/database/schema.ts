@@ -1,4 +1,4 @@
-import { pgTable, text, integer, bigint, timestamp, index, unique, jsonb } from 'drizzle-orm/pg-core';
+import { pgTable, text, integer, bigint, timestamp, index, unique, jsonb, boolean } from 'drizzle-orm/pg-core';
 
 /**
  * Sessions table - stores conversation and login session data
@@ -94,6 +94,22 @@ export const messagesEnqueued = pgTable(
     index('messages_enqueued_queue_name_idx').on(table.queueName),
     index('messages_enqueued_user_id_idx').on(table.userId),
     index('messages_enqueued_enqueued_at_idx').on(table.enqueuedAt),
+  ],
+);
+
+/**
+ * Bot status table - stores bot on/off status per user
+ * Each user can have only one record, default is on (true)
+ */
+export const botStatus = pgTable(
+  'bot_status',
+  {
+    userId: text('user_id').primaryKey(),
+    isEnabled: boolean('is_enabled').default(true).notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => [
+    index('bot_status_user_id_idx').on(table.userId),
   ],
 );
 
