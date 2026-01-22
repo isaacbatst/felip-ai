@@ -1,17 +1,20 @@
 import { AppConfigService } from '@/config/app.config';
 import { WorkerRepository } from '@/infrastructure/persistence/worker.repository';
 import { WorkerManager } from '@/infrastructure/workers/worker-manager';
-import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import Docker from 'dockerode';
 import fs from 'node:fs';
 
 @Injectable()
-export class WorkerManagerSwarm extends WorkerManager implements OnModuleDestroy {
+export class WorkerManagerSwarm extends WorkerManager implements OnModuleDestroy, OnModuleInit {
   private docker = new Docker();
   private readonly logger = new Logger(WorkerManagerSwarm.name);
   private readonly activeIntervals = new Set<NodeJS.Timeout>();
   // Network ID for RabbitMQ network (felip-ai_default)
   private readonly RABBITMQ_NETWORK_ID = 'e7488pknkxsgiiu3qnfm9ysuj';
+  // Cache for current image digest to avoid unnecessary pulls
+  private currentImageDigest: string | null = null;
 
   constructor(
     private readonly appConfigService: AppConfigService,
@@ -22,6 +25,10 @@ export class WorkerManagerSwarm extends WorkerManager implements OnModuleDestroy
   }
 
   // ==================== Public Methods ====================
+
+  async onModuleInit(): Promise<void> {
+    this.logger.log('WorkerManagerSwarm module initialized');
+  }
 
   async onModuleDestroy(): Promise<void> {
     this.logger.log('Module destroying, cleaning up active intervals');
@@ -550,5 +557,261 @@ export class WorkerManagerSwarm extends WorkerManager implements OnModuleDestroy
 
   async getHostname(userId: string): Promise<string> {
     return `tdlib-${userId}`;
+  }
+
+  // ==================== Image Update Methods ====================
+
+  /**
+   * Cron job that runs every hour to check for new image versions
+   * Format: CronExpression.EVERY_HOUR = '0 * * * *'
+   */
+  @Cron(CronExpression.EVERY_MINUTE)
+  async checkAndUpdateImage(): Promise<void> {
+    this.logger.log('Starting image update check...');
+    try {
+      const hasNewImage = await this.checkForNewImage();
+      if (hasNewImage) {
+        this.logger.log('New image version detected, updating services...');
+        await this.updateAllServices();
+      } else {
+        this.logger.log('No new image version found');
+      }
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Error checking for image updates: ${errorMessage}`, error instanceof Error ? error.stack : undefined);
+    }
+  }
+
+  /**
+   * Checks if there's a new version of the image available
+   * Returns true if a new version is available, false otherwise
+   */
+  private async checkForNewImage(): Promise<boolean> {
+    const imageName = this.getImageName();
+    this.logger.log(`Checking for new version of image: ${imageName}`);
+
+    try {
+      // Get current digest before pull (if image exists locally)
+      let oldDigest: string | null = null;
+      try {
+        const existingImage = this.docker.getImage(imageName);
+        const existingInspect = await existingImage.inspect();
+        const repoDigests = existingInspect.RepoDigests || [];
+        oldDigest = repoDigests.length > 0 
+          ? repoDigests[0].split('@')[1]
+          : existingInspect.Id;
+      } catch {
+        // Image doesn't exist locally, that's fine
+        this.logger.log('Image not found locally, will pull');
+      }
+
+      // Pull the latest image (this will download if there's a new version)
+      this.logger.log(`Pulling image ${imageName}...`);
+      const pullStream = await this.docker.pull(imageName);
+      
+      let pullResult: { hasNewImage: boolean; statusMessages: string[] } = { hasNewImage: false, statusMessages: [] };
+      
+      await new Promise<void>((resolve, reject) => {
+        this.docker.modem.followProgress(pullStream, (err: Error | null, output: unknown[]) => {
+          if (err) {
+            reject(err);
+            return;
+          }
+          // Log pull progress
+          const statusMessages = output
+            .filter((item: unknown) => typeof item === 'object' && item !== null && 'status' in item)
+            .map((item) => {
+              if (typeof item.status !== 'string') {
+                return '';
+              }
+              if (item.status?.match(/Image is up to date/i)) {
+                return 'Image is up to date';
+              }
+              if (item.status?.match(/Downloaded newer image/i)) {
+                return 'Downloaded newer image';
+              }
+              return item.status || '';
+            });
+          
+          const hasNewImage = statusMessages.some(msg => msg.includes('Downloaded newer image'));
+          pullResult = { hasNewImage, statusMessages };
+          
+          if (hasNewImage) {
+            this.logger.log('New image version downloaded');
+          } else if (statusMessages.some(msg => msg.includes('Image is up to date'))) {
+            this.logger.log('Image is already up to date');
+          }
+          
+          resolve();
+        });
+      });
+
+      // Inspect the image to get its digest after pull
+      const image = this.docker.getImage(imageName);
+      const imageInspect = await image.inspect();
+      
+      // Get the digest from the image inspect
+      // Digest format: sha256:xxxxx (from RepoDigests)
+      const repoDigests = imageInspect.RepoDigests || [];
+      const newDigest = repoDigests.length > 0 
+        ? repoDigests[0].split('@')[1] // Extract digest part after @
+        : imageInspect.Id; // Fallback to image ID
+
+      if (!newDigest) {
+        this.logger.warn('Could not determine image digest, skipping update check');
+        return false;
+      }
+
+      // Use cached digest if available, otherwise use oldDigest from inspect
+      const previousDigest = this.currentImageDigest || oldDigest;
+
+      // Compare digests
+      if (previousDigest === null) {
+        this.logger.log(`First check - caching digest: ${newDigest.substring(0, 20)}...`);
+        this.currentImageDigest = newDigest;
+        return false; // Don't update on first check
+      }
+
+      if (previousDigest !== newDigest || pullResult.hasNewImage) {
+        this.logger.log(`New image detected! Old: ${previousDigest?.substring(0, 20) || 'none'}..., New: ${newDigest.substring(0, 20)}...`);
+        this.currentImageDigest = newDigest;
+        return true;
+      }
+
+      this.logger.log('Image digest unchanged, no update needed');
+      return false;
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Error checking for new image: ${errorMessage}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Lists all active services that use the worker image
+   */
+  private async listActiveServices(): Promise<Array<{ serviceName: string; userId: string }>> {
+    try {
+      const imageName = this.getImageName();
+      const services = await this.docker.listServices({
+        filters: {
+          label: ['tdlib.user'],
+        },
+      });
+
+      const activeServices: Array<{ serviceName: string; userId: string }> = [];
+
+      for (const service of services) {
+        try {
+          const serviceObj = this.docker.getService(service.ID);
+          const inspect = await serviceObj.inspect();
+          
+          // Check if service uses our image
+          const serviceImage = inspect.Spec.TaskTemplate?.ContainerSpec?.Image;
+          if (serviceImage === imageName || serviceImage?.startsWith(imageName)) {
+            // Extract userId from service name (format: tdlib-{userId})
+            const serviceName = inspect.Spec.Name || service.ID;
+            const userId = serviceName.replace(/^tdlib-/, '');
+            
+            // Check if service is running (has replicas > 0)
+            const replicas = inspect.Spec.Mode?.Replicated?.Replicas ?? 0;
+            if (replicas > 0) {
+              activeServices.push({ serviceName, userId });
+            }
+          }
+        } catch (error: unknown) {
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          this.logger.warn(`Error inspecting service ${service.ID}: ${errorMessage}`);
+          // Continue with next service
+        }
+      }
+
+      this.logger.log(`Found ${activeServices.length} active services using image ${imageName}`);
+      return activeServices;
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Error listing active services: ${errorMessage}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Updates all active services to use the new image
+   */
+  private async updateAllServices(): Promise<void> {
+    const activeServices = await this.listActiveServices();
+    
+    if (activeServices.length === 0) {
+      this.logger.log('No active services to update');
+      return;
+    }
+
+    this.logger.log(`Updating ${activeServices.length} services...`);
+
+    const updatePromises = activeServices.map(async ({ serviceName, userId }) => {
+      try {
+        await this.updateService(userId);
+        this.logger.log(`Successfully updated service ${serviceName}`);
+      } catch (error: unknown) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        this.logger.error(`Failed to update service ${serviceName}: ${errorMessage}`);
+        // Continue updating other services even if one fails
+      }
+    });
+
+    await Promise.allSettled(updatePromises);
+    this.logger.log('Finished updating all services');
+  }
+
+  /**
+   * Updates a single service to use the new image
+   */
+  private async updateService(userId: string): Promise<void> {
+    const serviceName = this.getServiceNameByUserId(userId);
+    this.logger.log(`Updating service ${serviceName}...`);
+
+    try {
+      const service = this.docker.getService(serviceName);
+      const inspect = await service.inspect();
+
+      // Get current spec
+      const currentSpec = inspect.Spec;
+      
+      // Update the image in TaskTemplate
+      const updatedTaskTemplate = {
+        ...currentSpec.TaskTemplate,
+        ContainerSpec: {
+          ...currentSpec.TaskTemplate?.ContainerSpec,
+          Image: this.getImageName(), // This will use the newly pulled image
+        },
+      };
+
+      // Update the service
+      await service.update({
+        Name: currentSpec.Name,
+        TaskTemplate: updatedTaskTemplate,
+        Mode: currentSpec.Mode,
+        UpdateConfig: currentSpec.UpdateConfig,
+        EndpointSpec: currentSpec.EndpointSpec,
+        Labels: currentSpec.Labels,
+      });
+
+      this.logger.log(`Service ${serviceName} update initiated`);
+      
+      // Wait a bit for the update to propagate
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      // Verify the service is still healthy after update
+      const isHealthy = await this.waitUntilHealthy(userId, { timeout: 120000, interval: 5000 });
+      if (isHealthy) {
+        this.logger.log(`Service ${serviceName} is healthy after update`);
+      } else {
+        this.logger.warn(`Service ${serviceName} may not be healthy after update`);
+      }
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Error updating service ${serviceName}: ${errorMessage}`);
+      throw error;
+    }
   }
 }

@@ -5,9 +5,10 @@ import { WorkerManager } from "@/infrastructure/workers/worker-manager";
 import { WorkerManagerCompose } from "@/infrastructure/workers/worker-manager-compose";
 import { WorkerManagerSwarm } from "@/infrastructure/workers/worker-manager-swarm";
 import { Module } from "@nestjs/common";
+import { ScheduleModule } from "@nestjs/schedule";
 
 @Module({
-  imports: [PersistenceModule],
+  imports: [PersistenceModule, ScheduleModule.forRoot()],
   providers: [
     AppConfigService,
     {

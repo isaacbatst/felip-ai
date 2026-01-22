@@ -72,9 +72,12 @@ export class TelegramUserClient {
    * Verifica se o cliente está inicializado
    */
   private ensureClient(): Client {
+    console.log('[DEBUG] Ensuring client...');
     if (!this.client) {
+      console.log('[DEBUG] Client not available');
       throw new Error('Client not initialized');
     }
+    console.log('[DEBUG] Client obtained');
     return this.client;
   }
 
@@ -213,6 +216,7 @@ export class TelegramUserClient {
         },
       },
     };
+    console.log('[DEBUG] Message params:', JSON.stringify(messageParams, null, 2));
 
     if (replyToMessageId !== undefined && replyToMessageId !== null && replyToMessageId > 0) {
       messageParams.reply_to = {
