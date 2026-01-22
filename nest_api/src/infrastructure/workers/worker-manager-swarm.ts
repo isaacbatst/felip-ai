@@ -872,32 +872,11 @@ export class WorkerManagerSwarm extends WorkerManager implements OnModuleDestroy
         Labels: currentSpec.Labels,
       };
 
-      // Use dockerode's update method
-      // dockerode should handle version automatically when using service.update()
-      // But we need to ensure version is passed correctly via query parameter
-      // Using modem directly to have full control over the request
-      const updatePath = `/services/${inspect.ID}/update?version=${version}`;
-      
-      await new Promise<void>((resolve, reject) => {
-        this.docker.modem.dial(
-          {
-            path: updatePath,
-            method: 'POST',
-            options: updateSpec,
-            statusCodes: {
-              200: true,
-              201: true,
-            },
-          },
-          (err: Error | null) => {
-            if (err) {
-              reject(err);
-            } else {
-              resolve();
-            }
-          },
-        );
-      });
+      // Use dockerode's service.update() method
+      // dockerode handles version automatically from the inspect object
+      // We need to ensure we're using the inspect that was just fetched
+      // The update method will use inspect.Version.Index automatically
+      await service.update(updateSpec);
 
       this.logger.log(`Service ${serviceName} update initiated with version ${version}`);
       
