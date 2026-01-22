@@ -776,6 +776,14 @@ export class WorkerManagerSwarm extends WorkerManager implements OnModuleDestroy
 
       // Get current spec
       const currentSpec = inspect.Spec;
+      const version = inspect.Version?.Index;
+      
+      if (version === undefined || version === null) {
+        this.logger.error(`Service ${serviceName} version: ${JSON.stringify(inspect.Version)}`);
+        throw new Error(`Service ${serviceName} does not have a valid version index. Got: ${version}`);
+      }
+
+      this.logger.log(`Service ${serviceName} current version: ${version}`);
       
       // Update the image in TaskTemplate
       const updatedTaskTemplate = {
@@ -786,14 +794,39 @@ export class WorkerManagerSwarm extends WorkerManager implements OnModuleDestroy
         },
       };
 
-      // Update the service
-      await service.update({
+      // Update the service using dockerode's update method
+      // dockerode requires version to be passed via query parameter in the URL
+      // We'll use the service's internal modem to make the request with proper version header
+      const updateOpts = {
         Name: currentSpec.Name,
         TaskTemplate: updatedTaskTemplate,
         Mode: currentSpec.Mode,
         UpdateConfig: currentSpec.UpdateConfig,
         EndpointSpec: currentSpec.EndpointSpec,
         Labels: currentSpec.Labels,
+      };
+
+      // Use dockerode's internal modem to update with version query parameter
+      const updatePath = `/services/${inspect.ID}/update?version=${version}`;
+      await new Promise<void>((resolve, reject) => {
+        this.docker.modem.dial(
+          {
+            path: updatePath,
+            method: 'POST',
+            options: updateOpts,
+            statusCodes: {
+              200: true,
+              201: true,
+            },
+          },
+          (err: Error | null) => {
+            if (err) {
+              reject(err);
+            } else {
+              resolve();
+            }
+          },
+        );
       });
 
       this.logger.log(`Service ${serviceName} update initiated`);
