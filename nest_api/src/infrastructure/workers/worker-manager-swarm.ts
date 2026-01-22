@@ -779,52 +779,84 @@ export class WorkerManagerSwarm extends WorkerManager implements OnModuleDestroy
 
   /**
    * Updates a single service to use the new image
-   * Strategy: Remove and recreate the service to avoid version conflicts
+   * Uses Docker Swarm service update API with version index
    */
   private async updateService(userId: string): Promise<void> {
     const serviceName = this.getServiceNameByUserId(userId);
-    this.logger.log(`Updating service ${serviceName} by removing and recreating...`);
+    this.logger.log(`Updating service ${serviceName} with new image...`);
 
     try {
-      // Check if service exists and get its status
-      const status = await this.getStatus(userId);
-      if (!status) {
-        this.logger.warn(`Service ${serviceName} does not exist, skipping update`);
-        return;
+      const service = this.docker.getService(serviceName);
+      const inspect = await service.inspect();
+
+      // Get current spec and version
+      const currentSpec = inspect.Spec;
+      const version = inspect.Version?.Index;
+      
+      if (version === undefined || version === null || typeof version !== 'number') {
+        this.logger.error(`Service ${serviceName} version: ${JSON.stringify(inspect.Version)}`);
+        throw new Error(`Service ${serviceName} does not have a valid version index. Got: ${version}`);
       }
 
-      const wasRunning = status.state === 'running';
-      this.logger.log(`Service ${serviceName} current state: ${status.state}`);
+      this.logger.log(`Service ${serviceName} current version: ${version}`);
+      
+      // Update the image in TaskTemplate
+      const updatedTaskTemplate = {
+        ...currentSpec.TaskTemplate,
+        ContainerSpec: {
+          ...currentSpec.TaskTemplate?.ContainerSpec,
+          Image: this.getImageName(), // This will use the newly pulled image
+        },
+      };
 
-      // Remove the existing service
-      try {
-        const service = this.docker.getService(serviceName);
-        await service.remove();
-        this.logger.log(`Removed service ${serviceName}`);
-        
-        // Wait a bit for the service to be fully removed
-        await new Promise(resolve => setTimeout(resolve, 2000));
-      } catch (error: unknown) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        const statusCode = (error as { statusCode?: number }).statusCode;
-        if (statusCode === 404) {
-          this.logger.log(`Service ${serviceName} was already removed`);
-        } else {
-          throw new Error(`Failed to remove service ${serviceName}: ${errorMessage}`);
-        }
-      }
+      // Prepare update spec - must include all required fields
+      const updateSpec = {
+        Name: currentSpec.Name,
+        TaskTemplate: updatedTaskTemplate,
+        Mode: currentSpec.Mode,
+        UpdateConfig: currentSpec.UpdateConfig,
+        EndpointSpec: currentSpec.EndpointSpec,
+        Labels: currentSpec.Labels,
+      };
 
-      // Recreate the service using the existing run method (which uses the new image)
-      if (wasRunning) {
-        this.logger.log(`Recreating service ${serviceName} with new image...`);
-        const success = await this.run(userId);
-        if (success) {
-          this.logger.log(`Service ${serviceName} successfully recreated and started`);
-        } else {
-          throw new Error(`Failed to recreate service ${serviceName}`);
-        }
+      // Use dockerode's update method
+      // dockerode should handle version automatically when using service.update()
+      // But we need to ensure version is passed correctly via query parameter
+      // Using modem directly to have full control over the request
+      const updatePath = `/services/${inspect.ID}/update?version=${version}`;
+      
+      await new Promise<void>((resolve, reject) => {
+        this.docker.modem.dial(
+          {
+            path: updatePath,
+            method: 'POST',
+            options: updateSpec,
+            statusCodes: {
+              200: true,
+              201: true,
+            },
+          },
+          (err: Error | null) => {
+            if (err) {
+              reject(err);
+            } else {
+              resolve();
+            }
+          },
+        );
+      });
+
+      this.logger.log(`Service ${serviceName} update initiated with version ${version}`);
+      
+      // Wait a bit for the update to propagate
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      // Verify the service is still healthy after update
+      const isHealthy = await this.waitUntilHealthy(userId, { timeout: 120000, interval: 5000 });
+      if (isHealthy) {
+        this.logger.log(`Service ${serviceName} is healthy after update`);
       } else {
-        this.logger.log(`Service ${serviceName} was stopped, not recreating (will be created on next start)`);
+        this.logger.warn(`Service ${serviceName} may not be healthy after update`);
       }
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : String(error);
