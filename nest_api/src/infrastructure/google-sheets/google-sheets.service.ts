@@ -1,10 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { google } from 'googleapis';
 import type { PriceTableResultV2 } from '../../domain/types/google-sheets.types';
-import {
-  BRAZILIAN_MILES_PROGRAMS,
-  type MilesProgram,
-} from '../../domain/types/miles-program.types';
 import type { Provider } from '../../domain/types/provider.types';
 import type { PriceTableV2 } from '../../domain/types/price.types';
 
@@ -275,19 +271,16 @@ export class GoogleSheetsService {
       }
 
       // Mescla com a tabela existente (pode haver múltiplas seções)
-      // Só inclui o provider se tiver pelo menos uma entrada válida de preço
-      if (Object.keys(priceTable).length > 0) {
-        if (!priceTables[provider]) {
-          priceTables[provider] = {};
-        }
-        priceTables[provider] = { ...priceTables[provider], ...priceTable };
+      // Inclui o provider mesmo que não tenha preços válidos
+      if (!priceTables[provider]) {
+        priceTables[provider] = {};
       }
+      priceTables[provider] = { ...priceTables[provider], ...priceTable };
     }
 
-    // Remove customMaxPrices de providers que não têm tabela de preços válida
-    const validProviders = new Set(Object.keys(priceTables) as Provider[]);
+    // Inclui customMaxPrices de todos os providers detectados
     const filteredCustomMaxPrices: Record<Provider, number | undefined> = {};
-    for (const provider of validProviders) {
+    for (const { provider } of providerColumns) {
       if (customMaxPrices[provider] !== undefined) {
         filteredCustomMaxPrices[provider] = customMaxPrices[provider];
       }
@@ -334,30 +327,6 @@ export class GoogleSheetsService {
   }
 
   /**
-   * Mapeia nomes de programas da planilha para os tipos MilesProgram
-   */
-  private mapProgramNameToMilesProgram(programName: string): MilesProgram | null {
-    const normalized = programName.toUpperCase().trim();
-    
-    const mapping: Record<string, MilesProgram> = {
-      'SMILES': 'SMILES',
-      'LATAM': 'LATAM_PASS',
-      'LATAM_PASS': 'LATAM_PASS',
-      'AZUL': 'TUDO_AZUL',
-      'TUDO_AZUL': 'TUDO_AZUL',
-      'AZUL/TUDO AZUL': 'TUDO_AZUL',
-      'LIVELO': 'LIVELO',
-      'ESFERA': 'ESFERA',
-      'INTER_LOOP': 'INTER_LOOP',
-      'ITAU_SEMPRE_PRESENTE': 'ITAU_SEMPRE_PRESENTE',
-      'CAIXA_ELO': 'CAIXA_ELO',
-      'CAIXA_MAIS': 'CAIXA_MAIS',
-    };
-
-    return mapping[normalized] || null;
-  }
-
-  /**
    * Busca milhas disponíveis para todos os programas em uma única requisição
    * Novo formato: lê da coluna A (programa) e coluna B (máximo estoque)
    */
@@ -365,15 +334,11 @@ export class GoogleSheetsService {
     sheets: ReturnType<typeof google.sheets>,
     spreadsheetId: string,
     sheetName: string,
-  ): Promise<Record<MilesProgram, number | null>> {
-    const availableMiles: Record<MilesProgram, number | null> = {} as Record<
-      MilesProgram,
+  ): Promise<Record<string, number | null>> {
+    const availableMiles: Record<string, number | null> = {} as Record<
+      string,
       number | null
     >;
-
-    for (const program of BRAZILIAN_MILES_PROGRAMS) {
-      availableMiles[program] = null;
-    }
 
     try {
       // Lê toda a planilha para processar o novo formato
@@ -390,7 +355,6 @@ export class GoogleSheetsService {
           if (!row || row.length < 2) {
             continue;
           }
-
           const programName = row[0]?.toString().trim() || '';
           const milesValue = row[1]?.toString().trim() || '';
 
@@ -414,19 +378,14 @@ export class GoogleSheetsService {
             continue;
           }
 
-          const mappedProgram = this.mapProgramNameToMilesProgram(programName);
-          if (!mappedProgram) {
-            continue;
-          }
-
           // Remove pontos de milhar e converte vírgula para ponto
           const cleanValue = milesValue.replace(/\./g, '').replace(',', '.');
           const parsedValue = parseFloat(cleanValue);
 
           if (!Number.isNaN(parsedValue) && parsedValue >= 0) {
             // Se já existe um valor, mantém o maior
-            if (availableMiles[mappedProgram] === null || parsedValue > (availableMiles[mappedProgram] || 0)) {
-              availableMiles[mappedProgram] = parsedValue;
+            if (availableMiles[programName] === null || parsedValue > (availableMiles[programName] || 0)) {
+              availableMiles[programName] = parsedValue;
             }
           }
         }

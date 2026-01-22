@@ -49,7 +49,29 @@ Esse usuário quer comprar 133.600 de milhas da Smiles com 6 CPF e está dispost
 
 . 
 Se o usuário mencionar valores que aceita pagar extraia esses valores no campo acceptedPrices. 
-Se não for uma proposta de compra, retorne isPurchaseProposal: false.`,
+Se não for uma proposta de compra, retorne isPurchaseProposal: false.
+
+Os providers disponíveis serão fornecidos, mas se atenha sempre à seguinte regra quanto a programas normais e programas do tipo LIMINAR:
+- Se o usuário mencionar apenas o nome do programa normal, como "Smiles", retorne preferencialmente o programa normal, mas se apenas o programa LIMINAR for mencionado, retorne o programa LIMINAR, nesse caso seria algo como"SMILES LIMINAR".
+- Se o usuário mencionar o nome do programa LIMINAR, como "Smiles Liminar", retorne o programa LIMINAR, se disponível, caso contrário, retorne o programa como nulo, pois o programa normal não pode substituir o programa LIMINAR que foi pedido.
+
+Exemplos:
+- "Compro 133.600 Smiles" -> Programas Disponíveis: SMILES, SMILES LIMINAR. Retorna "SMILES"
+- "Compro 133.600 Azul" -> Programas Disponíveis: AZUL, AZUL LIMINAR. Retorna "AZUL"
+- "Compro 133.600 Smiles" -> Programas Disponíveis: SMILES LIMINAR. Retorna "SMILES LIMINAR", pois o liminar pode substituir o programa normal, mas não o contrário.
+- "Compro 133.600 Azul" -> Programas Disponíveis: AZUL LIMINAR. Retorna "AZUL LIMINAR", pois o liminar pode substituir o programa normal, mas não o contrário.
+- "Compro 133.600 Smiles Liminar" -> Programas Disponíveis: SMILES, SMILES LIMINAR. Retorna "SMILES LIMINAR"
+- "Compro 133.600 Azul Liminar" -> Programas Disponíveis: AZUL, AZUL LIMINAR. Retorna "AZUL LIMINAR"
+- "Compro 133.600 Smiles Liminar" -> Programas Disponíveis: SMILES LIMINAR. Retorna "SMILES LIMINAR"
+- "Compro 133.600 Smiles Liminar" -> Programas Disponíveis: SMILES. Retorna nulo, pois o programa normal não pode substituir o programa LIMINAR que foi pedido.
+
+Nunca misture programas, alguns para contexto: Smiles, Latam, Azul/Tudo Azul, AZUL INTERLINE/PELO MUNDO/AZUL VIAGENS, Tap, Qatar, Iberia/AVIOS, Interline, American Airlines (AA)
+
+
+Nesses exemplos nos limitamos aos programas Smiles e Azul, mas essa não foi uma lista exaustiva, apenas exemplos de funcionalidade. Para a real lista de programas disponíveis verifique a lista abaixo.
+
+Se houver match, o nome do provider retornado deve ser exatamente como está na lista de programas/providers fornecida abaixo.
+`,
     };
   }
 

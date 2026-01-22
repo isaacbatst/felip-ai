@@ -1,4 +1,3 @@
-import type { MilesProgram } from './miles-program.types';
 import type { Provider } from './provider.types';
 import type { PriceTableV2 } from './price.types';
 
@@ -11,7 +10,7 @@ export interface PriceTableResultV2 {
    * Cada provedor tem sua própria tabela de preços
    */
   priceTables: Record<Provider, PriceTableV2>;
-  availableMiles: Record<MilesProgram, number | null>;
+  availableMiles: Record<string, number | null>;
   /**
    * Preço máximo customizado (PREÇO TETO) por provedor
    * Quando fornecido, o preço calculado não pode exceder este valor para o provedor específico

@@ -22,7 +22,12 @@ export class TelegramPurchaseHandler {
     private readonly tdlibUserClient: TelegramUserClientProxyService,
   ) {}
 
-  async handlePurchase(botUserId: string, chatId: number, messageId: number | undefined, text: string): Promise<void> {
+  async handlePurchase(
+    botUserId: string,
+    chatId: number,
+    messageId: number | undefined,
+    text: string,
+  ): Promise<void> {
     // Busca providers disponíveis primeiro para passar ao parser
     const priceTableResult = await this.priceTableProvider.getPriceTable();
     const { priceTables, customMaxPrice } = priceTableResult;
@@ -57,15 +62,31 @@ export class TelegramPurchaseHandler {
       return;
     }
 
-      const priceTable = priceTables[selectedProvider];
+    // Determine the effective provider (normal or liminar) based on miles availability
+    const effectiveProvider = this.getEffectiveProvider(
+      selectedProvider,
+      validatedRequest.quantity,
+      priceTableResult.availableMiles,
+      availableProviders,
+    );
 
-    if (!priceTable || Object.keys(priceTable).length === 0) {
-      console.warn('No price table found for the selected provider');
+    if (!effectiveProvider) {
+      console.warn('No effective provider found (neither normal nor liminar has enough miles)');
       return;
     }
 
-    const providerCustomMaxPrice = customMaxPrice[selectedProvider];
-    const options = providerCustomMaxPrice !== undefined ? { customMaxPrice: providerCustomMaxPrice } : undefined;
+    console.log('Effective provider', effectiveProvider);
+
+    const priceTable = priceTables[effectiveProvider];
+
+    if (!priceTable || Object.keys(priceTable).length === 0) {
+      console.warn('No price table found for the effective provider');
+      return;
+    }
+
+    const providerCustomMaxPrice = customMaxPrice[effectiveProvider];
+    const options =
+      providerCustomMaxPrice !== undefined ? { customMaxPrice: providerCustomMaxPrice } : undefined;
 
     console.log(
       'Calculating price',
@@ -85,13 +106,13 @@ export class TelegramPurchaseHandler {
       return;
     }
 
-    this.logger.log("Message to reply:", messageId);
+    this.logger.log('Message to reply:', messageId);
 
     // Verifica se o usuário forneceu valores aceitos e se o menor valor aceito é maior que o preço calculado
-      if (validatedRequest.acceptedPrices.length > 0 && priceResult.success) {
+    if (validatedRequest.acceptedPrices.length > 0 && priceResult.success) {
       const minAcceptedPrice = Math.min(...validatedRequest.acceptedPrices);
-      console.log("Min accepted price:", minAcceptedPrice);
-      console.log("Price result:", priceResult.price);
+      console.log('Min accepted price:', minAcceptedPrice);
+      console.log('Price result:', priceResult.price);
       if (minAcceptedPrice >= priceResult.price) {
         // O usuário aceita pagar mais que nosso preço - responder com mensagem customizada
 
@@ -100,12 +121,108 @@ export class TelegramPurchaseHandler {
       }
     }
 
+    const priceMessage = Intl.NumberFormat('pt-BR', {  maximumFractionDigits: 2 }).format(priceResult.price);
+    const isLiminar = effectiveProvider.toLowerCase().includes('liminar');
+    const finalMessage = isLiminar ? `${priceMessage} LIMINAR` : priceMessage;
+
     await this.tdlibUserClient.sendMessage(
       botUserId,
       chatId,
-      Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(priceResult.price),
+      finalMessage,
       messageId,
     );
+  }
+
+  /**
+   * Determines the effective provider (normal or liminar) based on miles availability.
+   * If the normal program doesn't have enough miles, tries to use the liminar program.
+   * Returns the effective provider if available, null otherwise.
+   */
+  private getEffectiveProvider(
+    selectedProvider: Provider,
+    quantity: number,
+    availableMiles: Record<string, number | null>,
+    availableProviders: Provider[],
+  ): Provider | null {
+    const requiredMiles = quantity * 1000;
+    const isLiminar = selectedProvider.toLowerCase().includes('liminar');
+
+    // If it's already a liminar program, just validate it
+    if (isLiminar) {
+      if (this.validateMilesAvailability(selectedProvider, requiredMiles, availableMiles)) {
+        return selectedProvider;
+      }
+      return null;
+    }
+
+    // Try normal program first
+    if (this.validateMilesAvailability(selectedProvider, requiredMiles, availableMiles)) {
+      return selectedProvider;
+    }
+
+    // If normal doesn't have enough miles, try liminar
+    const liminarMap: Record<string, string> = {
+      'SMILES': 'SMILES LIMINAR',
+      'AZUL/TUDO AZUL': 'AZUL LIMINAR',
+      'LATAM': 'LATAM LIMINAR',
+    };
+
+    const liminarProgram = liminarMap[selectedProvider];
+    if (!liminarProgram) {
+      return null;
+    }
+
+    // Check if liminar program exists in available providers
+    const liminarProvider = availableProviders.find(
+      (p) => p.toUpperCase() === liminarProgram.toUpperCase(),
+    ) as Provider | undefined;
+
+    if (!liminarProvider) {
+      return null;
+    }
+
+    // Validate liminar program
+    if (this.validateMilesAvailability(liminarProvider, requiredMiles, availableMiles)) {
+      this.logger.debug('Using liminar program instead of normal', {
+        normal: selectedProvider,
+        liminar: liminarProvider,
+      });
+      return liminarProvider;
+    }
+
+    return null;
+  }
+
+  /**
+   * Validates if a provider has enough miles available for the requested quantity.
+   */
+  private validateMilesAvailability(
+    provider: Provider,
+    requiredMiles: number,
+    availableMiles: Record<string, number | null>,
+  ): boolean {
+    const availableMilesForProvider = availableMiles[provider];
+    const hasEnoughMiles =
+      availableMilesForProvider !== null && availableMilesForProvider >= requiredMiles;
+
+    this.logger.debug('Miles availability', {
+      provider,
+      requiredMiles,
+      availableMilesForProvider,
+      hasEnoughMiles,
+    });
+
+    if (!availableMilesForProvider) {
+      console.warn('No miles available for the provider', provider);
+      return false;
+    }
+
+    if (!hasEnoughMiles) {
+      console.warn('Not enough miles available for the provider', provider);
+      return false;
+    }
+
+    return true;
   }
 
   /**
@@ -113,6 +230,14 @@ export class TelegramPurchaseHandler {
    * Retorna o provider exato da lista de providers disponíveis
    */
   private findProviderByName(
+    mentionedProvider: string | null | undefined,
+    availableProviders: Provider[],
+  ): Provider | null {
+    console.log('Finding provider by name', mentionedProvider, availableProviders);
+    return TelegramPurchaseHandler.findProviderByName(mentionedProvider, availableProviders);
+  }
+
+  static findProviderByName(
     mentionedProvider: string | null | undefined,
     availableProviders: Provider[],
   ): Provider | null {
@@ -134,7 +259,7 @@ export class TelegramPurchaseHandler {
       const normalizedProvider = provider.trim().toUpperCase();
 
       // Verifica se um contém o outro
-      if(normalizedProvider === normalizedMentioned) {
+      if (normalizedProvider === normalizedMentioned) {
         return provider;
       }
     }

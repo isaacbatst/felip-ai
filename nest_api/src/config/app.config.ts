@@ -62,7 +62,7 @@ export class AppConfigService {
   }
 
   getPriceTableCacheTtlSeconds(): number {
-    const value = this.configService.get<string>('PRICE_TABLE_CACHE_TTL_SECONDS', '10');
+    const value = this.configService.get<string>('PRICE_TABLE_CACHE_TTL_SECONDS', '60');
     return Number.parseInt(value, 10);
   }
 

@@ -82,7 +82,7 @@ jobs:
         with:
           name: felip-ai
           file: stack.yml
-          host: congressosimulator.com.br
-          user: felip-ai
+          host: 72.61.25.136
+          user: root
           ssh_key: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}
           env_file: ./envfile

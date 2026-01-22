@@ -41,6 +41,7 @@ export class TelegramUserClient {
   private updateHandlers: Array<(update: unknown) => void> = [];
 
   constructor(config: TelegramUserClientConfig) {
+    console.log('[DEBUG] Creating Telegram User Client...', config);
     this.config = config;
   }
 

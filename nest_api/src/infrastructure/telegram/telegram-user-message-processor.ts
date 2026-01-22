@@ -147,7 +147,6 @@ export class TelegramUserMessageProcessor {
       // Use loggedInUserId to get active groups
       const loggedInUserIdStr = loggedInUserId.toString();
       const activeGroups = await this.activeGroupsRepository.getActiveGroups(loggedInUserIdStr);
-      this.logger.log('Active groups:', { activeGroups, loggedInUserId, telegramUserId, senderId });
       if (activeGroups === null || !activeGroups.includes(chatId)) {
         this.logger.warn(`Group ${chatId} is not activated for loggedInUserId ${loggedInUserId}, ignoring message...`);
         return;

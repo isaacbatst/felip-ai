@@ -46,7 +46,6 @@ export abstract class CacheService<T> {
    * Obtém os dados do cache, revalidando se necessário
    */
   async get(forceRefresh: boolean = false): Promise<T> {
-    console.log(`[DEBUG] Getting cache for ${this.debugPrefix}`, { forceRefresh, cache: this.cache });
     if (forceRefresh || !this.isCacheValid(this.cache)) {
       const data = await this.fetch();
 
