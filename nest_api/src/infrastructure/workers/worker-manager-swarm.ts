@@ -52,6 +52,9 @@ export class WorkerManagerSwarm extends WorkerManager implements OnModuleDestroy
     // Ensure volume exists before creating service
     await this.ensureVolumeExists(userId);
     
+    // Get the network ID that RabbitMQ is using to ensure workers are on the same network
+    const networkId = await this.getRabbitMQNetworkId();
+    
     const envVars = await this.getEnvFromPath(this.appConfigService.getWorkerEnvFile());
     // Add USER_ID to environment variables so worker knows which queue to listen to
     envVars.push(`USER_ID=${userId}`);
@@ -64,7 +67,8 @@ export class WorkerManagerSwarm extends WorkerManager implements OnModuleDestroy
         Name: serviceName,
         Networks: [
           {
-            Target: 'felip-ai_default',
+            Target: networkId,
+            Aliases: [], // Network aliases are not needed for workers, RabbitMQ has the alias
           }
         ],
         TaskTemplate: {
@@ -285,6 +289,60 @@ export class WorkerManagerSwarm extends WorkerManager implements OnModuleDestroy
   }
 
   // ==================== Private Methods ====================
+
+  /**
+   * Get the network ID that RabbitMQ service is using
+   * This ensures workers are on the same network as RabbitMQ
+   */
+  private async getRabbitMQNetworkId(): Promise<string> {
+    try {
+      // Try to find RabbitMQ service - it might be named with stack prefix
+      const serviceNames = ['felip-ai_rabbitmq', 'rabbitmq'];
+      
+      for (const serviceName of serviceNames) {
+        try {
+          const service = this.docker.getService(serviceName);
+          const inspect = await service.inspect();
+          
+          // Get the first network from the service
+          const networks = inspect.Spec.TaskTemplate?.Networks;
+          if (networks && networks.length > 0) {
+            const networkId = networks[0].Target;
+            this.logger.log(`Found RabbitMQ network ID: ${networkId} from service ${serviceName}`);
+            return networkId;
+          }
+        } catch (error: unknown) {
+          const statusCode = (error as { statusCode?: number }).statusCode;
+          if (statusCode !== 404) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            this.logger.warn(`Error inspecting service ${serviceName}: ${errorMessage}`);
+          }
+        }
+      }
+      
+      // Fallback: try to find network by name
+      const networks = await this.docker.listNetworks({
+        filters: {
+          name: ['felip-ai_default'],
+        },
+      });
+      
+      if (networks.length > 0) {
+        const networkId = networks[0].Id;
+        this.logger.log(`Found network by name: ${networkId}`);
+        return networkId;
+      }
+      
+      // Last resort: use network name (dockerode might handle it)
+      this.logger.warn('Could not find RabbitMQ network ID, using network name as fallback');
+      return 'felip-ai_default';
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Failed to get RabbitMQ network ID: ${errorMessage}`);
+      // Fallback to network name
+      return 'felip-ai_default';
+    }
+  }
 
   /**
    * Setup exit signal handlers to clean up intervals
