@@ -61,5 +61,16 @@ export class WorkerRedisStore extends WorkerRepository {
     const key = `${this.workerPortKeyPrefix}${userId}`;
     await this.redis.del(key);
   }
+
+  /**
+   * Get all worker user IDs that have port assignments
+   */
+  async getAllWorkers(): Promise<string[]> {
+    const pattern = `${this.workerPortKeyPrefix}*`;
+    const keys = await this.redis.keys(pattern);
+    
+    // Extract userId from keys (format: worker:port:{userId})
+    return keys.map((key) => key.replace(this.workerPortKeyPrefix, ''));
+  }
 }
 

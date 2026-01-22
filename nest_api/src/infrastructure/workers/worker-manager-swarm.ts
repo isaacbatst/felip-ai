@@ -28,6 +28,59 @@ export class WorkerManagerSwarm extends WorkerManager implements OnModuleDestroy
 
   async onModuleInit(): Promise<void> {
     this.logger.log('WorkerManagerSwarm module initialized');
+    
+    // Check and recreate workers that exist in repository but not in Docker Swarm
+    await this.verifyAndRecreateWorkers();
+  }
+
+  /**
+   * Verifies that all workers in the repository have corresponding Docker services
+   * Recreates any missing services
+   */
+  private async verifyAndRecreateWorkers(): Promise<void> {
+    this.logger.log('Verifying workers from repository...');
+    
+    try {
+      // Get all workers from repository
+      const workers = await this.workerRepository.getAllWorkers();
+      this.logger.log(`Found ${workers.length} workers in repository`);
+      
+      if (workers.length === 0) {
+        this.logger.log('No workers found in repository, skipping verification');
+        return;
+      }
+
+      // Check each worker and recreate if service doesn't exist
+      const recreatePromises = workers.map(async (userId) => {
+        try {
+          const status = await this.getStatus(userId);
+          
+          if (!status) {
+            // Service doesn't exist, recreate it
+            this.logger.log(`Worker ${userId} exists in repository but service doesn't exist, recreating...`);
+            const success = await this.run(userId);
+            if (success) {
+              this.logger.log(`Successfully recreated service for worker ${userId}`);
+            } else {
+              this.logger.error(`Failed to recreate service for worker ${userId}`);
+            }
+          } else {
+            this.logger.debug(`Worker ${userId} service exists (state: ${status.state})`);
+          }
+        } catch (error: unknown) {
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          this.logger.error(`Error verifying worker ${userId}: ${errorMessage}`);
+          // Continue with other workers even if one fails
+        }
+      });
+
+      await Promise.allSettled(recreatePromises);
+      this.logger.log('Finished verifying workers from repository');
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Error verifying workers from repository: ${errorMessage}`);
+      // Don't throw - allow application to start even if verification fails
+    }
   }
 
   async onModuleDestroy(): Promise<void> {

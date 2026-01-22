@@ -94,5 +94,18 @@ export class WorkerDrizzleStore extends WorkerRepository {
   async deleteWorkerPort(userId: string): Promise<void> {
     await this.db.delete(workerPorts).where(eq(workerPorts.userId, userId));
   }
+
+  /**
+   * Get all worker user IDs that have port assignments
+   */
+  async getAllWorkers(): Promise<string[]> {
+    const result = await this.db
+      .select({
+        userId: workerPorts.userId,
+      })
+      .from(workerPorts);
+
+    return result.map((row) => row.userId);
+  }
 }
 

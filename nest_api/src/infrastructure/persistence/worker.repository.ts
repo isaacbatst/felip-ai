@@ -22,5 +22,10 @@ export abstract class WorkerRepository {
    * Delete worker port assignment
    */
   abstract deleteWorkerPort(userId: string): Promise<void>;
+
+  /**
+   * Get all worker user IDs that have port assignments
+   */
+  abstract getAllWorkers(): Promise<string[]>;
 }
 
