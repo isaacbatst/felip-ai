@@ -37,13 +37,27 @@ export class WorkerManagerSwarm extends WorkerManager implements OnModuleDestroy
     const serviceName = this.getServiceNameByUserId(userId);
     const status = await this.getStatus(userId);
     
-    if (status && status.state === 'running') {
-      this.logger.log(`Service for user ${userId} is already running`);
-      return true;
-    }
-
-    if (status && status.state === 'stopped') {
-      return await this.startByUserId(userId);
+    // Check if service exists and is on the correct network
+    if (status) {
+      const isOnCorrectNetwork = await this.isServiceOnCorrectNetwork(userId);
+      if (!isOnCorrectNetwork) {
+        this.logger.warn(`Service ${serviceName} is on wrong network, will recreate it`);
+        // Remove the service so it can be recreated with correct network
+        try {
+          const service = this.docker.getService(serviceName);
+          await service.remove();
+          this.logger.log(`Removed service ${serviceName} to recreate with correct network`);
+        } catch (error: unknown) {
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          this.logger.error(`Failed to remove service ${serviceName}: ${errorMessage}`);
+        }
+        // Continue to create new service below
+      } else if (status.state === 'running') {
+        this.logger.log(`Service for user ${userId} is already running`);
+        return true;
+      } else if (status.state === 'stopped') {
+        return await this.startByUserId(userId);
+      }
     }
 
     // Service doesn't exist, create it
@@ -52,8 +66,8 @@ export class WorkerManagerSwarm extends WorkerManager implements OnModuleDestroy
     // Ensure volume exists before creating service
     await this.ensureVolumeExists(userId);
     
-    // Get the network ID that RabbitMQ is using to ensure workers are on the same network
-    const networkId = await this.getRabbitMQNetworkId();
+    // Use the RabbitMQ network ID directly
+    const networkId = 'e7488pknkxsgiiu3qnfm9ysuj';
     
     const envVars = await this.getEnvFromPath(this.appConfigService.getWorkerEnvFile());
     // Add USER_ID to environment variables so worker knows which queue to listen to
@@ -61,6 +75,11 @@ export class WorkerManagerSwarm extends WorkerManager implements OnModuleDestroy
     // Assign and set HTTP port for this worker
     const httpPort = await this.getPortForWorker(userId);
     envVars.push(`HTTP_PORT=${httpPort}`);
+    // Override RABBITMQ_HOST to use the full service name (works across overlay networks)
+    // Remove any existing RABBITMQ_HOST from envVars first
+    const filteredEnvVars = envVars.filter(env => !env.startsWith('RABBITMQ_HOST='));
+    filteredEnvVars.push(`RABBITMQ_HOST=felip-ai_rabbitmq`);
+    const finalEnvVars = filteredEnvVars;
 
     try {
       await this.docker.createService({
@@ -74,7 +93,7 @@ export class WorkerManagerSwarm extends WorkerManager implements OnModuleDestroy
         TaskTemplate: {
           ContainerSpec: {
             Image: this.getImageName(),
-            Env: envVars,
+            Env: finalEnvVars,
             Mounts: [
               {
                 Type: 'volume',
@@ -166,13 +185,33 @@ export class WorkerManagerSwarm extends WorkerManager implements OnModuleDestroy
       const service = this.docker.getService(serviceName);
       const inspect = await service.inspect();
       
+      // Ensure service is on the correct network
+      const networkId = 'e7488pknkxsgiiu3qnfm9ysuj';
+      const currentNetworks = inspect.Spec.TaskTemplate?.Networks || [];
+      const isOnCorrectNetwork = currentNetworks.some(n => n.Target === networkId);
+      
+      // Update environment variables to ensure RABBITMQ_HOST is correct
+      const currentEnv = inspect.Spec.TaskTemplate?.ContainerSpec?.Env || [];
+      const updatedEnv = currentEnv.filter(env => !env.startsWith('RABBITMQ_HOST='));
+      updatedEnv.push(`RABBITMQ_HOST=felip-ai_rabbitmq`);
+      
+      // Update TaskTemplate with correct network and env
+      const updatedTaskTemplate = {
+        ...inspect.Spec.TaskTemplate,
+        Networks: isOnCorrectNetwork ? currentNetworks : [{ Target: networkId }],
+        ContainerSpec: {
+          ...inspect.Spec.TaskTemplate?.ContainerSpec,
+          Env: updatedEnv,
+        },
+      };
+      
       // Check current replica count
-      if (inspect.Spec.Mode?.Replicated?.Replicas === 0) {
-        // Scale up to 1 replica
+      if (inspect.Spec.Mode?.Replicated?.Replicas === 0 || !isOnCorrectNetwork) {
+        // Scale up to 1 replica and/or update network
         // dockerode handles version automatically from inspect
         await service.update({
           Name: inspect.Spec.Name,
-          TaskTemplate: inspect.Spec.TaskTemplate,
+          TaskTemplate: updatedTaskTemplate,
           Mode: {
             Replicated: {
               Replicas: 1,
@@ -182,6 +221,9 @@ export class WorkerManagerSwarm extends WorkerManager implements OnModuleDestroy
           EndpointSpec: inspect.Spec.EndpointSpec,
           Labels: inspect.Spec.Labels,
         });
+        if (!isOnCorrectNetwork) {
+          this.logger.log(`Updated service ${serviceName} network to ${networkId}`);
+        }
         this.logger.log(`Scaled service ${serviceName} to 1 replica`);
       }
       
@@ -291,56 +333,24 @@ export class WorkerManagerSwarm extends WorkerManager implements OnModuleDestroy
   // ==================== Private Methods ====================
 
   /**
-   * Get the network ID that RabbitMQ service is using
-   * This ensures workers are on the same network as RabbitMQ
+   * Check if a service is on the correct network (same as RabbitMQ)
    */
-  private async getRabbitMQNetworkId(): Promise<string> {
+  private async isServiceOnCorrectNetwork(userId: string): Promise<boolean> {
     try {
-      // Try to find RabbitMQ service - it might be named with stack prefix
-      const serviceNames = ['felip-ai_rabbitmq', 'rabbitmq'];
-      
-      for (const serviceName of serviceNames) {
-        try {
-          const service = this.docker.getService(serviceName);
-          const inspect = await service.inspect();
-          
-          // Get the first network from the service
-          const networks = inspect.Spec.TaskTemplate?.Networks;
-          if (networks && networks.length > 0) {
-            const networkId = networks[0].Target;
-            this.logger.log(`Found RabbitMQ network ID: ${networkId} from service ${serviceName}`);
-            return networkId;
-          }
-        } catch (error: unknown) {
-          const statusCode = (error as { statusCode?: number }).statusCode;
-          if (statusCode !== 404) {
-            const errorMessage = error instanceof Error ? error.message : String(error);
-            this.logger.warn(`Error inspecting service ${serviceName}: ${errorMessage}`);
-          }
-        }
-      }
-      
-      // Fallback: try to find network by name
-      const networks = await this.docker.listNetworks({
-        filters: {
-          name: ['felip-ai_default'],
-        },
-      });
-      
-      if (networks.length > 0) {
-        const networkId = networks[0].Id;
-        this.logger.log(`Found network by name: ${networkId}`);
-        return networkId;
-      }
-      
-      // Last resort: use network name (dockerode might handle it)
-      this.logger.warn('Could not find RabbitMQ network ID, using network name as fallback');
-      return 'felip-ai_default';
+      const serviceName = this.getServiceNameByUserId(userId);
+      const service = this.docker.getService(serviceName);
+      const inspect = await service.inspect();
+      const networkId = 'e7488pknkxsgiiu3qnfm9ysuj';
+      const currentNetworks = inspect.Spec.TaskTemplate?.Networks || [];
+      return currentNetworks.some(n => n.Target === networkId);
     } catch (error: unknown) {
+      const statusCode = (error as { statusCode?: number }).statusCode;
+      if (statusCode === 404) {
+        return false; // Service doesn't exist
+      }
       const errorMessage = error instanceof Error ? error.message : String(error);
-      this.logger.error(`Failed to get RabbitMQ network ID: ${errorMessage}`);
-      // Fallback to network name
-      return 'felip-ai_default';
+      this.logger.warn(`Error checking network for service: ${errorMessage}`);
+      return false;
     }
   }
 
