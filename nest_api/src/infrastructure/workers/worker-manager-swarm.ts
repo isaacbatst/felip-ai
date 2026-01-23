@@ -600,7 +600,7 @@ export class WorkerManagerSwarm extends WorkerManager implements OnModuleDestroy
   }
 
   private getImageName(): string {
-    return 'isaacbatst/tdlib-worker:latest';
+    return 'isaacbatst/tdlib-worker:prod';
   }
 
   private async getEnvFromPath(path: string): Promise<string[]> {

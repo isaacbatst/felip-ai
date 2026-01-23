@@ -115,7 +115,7 @@ export class HttpApi {
         return await this.client.resendAuthenticationCode();
       }
       default:
-        throw new Error(`Unknown command type: ${type}`);
+        throw new Error(`Unknown command type http-api: ${type}`);
     }
   }
 

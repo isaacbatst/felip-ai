@@ -234,8 +234,7 @@ export class CommandProcessor {
           return await this.client.resendAuthenticationCode();
         }
         default:
-          console.error(`[ERROR] Unknown command type: ${(command as TdlibCommand).type}`);
-          throw new Error(`Unknown command type: ${(command as TdlibCommand).type}`);
+          throw new Error(`Unknown command type command-processor: ${(command as TdlibCommand).type}`);
       }
     } catch (error) {
       console.error(`[ERROR] Error processing command ${command.type}:`, error);
