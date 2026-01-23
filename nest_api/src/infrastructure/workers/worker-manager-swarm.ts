@@ -760,6 +760,7 @@ export class WorkerManagerSwarm extends WorkerManager implements OnModuleDestroy
   private async listActiveServices(): Promise<Array<{ serviceName: string; userId: string }>> {
     try {
       const imageName = this.getImageName();
+      const imageNameWithoutTag = imageName.split(':')[0];
       const services = await this.docker.listServices({
         filters: {
           label: ['tdlib.user'],
@@ -775,8 +776,7 @@ export class WorkerManagerSwarm extends WorkerManager implements OnModuleDestroy
           
           // Check if service uses our image
           const serviceImage = inspect.Spec.TaskTemplate?.ContainerSpec?.Image;
-          const serviceImageName = serviceImage?.split(':')[0];
-          if (serviceImageName?.startsWith(imageName)) {
+          if (serviceImage?.startsWith(imageNameWithoutTag)) {
             // Extract userId from service name (format: tdlib-{userId})
             const serviceName = inspect.Spec.Name || service.ID;
             const userId = serviceName.replace(/^tdlib-/, '');
@@ -794,7 +794,7 @@ export class WorkerManagerSwarm extends WorkerManager implements OnModuleDestroy
         }
       }
 
-      this.logger.log(`Found ${activeServices.length} active services using image ${imageName}`);
+      this.logger.log(`Found ${activeServices.length} active services using image ${imageNameWithoutTag}`);
       return activeServices;
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : String(error);
