@@ -775,7 +775,8 @@ export class WorkerManagerSwarm extends WorkerManager implements OnModuleDestroy
           
           // Check if service uses our image
           const serviceImage = inspect.Spec.TaskTemplate?.ContainerSpec?.Image;
-          if (serviceImage === imageName || serviceImage?.startsWith(imageName)) {
+          const serviceImageName = serviceImage?.split(':')[0];
+          if (serviceImageName?.startsWith(imageName)) {
             // Extract userId from service name (format: tdlib-{userId})
             const serviceName = inspect.Spec.Name || service.ID;
             const userId = serviceName.replace(/^tdlib-/, '');
