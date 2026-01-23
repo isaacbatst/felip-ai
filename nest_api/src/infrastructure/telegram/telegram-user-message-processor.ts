@@ -171,6 +171,20 @@ export class TelegramUserMessageProcessor {
         contentType = content._;
       }
 
+      // Check if this is a reply message and get original message text
+      const finalText = message
+        ? await this.enrichTextWithOriginalMessage(
+            text,
+            message,
+            userIdStr,
+            chatId,
+            messageId,
+          )
+        : text;
+
+     this.logger.debug(`Final text: ${finalText}`);
+      
+
       // Log the message
       const logData: Record<string, unknown> = {
         messageId,
@@ -184,8 +198,9 @@ export class TelegramUserMessageProcessor {
         logData.text = text;
         // Handle text message with purchase handler
         // userIdStr is botUserId (string) - needed for sendMessage HTTP calls
+        // Pass finalText which includes original message context if this is a reply
         if (chatId && messageId !== undefined) {
-          await this.purchaseHandler.handlePurchase(userIdStr, chatId, messageId, text);
+          await this.purchaseHandler.handlePurchase(userIdStr, chatId, messageId, finalText);
         }
       } else {
         logData.content = '(non-text message)';
@@ -195,6 +210,68 @@ export class TelegramUserMessageProcessor {
     } catch (error) {
       this.logger.error('Error handling new message:', { error });
     }
+  }
+
+  /**
+   * Enriches the message text with original message context if this is a reply
+   * @param text Current message text
+   * @param message Tdlib message object
+   * @param userIdStr Bot user ID string
+   * @param chatId Chat ID
+   * @param messageId Current message ID
+   * @returns Text with original message context if available, otherwise returns original text
+   */
+  private async enrichTextWithOriginalMessage(
+    text: string,
+    message: TdlibUpdateNewMessage['message'],
+    userIdStr: string,
+    chatId: number,
+    messageId: number | undefined,
+  ): Promise<string> {
+    if (!text || !chatId) {
+      return text;
+    }
+
+    const replyTo = message?.reply_to as { message_id?: number } | undefined;
+    if (!replyTo?.message_id) {
+      return text;
+    }
+
+    try {
+      const originalMessage = await this.telegramUserClient.getMessage(
+        userIdStr,
+        chatId,
+        replyTo.message_id,
+      ) as {
+        content?: {
+          _?: string;
+          text?: {
+            _?: string;
+            text?: string;
+          };
+        };
+      } | null;
+
+      if (originalMessage?.content?._ === 'messageText' && originalMessage.content.text?._ === 'formattedText') {
+        const originalText = originalMessage.content.text.text || '';
+        if (originalText) {
+          this.logger.debug('Including original message context', {
+            originalMessageId: replyTo.message_id,
+            currentMessageId: messageId,
+          });
+          return `Mensagem original (à qual esta é uma resposta):\n${originalText}\n\nMensagem atual que deve ser analisada:\n${text}`;
+        }
+      }
+    } catch (error) {
+      this.logger.warn('Failed to fetch original message for reply context', {
+        error,
+        replyToMessageId: replyTo.message_id,
+        chatId,
+      });
+      // Continue with just the current message text if we can't fetch the original
+    }
+
+    return text;
   }
 }
 

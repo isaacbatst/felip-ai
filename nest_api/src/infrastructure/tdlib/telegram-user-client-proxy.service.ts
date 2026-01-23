@@ -12,7 +12,7 @@ import { randomUUID } from 'node:crypto';
 export type { CommandContext, TdlibCommand, TdlibCommandType };
 
 interface TdlibHttpCommandRequest {
-  type: 'sendMessage' | 'getChats' | 'getChat' | 'getAuthorizationState' | 'logOut' | 'getMe' | 'getUserId' | 'resendAuthenticationCode';
+  type: 'sendMessage' | 'getChats' | 'getChat' | 'getMessage' | 'getAuthorizationState' | 'logOut' | 'getMe' | 'getUserId' | 'resendAuthenticationCode';
   payload: unknown;
 }
 
@@ -211,6 +211,16 @@ export class TelegramUserClientProxyService implements OnModuleDestroy {
     return this.sendHttpCommand(userId, {
       type: 'getChat',
       payload: { chatId },
+    });
+  }
+
+  /**
+   * Sends a getMessage command via HTTP (synchronous)
+   */
+  async getMessage(userId: string, chatId: number, messageId: number): Promise<unknown> {
+    return this.sendHttpCommand(userId, {
+      type: 'getMessage',
+      payload: { chatId, messageId },
     });
   }
 

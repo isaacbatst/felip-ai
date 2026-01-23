@@ -259,6 +259,18 @@ export class TelegramUserClient {
   }
 
   /**
+   * Obtém uma mensagem específica por ID
+   */
+  async getMessage(chatId: number, messageId: number): Promise<unknown> {
+    const client = this.ensureClient();
+    return client.invoke({
+      _: 'getMessage',
+      chat_id: chatId,
+      message_id: messageId,
+    });
+  }
+
+  /**
    * Obtém o estado atual de autorização
    */
   async getAuthorizationState(): Promise<unknown> {
