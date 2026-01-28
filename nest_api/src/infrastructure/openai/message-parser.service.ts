@@ -41,7 +41,7 @@ export class MessageParserService extends MessageParser {
         model: this.config.model,
         prompt: {
           id: this.promptId,
-          version: '3',
+          version: '4',
           variables,
         },
         reasoning: {
