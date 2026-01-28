@@ -9,6 +9,10 @@ import fs from 'node:fs';
 export class WorkerManagerCompose extends WorkerManager {
   private docker = new Docker();
   private readonly logger = new Logger(WorkerManagerCompose.name);
+  // Network name for shared docker-compose network
+  private readonly NETWORK_NAME = 'felip-network';
+  // RabbitMQ container name in docker-compose
+  private readonly RABBITMQ_CONTAINER_NAME = 'felip-ai-rabbitmq';
 
   constructor(
     private readonly appConfigService: AppConfigService,
@@ -30,17 +34,17 @@ export class WorkerManagerCompose extends WorkerManager {
     if (existingPort !== null) {
       return existingPort;
     }
-    
+
     // Get next available port (computed from existing assignments)
     const nextPort = await this.workerRepository.getNextPort();
     if (nextPort === null) {
       throw new Error('Failed to compute next available port');
     }
-    
+
     // Assign port to worker
     const assignedPort = nextPort;
     await this.workerRepository.setWorkerPort(userId, assignedPort);
-    
+
     this.logger.log(`Assigned port ${assignedPort} to worker for user ${userId}`);
     return assignedPort;
   }
@@ -76,17 +80,23 @@ export class WorkerManagerCompose extends WorkerManager {
     // Assign and set HTTP port for this worker
     const httpPort = await this.getPortForWorker(userId);
     envVars.push(`HTTP_PORT=${httpPort}`);
+    // Override RABBITMQ_HOST to use the container name on the shared network
+    const filteredEnvVars = envVars.filter((env) => !env.startsWith('RABBITMQ_HOST='));
+    filteredEnvVars.push(`RABBITMQ_HOST=${this.RABBITMQ_CONTAINER_NAME}`);
     const container = await this.docker.createContainer({
       Image: this.getImageName(),
       name,
-      Env: envVars,
+      Env: filteredEnvVars,
       HostConfig: {
         RestartPolicy: { Name: 'unless-stopped' },
         Binds: [`tdlib-${userId}:/tdlib`],
+        NetworkMode: this.NETWORK_NAME,
         PortBindings: {
-          [`${httpPort}/tcp`]: [{
-            HostPort: `${httpPort}`,
-          }],
+          [`${httpPort}/tcp`]: [
+            {
+              HostPort: `${httpPort}`,
+            },
+          ],
         },
       },
       Labels: {
@@ -140,12 +150,17 @@ export class WorkerManagerCompose extends WorkerManager {
     }
   }
 
-  async waitUntilHealthy(containerId: string, options: { timeout?: number, interval?: number } = { timeout: 120000, interval: 5000 }): Promise<boolean> {
+  async waitUntilHealthy(
+    containerId: string,
+    options: { timeout?: number; interval?: number } = { timeout: 120000, interval: 5000 },
+  ): Promise<boolean> {
     const { timeout = 120000, interval = 5000 } = options;
     const START_TIME = Date.now();
     let elapsedTime = 0;
     return await new Promise((resolve) => {
-      console.log(`Waiting for container ${containerId} to be healthy, timeout: ${timeout}, interval: ${interval}`);
+      console.log(
+        `Waiting for container ${containerId} to be healthy, timeout: ${timeout}, interval: ${interval}`,
+      );
       const intervalId = setInterval(async () => {
         elapsedTime = Date.now() - START_TIME;
         if (elapsedTime > timeout) {

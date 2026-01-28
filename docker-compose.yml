@@ -16,7 +16,14 @@ services:
       timeout: 5s
       retries: 5
     restart: unless-stopped
+    networks:
+      - felip-network
 
 volumes:
   rabbitmq-data:
     driver: local
+
+networks:
+  felip-network:
+    name: felip-network
+    driver: bridge
