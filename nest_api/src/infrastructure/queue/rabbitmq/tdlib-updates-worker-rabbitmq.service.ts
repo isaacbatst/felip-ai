@@ -204,7 +204,7 @@ export class TdlibUpdatesWorkerRabbitMQ implements OnModuleInit, OnModuleDestroy
           const { token, expiresAt } = await this.authTokenRepository.createToken(session.requestId, ttlMinutes);
           
           // Build auth URL
-          const baseUrl = this.configService.get<string>('APP_BASE_URL') || 'http://localhost:3000';
+          const baseUrl = this.configService.get<string>('APP_BASE_URL') || 'https://chatbot.lfviagens.com';
           const authUrl = `${baseUrl}/auth/${token}`;
           
           this.logger.log(`[DEBUG] Generated auth token for session ${session.requestId}, expires at: ${expiresAt.toISOString()}`);
@@ -244,7 +244,7 @@ export class TdlibUpdatesWorkerRabbitMQ implements OnModuleInit, OnModuleDestroy
           const { token, expiresAt } = await this.authTokenRepository.createToken(session.requestId, ttlMinutes);
 
           // Build auth URL with type=password parameter
-          const baseUrl = this.configService.get<string>('APP_BASE_URL') || 'http://localhost:3000';
+          const baseUrl = this.configService.get<string>('APP_BASE_URL') || 'https://chatbot.lfviagens.com';
           const authUrl = `${baseUrl}/auth/${token}?type=password`;
 
           this.logger.log(`[DEBUG] Generated password auth token for session ${session.requestId}, expires at: ${expiresAt.toISOString()}`);
