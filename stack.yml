@@ -8,6 +8,13 @@ services:
         order: start-first
       restart_policy:
         condition: on-failure
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.nest-api.rule=Host(`chatbot.lfviagens.com`)"
+        - "traefik.http.services.nest-api.loadbalancer.server.port=3000"
+        - "traefik.http.routers.nest-api.entrypoints=websecure"
+        - "traefik.http.routers.nest-api.tls.certresolver=myresolver"
+        - "traefik.docker.network=traefik-public"
     networks:
       - traefik-public
       - default

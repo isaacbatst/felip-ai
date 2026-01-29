@@ -77,6 +77,7 @@ jobs:
           echo "RABBITMQ_PORT=${{ secrets.RABBITMQ_PORT }}" >> envfile
           echo "RABBITMQ_USER=${{ secrets.RABBITMQ_USER }}" >> envfile
           echo "RABBITMQ_PASSWORD=${{ secrets.RABBITMQ_PASSWORD }}" >> envfile
+          echo "APP_BASE_URL=https://chatbot.lfviagens.com" >> envfile
       - name: Setup SSH
         run: |
           mkdir -p ~/.ssh
