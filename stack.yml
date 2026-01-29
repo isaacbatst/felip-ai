@@ -9,6 +9,7 @@ services:
       restart_policy:
         condition: on-failure
     networks:
+      - traefik-public
       - default
     depends_on:
       - rabbitmq
@@ -17,8 +18,8 @@ services:
     environment:
       - RABBITMQ_HOST=${RABBITMQ_HOST:-rabbitmq}
     volumes:
-      - /root/service-account-key.json:/app/nest_api/service-account-key.json:ro
-      - /root/.env-worker:/app/nest_api/.env-worker:ro
+      - /home/felip-ai/service-account-key.json:/app/nest_api/service-account-key.json:ro
+      - /home/felip-ai/.env-worker:/app/nest_api/.env-worker:ro
       - /var/run/docker.sock:/var/run/docker.sock
 
   rabbitmq:
@@ -29,6 +30,7 @@ services:
       restart_policy:
         condition: on-failure
     networks:
+      - traefik-public
       - default
     volumes:
       - rabbitmq-data:/var/lib/rabbitmq
@@ -42,10 +44,19 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.rabbitmq.rule=Host(`felip-queue.congressosimulator.com.br`)"
+      - "traefik.http.services.rabbitmq.loadbalancer.server.port=15672"
+      - "traefik.http.routers.rabbitmq.entrypoints=websecure"
+      - "traefik.http.routers.rabbitmq.tls.certresolver=myresolver"
+      - "traefik.docker.network=traefik-public"
 volumes:
   rabbitmq-data:
     driver: local
 
 networks:
+  traefik-public:
+    external: true
   default:
     driver: overlay
