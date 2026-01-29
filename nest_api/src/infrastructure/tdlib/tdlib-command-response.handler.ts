@@ -245,6 +245,28 @@ export class TdlibCommandResponseHandler {
       return;
     }
 
+    // Handle PASSWORD_HASH_INVALID errors - wrong 2FA password
+    const isPasswordInvalid = error.includes('PASSWORD_HASH_INVALID') || 
+                              error.includes('password invalid') ||
+                              error.toLowerCase().includes('invalid password');
+    
+    if (isPasswordInvalid && commandType === 'providePassword') {
+      // Clear the dedup to allow retry
+      if (effectiveRequestId && effectiveRequestId !== 'unknown') {
+        this.authCodeDedup.delete(`password:${effectiveRequestId}`);
+      }
+
+      // Track that we've sent this error
+      this.sentErrors.set(errorKey, { timestamp: now, chatId: context.chatId });
+
+      await this.botService.bot.api.sendMessage(
+        context.chatId,
+        '❌ Senha incorreta.\n\n' +
+        'Por favor, verifique sua senha de dois fatores e tente novamente usando o link enviado anteriormente.',
+      );
+      return;
+    }
+
     // Check if this is a rate limit error and provide a more helpful message
     const isRateLimitError = error.includes('Too Many Requests') || 
                              error.includes('retry after') ||

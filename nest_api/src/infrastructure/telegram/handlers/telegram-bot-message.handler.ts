@@ -3,6 +3,7 @@ import type { Context } from 'grammy';
 import { ConversationRepository } from '@/infrastructure/persistence/conversation.repository';
 import { TelegramAuthCodeHandler } from './telegram-bot-auth-code.handler';
 import { TelegramPhoneNumberHandler } from './telegram-bot-phone-number.handler';
+import { TelegramBotService } from '../telegram-bot-service';
 
 /**
  * Handler responsável por processar mensagens de texto do Telegram Bot
@@ -17,6 +18,7 @@ export class TelegramBotMessageHandler {
     private readonly conversationRepository: ConversationRepository,
     private readonly phoneNumberHandler: TelegramPhoneNumberHandler,
     private readonly authCodeHandler: TelegramAuthCodeHandler,
+    private readonly botService: TelegramBotService,
   ) {}
 
   async handleMessage(msg: Context['update']['message']): Promise<void> {
@@ -34,13 +36,24 @@ export class TelegramBotMessageHandler {
       // Check session state
       const session = await this.conversationRepository.getSessionByTelegramUserId(userId);
       if (session) {
-        if (session.state === 'waitingCode' || session.state === 'waitingPassword') {
+        if (session.state === 'waitingCode') {
           this.logger.log('User is waiting for auth code');
           await this.authCodeHandler.handleAuthCodeInput({
             chatId: msg.chat.id,
             authCode: text,
             userId,
           });
+          return;
+        }
+
+        if (session.state === 'waitingPassword') {
+          this.logger.log('User is waiting for 2FA password');
+          // Inform user to use the secure web link for password input
+          await this.botService.bot.api.sendMessage(
+            msg.chat.id,
+            '🔐 Por favor, use o link enviado anteriormente para inserir sua senha de forma segura.\n\n' +
+            'A senha não pode ser enviada pelo chat por motivos de segurança.',
+          );
           return;
         }
 

@@ -4,6 +4,7 @@ import {
   Post,
   Param,
   Body,
+  Query,
   Res,
   HttpStatus,
   Logger,
@@ -16,6 +17,10 @@ import { AuthCodeDeduplicationService } from '@/infrastructure/telegram/auth-cod
 
 interface SubmitCodeDto {
   code: string;
+}
+
+interface SubmitPasswordDto {
+  password: string;
 }
 
 interface TokenStatusResponse {
@@ -47,15 +52,18 @@ export class AuthController {
   ) {}
 
   /**
-   * GET /auth/:token - Serve the auth code input page
-   * Validates the token and serves the HTML page if valid
+   * GET /auth/:token - Serve the auth code or password input page
+   * Validates the token and serves the appropriate HTML page if valid
+   * @param type - Optional query param: 'password' for 2FA password page, otherwise auth code page
    */
   @Get(':token')
   async getAuthPage(
     @Param('token') token: string,
+    @Query('type') type: string | undefined,
     @Res() res: Response,
   ): Promise<void> {
-    this.logger.log(`Auth page requested for token: ${token.substring(0, 8)}...`);
+    const isPasswordPage = type === 'password';
+    this.logger.log(`Auth page requested for token: ${token.substring(0, 8)}... (type: ${isPasswordPage ? 'password' : 'code'})`);
 
     const validation = await this.authTokenRepository.validateToken(token);
 
@@ -74,9 +82,10 @@ export class AuthController {
       return;
     }
 
-    // Serve the auth page
-    // Path: dist/infrastructure/http -> dist/public/auth.html
-    res.sendFile(join(__dirname, '..', '..', 'public', 'auth.html'));
+    // Serve the appropriate auth page based on type
+    // Path: dist/infrastructure/http -> dist/public/auth.html or password.html
+    const pageName = isPasswordPage ? 'password.html' : 'auth.html';
+    res.sendFile(join(__dirname, '..', '..', 'public', pageName));
   }
 
   /**
@@ -215,6 +224,126 @@ export class AuthController {
       this.authCodeDedup.delete(requestId);
 
       this.logger.error(`Error submitting auth code: ${error}`);
+
+      res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
+        success: false,
+        error: 'submission_failed',
+      } satisfies SubmitCodeResponse);
+    }
+  }
+
+  /**
+   * POST /auth/:token/password - Submit the 2FA password
+   */
+  @Post(':token/password')
+  async submitPassword(
+    @Param('token') token: string,
+    @Body() body: SubmitPasswordDto,
+    @Res() res: Response,
+  ): Promise<void> {
+    this.logger.log(`Password submission for token: ${token.substring(0, 8)}...`);
+
+    // Validate token
+    const validation = await this.authTokenRepository.validateToken(token);
+
+    if (!validation.valid) {
+      const errorMessages: Record<string, string> = {
+        not_found: 'token_not_found',
+        expired: 'token_expired',
+        already_used: 'token_already_used',
+        max_attempts: 'max_attempts_exceeded',
+      };
+
+      res.status(this.getHttpStatusForError(validation.error)).json({
+        success: false,
+        error: validation.error ? errorMessages[validation.error] : 'unknown_error',
+      } satisfies SubmitCodeResponse);
+      return;
+    }
+
+    // Validate password is not empty
+    const password = body.password?.trim() || '';
+    if (!password) {
+      res.status(HttpStatus.BAD_REQUEST).json({
+        success: false,
+        error: 'empty_password',
+      } satisfies SubmitCodeResponse);
+      return;
+    }
+
+    // Increment attempt counter
+    const attempts = await this.authTokenRepository.incrementAttempts(token);
+    if (attempts > this.maxAttempts) {
+      res.status(HttpStatus.GONE).json({
+        success: false,
+        error: 'max_attempts_exceeded',
+      } satisfies SubmitCodeResponse);
+      return;
+    }
+
+    const session = validation.session;
+    const tokenData = validation.token;
+
+    // These should never be null after successful validation, but check anyway
+    if (!session || !tokenData) {
+      res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
+        success: false,
+        error: 'validation_error',
+      } satisfies SubmitCodeResponse);
+      return;
+    }
+
+    const requestId = tokenData.requestId;
+
+    // Check deduplication using password-specific key to avoid conflict with auth code dedup
+    const passwordDedupKey = `password:${requestId}`;
+    const wasSet = this.authCodeDedup.setIfNotExists(passwordDedupKey, password.substring(0, 8));
+    if (!wasSet) {
+      res.status(HttpStatus.CONFLICT).json({
+        success: false,
+        error: 'password_already_submitted',
+      } satisfies SubmitCodeResponse);
+      return;
+    }
+
+    // Phone number is required for password submission
+    if (!session.phoneNumber) {
+      this.authCodeDedup.delete(passwordDedupKey);
+      res.status(HttpStatus.BAD_REQUEST).json({
+        success: false,
+        error: 'missing_phone_number',
+      } satisfies SubmitCodeResponse);
+      return;
+    }
+
+    try {
+      // Send password to worker
+      await this.telegramUserClient.providePassword(
+        session.loggedInUserId.toString(),
+        requestId,
+        password,
+        {
+          userId: session.telegramUserId,
+          chatId: session.chatId,
+          phoneNumber: session.phoneNumber,
+          state: session.state,
+        },
+      );
+
+      // Mark token as used
+      await this.authTokenRepository.markTokenAsUsed(token);
+
+      this.logger.log(`Password submitted successfully for requestId: ${requestId}`);
+
+      res.status(HttpStatus.OK).json({
+        success: true,
+        message: 'Senha enviada! Verifique o Telegram para o resultado.',
+      } satisfies SubmitCodeResponse);
+    } catch (error) {
+      // Clear dedup on error to allow retry
+      this.authCodeDedup.delete(passwordDedupKey);
+
+      this.logger.error(`Error submitting password: ${error}`);
 
       res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
         success: false,

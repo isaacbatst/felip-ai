@@ -238,8 +238,25 @@ export class TdlibUpdatesWorkerRabbitMQ implements OnModuleInit, OnModuleDestroy
           await this.conversationRepository.updateSessionState(session.requestId, 'waitingPassword');
 
           this.logger.log(`[DEBUG] 🔒 Password requested for loggedInUserId: ${session.loggedInUserId}, telegramUserId: ${session.telegramUserId}, requestId: ${session.requestId}`);
-          // TODO: Implement password handling if needed
-          this.logger.warn(`[WARN] Password request not yet implemented for loggedInUserId: ${session.loggedInUserId}`);
+
+          // Generate auth token for web-based password input
+          const ttlMinutes = this.configService.get<number>('AUTH_TOKEN_TTL_MINUTES') || 10;
+          const { token, expiresAt } = await this.authTokenRepository.createToken(session.requestId, ttlMinutes);
+
+          // Build auth URL with type=password parameter
+          const baseUrl = this.configService.get<string>('APP_BASE_URL') || 'http://localhost:3000';
+          const authUrl = `${baseUrl}/auth/${token}?type=password`;
+
+          this.logger.log(`[DEBUG] Generated password auth token for session ${session.requestId}, expires at: ${expiresAt.toISOString()}`);
+
+          // Send link to user for secure password input
+          await this.botService.bot.api.sendMessage(
+            session.chatId,
+            `🔐 Sua conta possui autenticação de dois fatores (2FA).\n\n` +
+              `Por favor, clique no link abaixo e digite sua senha:\n\n` +
+              `${authUrl}\n\n` +
+              `⏱️ Este link expira em ${ttlMinutes} minutos.`,
+          );
         }
         break;
       }
