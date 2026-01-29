@@ -36,6 +36,13 @@ services:
         order: start-first
       restart_policy:
         condition: on-failure
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.rabbitmq.rule=Host(`felip-queue.congressosimulator.com.br`)"
+        - "traefik.http.services.rabbitmq.loadbalancer.server.port=15672"
+        - "traefik.http.routers.rabbitmq.entrypoints=websecure"
+        - "traefik.http.routers.rabbitmq.tls.certresolver=myresolver"
+        - "traefik.docker.network=traefik-public"
     networks:
       - traefik-public
       - default
@@ -51,13 +58,6 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.rabbitmq.rule=Host(`felip-queue.congressosimulator.com.br`)"
-      - "traefik.http.services.rabbitmq.loadbalancer.server.port=15672"
-      - "traefik.http.routers.rabbitmq.entrypoints=websecure"
-      - "traefik.http.routers.rabbitmq.tls.certresolver=myresolver"
-      - "traefik.docker.network=traefik-public"
 volumes:
   rabbitmq-data:
     driver: local
