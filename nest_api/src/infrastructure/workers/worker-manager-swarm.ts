@@ -12,7 +12,7 @@ export class WorkerManagerSwarm extends WorkerManager implements OnModuleDestroy
   private readonly logger = new Logger(WorkerManagerSwarm.name);
   private readonly activeIntervals = new Set<NodeJS.Timeout>();
   // Network ID for RabbitMQ network (felip-ai_default)
-  private readonly RABBITMQ_NETWORK_ID = 'e7488pknkxsgiiu3qnfm9ysuj';
+  private readonly RABBITMQ_NETWORK_ID = 'z4co2okrw1ep6848qtmssfotf';
   // Cache for current image digest to avoid unnecessary pulls
   private currentImageDigest: string | null = null;
 
