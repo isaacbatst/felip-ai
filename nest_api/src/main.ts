@@ -1,45 +1,63 @@
 import { NestFactory } from '@nestjs/core';
-import { AsyncMicroserviceOptions, Transport } from '@nestjs/microservices';
+import { MicroserviceOptions, Transport } from '@nestjs/microservices';
 import { AppModule } from './app.module';
 import { ConsoleLogger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import type { NestExpressApplication } from '@nestjs/platform-express';
+import { join } from 'node:path';
 
 async function bootstrap() {
   const logger = new ConsoleLogger();
   logger.log('Starting application initialization...');
 
-  // Create microservice with RabbitMQ transport using async options
-  const app = await NestFactory.createMicroservice<AsyncMicroserviceOptions>(AppModule, {
-    useFactory: (configService: ConfigService) => {
-      // Build RabbitMQ connection URL from ConfigService
-      const host = configService.get<string>('RABBITMQ_HOST') || 'localhost';
-      const port = configService.get<string>('RABBITMQ_PORT') || '5672';
-      const user = configService.get<string>('RABBITMQ_USER') || 'guest';
-      const password = configService.get<string>('RABBITMQ_PASSWORD') || 'guest';
-      
-      // URL encode username and password to handle special characters
-      const encodedUser = encodeURIComponent(user);
-      const encodedPassword = encodeURIComponent(password);
-      const url = `amqp://${encodedUser}:${encodedPassword}@${host}:${port}`;
-
-      logger.log(`Connecting to RabbitMQ at ${host}:${port} with user ${user}`);
-
-      return {
-        transport: Transport.RMQ,
-        options: {
-          urls: [url],
-          queue: 'nest-api-queue',
-          queueOptions: {
-            durable: true,
-          },
-          noAck: false, // Manual acknowledgment for reliability
-        },
-      };
-    },
-    inject: [ConfigService],
+  // Create HTTP app first (hybrid mode)
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    logger,
   });
 
-  logger.log('Microservice created successfully');
+  // Enable CORS for the auth page
+  app.enableCors({
+    origin: true,
+    credentials: true,
+  });
+
+  // Serve static files from public directory
+  // In production (dist), files are at dist/public
+  // In development, files are at public (relative to project root)
+  app.useStaticAssets(join(__dirname, 'public'), {
+    prefix: '/public/',
+  });
+
+  // Get config service for RabbitMQ connection
+  const configService = app.get(ConfigService);
+
+  // Build RabbitMQ connection URL from ConfigService
+  const host = configService.get<string>('RABBITMQ_HOST') || 'localhost';
+  const port = configService.get<string>('RABBITMQ_PORT') || '5672';
+  const user = configService.get<string>('RABBITMQ_USER') || 'guest';
+  const password = configService.get<string>('RABBITMQ_PASSWORD') || 'guest';
+
+  // URL encode username and password to handle special characters
+  const encodedUser = encodeURIComponent(user);
+  const encodedPassword = encodeURIComponent(password);
+  const url = `amqp://${encodedUser}:${encodedPassword}@${host}:${port}`;
+
+  logger.log(`Connecting to RabbitMQ at ${host}:${port} with user ${user}`);
+
+  // Connect RabbitMQ microservice to the hybrid app
+  app.connectMicroservice<MicroserviceOptions>({
+    transport: Transport.RMQ,
+    options: {
+      urls: [url],
+      queue: 'nest-api-queue',
+      queueOptions: {
+        durable: true,
+      },
+      noAck: false, // Manual acknowledgment for reliability
+    },
+  });
+
+  logger.log('Microservice connected successfully');
 
   // Graceful shutdown handler
   let isShuttingDown = false;
@@ -62,12 +80,12 @@ async function bootstrap() {
       // Ignore errors when closing stdin
     }
 
-    // Close the microservice
+    // Close the application (both HTTP and microservice)
     try {
       await app.close();
-      logger.log('Microservice closed successfully');
+      logger.log('Application closed successfully');
     } catch (error) {
-      logger.error('Error closing microservice:', error);
+      logger.error('Error closing application:', error);
     }
 
     logger.log('Shutdown complete');
@@ -83,8 +101,14 @@ async function bootstrap() {
     void shutdown('SIGTERM');
   });
 
-  // Start listening to messages
-  await app.listen();
+  // Start all microservices
+  await app.startAllMicroservices();
+  logger.log('Microservices started successfully');
+
+  // Start HTTP server
+  const httpPort = configService.get<number>('HTTP_PORT') || 3000;
+  await app.listen(httpPort);
+  logger.log(`HTTP server listening on port ${httpPort}`);
   logger.log('Application started successfully');
 }
 
