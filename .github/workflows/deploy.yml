@@ -82,9 +82,9 @@ jobs:
           mkdir -p ~/.ssh
           echo "${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          ssh-keyscan -H  72.61.25.136 >> ~/.ssh/known_hosts
+          ssh-keyscan -H congressosimulator.com.br >> ~/.ssh/known_hosts
 
       - name: Update Nest API service only
         run: |
-          ssh -i ~/.ssh/deploy_key root@72.61.25.136 \
+          ssh -i ~/.ssh/deploy_key felip-ai@congressosimulator.com.br \
             "docker service update --image ghcr.io/isaacbatst/felip-ai:${{ github.sha }} felip-ai_nest_api"
