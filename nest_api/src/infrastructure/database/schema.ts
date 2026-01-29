@@ -132,4 +132,3 @@ export const authTokens = pgTable(
     index('auth_tokens_expires_at_idx').on(table.expiresAt),
   ],
 );
-
