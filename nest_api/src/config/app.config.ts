@@ -89,5 +89,32 @@ export class AppConfigService {
     }
     return value;
   }
+
+  /**
+   * HTTP server port for the hybrid app
+   * Used for serving the auth code web page and API endpoints
+   */
+  getHttpPort(): number {
+    const value = this.configService.get<string>('HTTP_PORT', '3000');
+    return Number.parseInt(value, 10);
+  }
+
+  /**
+   * Base URL for the application
+   * Used for generating auth links sent to users
+   * Should include protocol (https://) and domain, no trailing slash
+   */
+  getAppBaseUrl(): string {
+    return this.configService.get<string>('APP_BASE_URL', 'http://localhost:3000');
+  }
+
+  /**
+   * Auth token time-to-live in minutes
+   * Determines how long auth tokens are valid before expiring
+   */
+  getAuthTokenTtlMinutes(): number {
+    const value = this.configService.get<string>('AUTH_TOKEN_TTL_MINUTES', '10');
+    return Number.parseInt(value, 10);
+  }
 }
 

@@ -113,3 +113,22 @@ export const botStatus = pgTable(
   ],
 );
 
+/**
+ * Auth tokens table - stores time-sensitive tokens for web-based auth code input
+ * Tokens are generated when TDLib requests an auth code and sent to users via link
+ */
+export const authTokens = pgTable(
+  'auth_tokens',
+  {
+    token: text('token').primaryKey(), // Secure random token (48 chars hex)
+    requestId: text('request_id').notNull(), // FK to sessions.requestId
+    expiresAt: timestamp('expires_at').notNull(), // Token expiration (e.g., 10 minutes)
+    usedAt: timestamp('used_at'), // Null if not used, set on use
+    attempts: integer('attempts').default(0).notNull(), // Number of code submission attempts
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => [
+    index('auth_tokens_request_id_idx').on(table.requestId),
+    index('auth_tokens_expires_at_idx').on(table.expiresAt),
+  ],
+);

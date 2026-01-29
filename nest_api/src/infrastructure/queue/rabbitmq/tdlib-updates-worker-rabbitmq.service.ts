@@ -8,6 +8,7 @@ import { TelegramBotLoginResultHandler } from '../../telegram/handlers/telegram-
 import { ConversationRepository } from '../../persistence/conversation.repository';
 import { TdlibCommandResponseHandler } from '../../tdlib/tdlib-command-response.handler';
 import { MessageProcessedLogRepository } from '@/infrastructure/persistence/message-processed-log.repository';
+import { AuthTokenRepository } from '@/infrastructure/persistence/auth-token.repository';
 
 /**
  * Worker that consumes updates from tdlib_worker via RabbitMQ
@@ -34,6 +35,7 @@ export class TdlibUpdatesWorkerRabbitMQ implements OnModuleInit, OnModuleDestroy
     private readonly conversationRepository: ConversationRepository,
     private readonly commandResponseHandler: TdlibCommandResponseHandler,
     private readonly messageProcessedLogRepository: MessageProcessedLogRepository,
+    private readonly authTokenRepository: AuthTokenRepository,
   ) {
     const host = this.configService.get<string>('RABBITMQ_HOST') || 'localhost';
     const port = this.configService.get<string>('RABBITMQ_PORT') || '5672';
@@ -197,11 +199,22 @@ export class TdlibUpdatesWorkerRabbitMQ implements OnModuleInit, OnModuleDestroy
           
           console.log(`[DEBUG] 🔐 Auth code requested for loggedInUserId: ${session.loggedInUserId}, telegramUserId: ${telegramUserId}, requestId: ${session.requestId}, retry: ${retry}`);
           
-          // Inform user that auth code is needed
+          // Generate auth token for web-based code input
+          const ttlMinutes = this.configService.get<number>('AUTH_TOKEN_TTL_MINUTES') || 10;
+          const { token, expiresAt } = await this.authTokenRepository.createToken(session.requestId, ttlMinutes);
+          
+          // Build auth URL
+          const baseUrl = this.configService.get<string>('APP_BASE_URL') || 'http://localhost:3000';
+          const authUrl = `${baseUrl}/auth/${token}`;
+          
+          this.logger.log(`[DEBUG] Generated auth token for session ${session.requestId}, expires at: ${expiresAt.toISOString()}`);
+          
+          // Send link to user instead of asking for code directly
           await this.botService.bot.api.sendMessage(
             session.chatId,
-            '🔐 Por favor, envie o código de autenticação que você recebeu no Telegram.\n\n' +
-              'O código geralmente tem 5 dígitos.',
+            `🔐 Para completar o login, clique no link abaixo e digite o código de autenticação que você recebeu:\n\n` +
+              `${authUrl}\n\n` +
+              `⏱️ Este link expira em ${ttlMinutes} minutos.`,
           );
         }
         break;
@@ -225,8 +238,25 @@ export class TdlibUpdatesWorkerRabbitMQ implements OnModuleInit, OnModuleDestroy
           await this.conversationRepository.updateSessionState(session.requestId, 'waitingPassword');
 
           this.logger.log(`[DEBUG] 🔒 Password requested for loggedInUserId: ${session.loggedInUserId}, telegramUserId: ${session.telegramUserId}, requestId: ${session.requestId}`);
-          // TODO: Implement password handling if needed
-          this.logger.warn(`[WARN] Password request not yet implemented for loggedInUserId: ${session.loggedInUserId}`);
+
+          // Generate auth token for web-based password input
+          const ttlMinutes = this.configService.get<number>('AUTH_TOKEN_TTL_MINUTES') || 10;
+          const { token, expiresAt } = await this.authTokenRepository.createToken(session.requestId, ttlMinutes);
+
+          // Build auth URL with type=password parameter
+          const baseUrl = this.configService.get<string>('APP_BASE_URL') || 'http://localhost:3000';
+          const authUrl = `${baseUrl}/auth/${token}?type=password`;
+
+          this.logger.log(`[DEBUG] Generated password auth token for session ${session.requestId}, expires at: ${expiresAt.toISOString()}`);
+
+          // Send link to user for secure password input
+          await this.botService.bot.api.sendMessage(
+            session.chatId,
+            `🔐 Sua conta possui autenticação de dois fatores (2FA).\n\n` +
+              `Por favor, clique no link abaixo e digite sua senha:\n\n` +
+              `${authUrl}\n\n` +
+              `⏱️ Este link expira em ${ttlMinutes} minutos.`,
+          );
         }
         break;
       }

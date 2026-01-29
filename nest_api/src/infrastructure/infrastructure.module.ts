@@ -26,6 +26,7 @@ import { TelegramBotQueueProcessorRabbitMQ } from '@/infrastructure/queue/rabbit
 import { TelegramUserQueueProcessorRabbitMQ } from '@/infrastructure/queue/rabbitmq/telegram-user-queue-processor-rabbitmq.service';
 import { TdlibUpdatesWorkerRabbitMQ } from '@/infrastructure/queue/rabbitmq/tdlib-updates-worker-rabbitmq.service';
 import { AuthCodeDeduplicationService } from './telegram/auth-code-deduplication.service';
+import { AuthController } from './http/auth.controller';
 
 /**
  * Module responsável por serviços de infraestrutura
@@ -33,6 +34,7 @@ import { AuthCodeDeduplicationService } from './telegram/auth-code-deduplication
  */
 @Module({
   imports: [DomainModule, PersistenceModule, QueueModule, WorkersModule],
+  controllers: [AuthController],
   providers: [
     AppConfigService,
     GoogleSheetsService,

@@ -46,8 +46,8 @@ export class TelegramAuthCodeHandler {
       return;
     }
 
-    // Check if session is in the right state
-    if (session.state !== 'waitingCode' && session.state !== 'waitingPassword') {
+    // Check if session is in the right state (only waitingCode)
+    if (session.state !== 'waitingCode') {
       await this.botService.bot.api.sendMessage(chatId, '❌ Não há uma solicitação de código de autenticação pendente.\n\n' +
           'Por favor, inicie o processo de login novamente.',
       );

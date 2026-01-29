@@ -187,11 +187,19 @@ export class TelegramUserClientProxyService implements OnModuleDestroy {
     password: string,
     sessionData: { userId: number; chatId: number; phoneNumber: string; state: string },
   ): Promise<void> {
-    await this.dispatchCommand(botUserId, {
-      type: 'providePassword',
-      payload: { requestId, password, ...sessionData },
-      requestId,
-    });
+    await this.dispatchCommand(
+      botUserId,
+      {
+        type: 'providePassword',
+        payload: { requestId, password, ...sessionData },
+        requestId,
+      },
+      {
+        userId: botUserId,
+        commandType: 'providePassword',
+        chatId: sessionData.chatId,
+      },
+    );
   }
 
   /**
