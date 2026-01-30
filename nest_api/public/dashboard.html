@@ -1,0 +1,836 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Dashboard - Configurações de Milhas</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    .container {
+      background: white;
+      padding: 30px;
+      border-radius: 20px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+      max-width: 1000px;
+      margin: 0 auto;
+    }
+
+    .header {
+      text-align: center;
+      margin-bottom: 30px;
+      padding-bottom: 20px;
+      border-bottom: 2px solid #f0f0f0;
+    }
+
+    .logo {
+      font-size: 48px;
+      margin-bottom: 10px;
+    }
+
+    h1 {
+      color: #333;
+      font-size: 24px;
+      margin-bottom: 8px;
+      font-weight: 600;
+    }
+
+    .subtitle {
+      color: #666;
+      font-size: 14px;
+    }
+
+    .section {
+      margin-bottom: 30px;
+      padding: 20px;
+      background: #f8f9fa;
+      border-radius: 12px;
+    }
+
+    .section-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 15px;
+    }
+
+    .section h2 {
+      color: #333;
+      font-size: 18px;
+      font-weight: 600;
+    }
+
+    .section-description {
+      color: #666;
+      font-size: 13px;
+      margin-bottom: 15px;
+    }
+
+    .tabs {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+    }
+
+    .tab-btn {
+      padding: 10px 20px;
+      border: 2px solid #e0e0e0;
+      background: white;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+      transition: all 0.2s;
+    }
+
+    .tab-btn:hover {
+      border-color: #667eea;
+      color: #667eea;
+    }
+
+    .tab-btn.active {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border-color: transparent;
+    }
+
+    .program-content {
+      display: none;
+    }
+
+    .program-content.active {
+      display: block;
+    }
+
+    .data-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 15px;
+    }
+
+    .data-table th,
+    .data-table td {
+      padding: 12px;
+      text-align: left;
+      border-bottom: 1px solid #e0e0e0;
+    }
+
+    .data-table th {
+      background: #f0f0f0;
+      font-weight: 600;
+      font-size: 13px;
+      color: #555;
+    }
+
+    .data-table input {
+      width: 100%;
+      padding: 8px 12px;
+      border: 1px solid #e0e0e0;
+      border-radius: 6px;
+      font-size: 14px;
+      transition: border-color 0.2s;
+    }
+
+    .data-table input:focus {
+      outline: none;
+      border-color: #667eea;
+    }
+
+    .data-table input[type="number"] {
+      text-align: right;
+    }
+
+    .btn {
+      padding: 12px 24px;
+      font-size: 14px;
+      font-weight: 600;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn-primary {
+      color: white;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    }
+
+    .btn-primary:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4);
+    }
+
+    .btn-secondary {
+      background: #f0f0f0;
+      color: #333;
+    }
+
+    .btn-secondary:hover {
+      background: #e0e0e0;
+    }
+
+    .btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    .btn-group {
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+      margin-top: 15px;
+    }
+
+    .add-row-btn {
+      padding: 8px 16px;
+      font-size: 13px;
+      background: #e8f4f8;
+      color: #0077b6;
+      border: 1px dashed #0077b6;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .add-row-btn:hover {
+      background: #d4edda;
+    }
+
+    .delete-btn {
+      padding: 6px 12px;
+      font-size: 12px;
+      background: #fee2e2;
+      color: #dc2626;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+
+    .delete-btn:hover {
+      background: #fecaca;
+    }
+
+    .status-message {
+      padding: 12px 16px;
+      border-radius: 8px;
+      font-size: 14px;
+      margin-top: 15px;
+      display: none;
+    }
+
+    .status-message.success {
+      display: block;
+      background: #d4edda;
+      color: #155724;
+    }
+
+    .status-message.error {
+      display: block;
+      background: #f8d7da;
+      color: #721c24;
+    }
+
+    .status-message.loading {
+      display: block;
+      background: #cce5ff;
+      color: #004085;
+    }
+
+    .spinner {
+      display: inline-block;
+      width: 14px;
+      height: 14px;
+      border: 2px solid currentColor;
+      border-right-color: transparent;
+      border-radius: 50%;
+      animation: spin 0.75s linear infinite;
+      margin-right: 8px;
+      vertical-align: middle;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .loading-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(255, 255, 255, 0.9);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+    }
+
+    .loading-overlay.hidden {
+      display: none;
+    }
+
+    .liminar-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      background: #fef3c7;
+      color: #92400e;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+      margin-left: 8px;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 40px;
+      color: #666;
+    }
+
+    .empty-state-icon {
+      font-size: 48px;
+      margin-bottom: 16px;
+    }
+
+    @media (max-width: 768px) {
+      .container {
+        padding: 20px;
+      }
+
+      .section {
+        padding: 15px;
+      }
+
+      .tabs {
+        flex-direction: column;
+      }
+
+      .tab-btn {
+        width: 100%;
+        text-align: center;
+      }
+
+      .data-table {
+        font-size: 13px;
+      }
+
+      .data-table th,
+      .data-table td {
+        padding: 8px;
+      }
+
+      .btn-group {
+        flex-direction: column;
+      }
+
+      .btn {
+        width: 100%;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="loadingOverlay" class="loading-overlay">
+    <div style="text-align: center;">
+      <div class="spinner" style="width: 40px; height: 40px; border-width: 4px;"></div>
+      <p style="margin-top: 16px; color: #666;">Carregando...</p>
+    </div>
+  </div>
+
+  <div class="container">
+    <div class="header">
+      <div class="logo">⚙️</div>
+      <h1>Configurações de Milhas</h1>
+      <p class="subtitle">Gerencie suas tabelas de preços, preços máximos e estoque de milhas</p>
+    </div>
+
+    <!-- Programs Tabs -->
+    <div id="programTabs" class="tabs"></div>
+
+    <!-- Price Tables Section -->
+    <div class="section">
+      <div class="section-header">
+        <h2>📊 Tabela de Preços</h2>
+      </div>
+      <p class="section-description">
+        Configure os preços por quantidade (em milhares). Ex: 15 = 15k milhas
+      </p>
+      <div id="priceTablesContainer"></div>
+      <div id="priceStatus" class="status-message"></div>
+      <div class="btn-group">
+        <button type="button" class="btn btn-primary" onclick="savePrices()">
+          Salvar Preços
+        </button>
+      </div>
+    </div>
+
+    <!-- Max Prices Section -->
+    <div class="section">
+      <div class="section-header">
+        <h2>🔒 Preço Máximo (PREÇO TETO)</h2>
+      </div>
+      <p class="section-description">
+        Define o preço máximo que será cobrado para cada programa
+      </p>
+      <div id="maxPricesContainer"></div>
+      <div id="maxPriceStatus" class="status-message"></div>
+      <div class="btn-group">
+        <button type="button" class="btn btn-primary" onclick="saveMaxPrices()">
+          Salvar Preços Máximos
+        </button>
+      </div>
+    </div>
+
+    <!-- Available Miles Section -->
+    <div class="section">
+      <div class="section-header">
+        <h2>📦 Estoque de Milhas</h2>
+      </div>
+      <p class="section-description">
+        Configure a quantidade de milhas disponíveis para cada programa
+      </p>
+      <div id="milesContainer"></div>
+      <div id="milesStatus" class="status-message"></div>
+      <div class="btn-group">
+        <button type="button" class="btn btn-primary" onclick="saveMiles()">
+          Salvar Estoque
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Get token from URL
+    const pathParts = window.location.pathname.split('/');
+    const token = pathParts[pathParts.length - 1];
+
+    // State
+    let programs = [];
+    let userData = { priceEntries: [], maxPrices: [], availableMiles: [] };
+    let selectedProgramId = null;
+
+    // Elements
+    const loadingOverlay = document.getElementById('loadingOverlay');
+    const programTabs = document.getElementById('programTabs');
+    const priceTablesContainer = document.getElementById('priceTablesContainer');
+    const maxPricesContainer = document.getElementById('maxPricesContainer');
+    const milesContainer = document.getElementById('milesContainer');
+
+    // ============================================================================
+    // API Functions
+    // ============================================================================
+
+    async function fetchPrograms() {
+      const response = await fetch(`/dashboard/${token}/programs`);
+      const data = await response.json();
+      if (data.success) {
+        programs = data.data;
+        return programs;
+      }
+      throw new Error(data.error || 'Failed to fetch programs');
+    }
+
+    async function fetchUserData() {
+      const response = await fetch(`/dashboard/${token}/data`);
+      const data = await response.json();
+      if (data.success) {
+        userData = data.data;
+        return userData;
+      }
+      throw new Error(data.error || 'Failed to fetch user data');
+    }
+
+    async function savePricesApi(entries) {
+      const response = await fetch(`/dashboard/${token}/prices`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ entries }),
+      });
+      const data = await response.json();
+      if (!data.success) {
+        throw new Error(data.error || 'Failed to save prices');
+      }
+      return data;
+    }
+
+    async function saveMaxPricesApi(maxPrices) {
+      const response = await fetch(`/dashboard/${token}/max-prices`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ maxPrices }),
+      });
+      const data = await response.json();
+      if (!data.success) {
+        throw new Error(data.error || 'Failed to save max prices');
+      }
+      return data;
+    }
+
+    async function saveMilesApi(miles) {
+      const response = await fetch(`/dashboard/${token}/miles`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ miles }),
+      });
+      const data = await response.json();
+      if (!data.success) {
+        throw new Error(data.error || 'Failed to save miles');
+      }
+      return data;
+    }
+
+    // ============================================================================
+    // UI Rendering
+    // ============================================================================
+
+    function renderProgramTabs() {
+      programTabs.innerHTML = programs
+        .filter(p => !p.isLiminar) // Only show normal programs as tabs
+        .map((p, index) => `
+          <button 
+            class="tab-btn ${index === 0 ? 'active' : ''}" 
+            data-program-id="${p.id}"
+            onclick="selectProgram(${p.id})"
+          >
+            ${p.name}
+          </button>
+        `)
+        .join('');
+
+      // Select first program
+      if (programs.length > 0) {
+        const normalPrograms = programs.filter(p => !p.isLiminar);
+        if (normalPrograms.length > 0) {
+          selectProgram(normalPrograms[0].id);
+        }
+      }
+    }
+
+    function selectProgram(programId) {
+      selectedProgramId = programId;
+      
+      // Update active tab
+      document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.classList.toggle('active', parseInt(btn.dataset.programId) === programId);
+      });
+
+      // Re-render tables for selected program
+      renderPriceTables();
+      renderMaxPrices();
+      renderMiles();
+    }
+
+    function renderPriceTables() {
+      const program = programs.find(p => p.id === selectedProgramId);
+      if (!program) {
+        priceTablesContainer.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📭</div><p>Nenhum programa selecionado</p></div>';
+        return;
+      }
+
+      // Get all programs to show (selected + its liminar version)
+      const liminarProgram = programs.find(p => p.liminarOfId === selectedProgramId);
+      const programsToShow = [program];
+      if (liminarProgram) {
+        programsToShow.push(liminarProgram);
+      }
+
+      let html = '';
+      
+      for (const prog of programsToShow) {
+        const entries = userData.priceEntries.filter(e => e.programId === prog.id);
+        const isLiminar = prog.isLiminar;
+
+        html += `
+          <div style="margin-bottom: 20px;">
+            <h3 style="font-size: 15px; margin-bottom: 10px; color: #333;">
+              ${prog.name}
+              ${isLiminar ? '<span class="liminar-badge">LIMINAR</span>' : ''}
+            </h3>
+            <table class="data-table" data-program-id="${prog.id}">
+              <thead>
+                <tr>
+                  <th style="width: 40%">Quantidade (k)</th>
+                  <th style="width: 40%">Preço (R$)</th>
+                  <th style="width: 20%"></th>
+                </tr>
+              </thead>
+              <tbody id="priceTableBody-${prog.id}">
+                ${entries.length > 0 ? entries.map((e, i) => `
+                  <tr>
+                    <td><input type="number" value="${e.quantity}" data-field="quantity" step="1" min="1"></td>
+                    <td><input type="number" value="${e.price}" data-field="price" step="0.25" min="0"></td>
+                    <td><button class="delete-btn" onclick="deletePriceRow(this)">🗑️</button></td>
+                  </tr>
+                `).join('') : `
+                  <tr>
+                    <td><input type="number" placeholder="15" data-field="quantity" step="1" min="1"></td>
+                    <td><input type="number" placeholder="20.00" data-field="price" step="0.25" min="0"></td>
+                    <td><button class="delete-btn" onclick="deletePriceRow(this)">🗑️</button></td>
+                  </tr>
+                `}
+              </tbody>
+            </table>
+            <button class="add-row-btn" onclick="addPriceRow(${prog.id})">+ Adicionar Linha</button>
+          </div>
+        `;
+      }
+
+      priceTablesContainer.innerHTML = html;
+    }
+
+    function renderMaxPrices() {
+      const program = programs.find(p => p.id === selectedProgramId);
+      if (!program) {
+        maxPricesContainer.innerHTML = '';
+        return;
+      }
+
+      const liminarProgram = programs.find(p => p.liminarOfId === selectedProgramId);
+      const programsToShow = [program];
+      if (liminarProgram) {
+        programsToShow.push(liminarProgram);
+      }
+
+      let html = '<table class="data-table"><thead><tr><th>Programa</th><th>Preço Máximo (R$)</th></tr></thead><tbody>';
+
+      for (const prog of programsToShow) {
+        const maxPriceData = userData.maxPrices.find(mp => mp.programId === prog.id);
+        const isLiminar = prog.isLiminar;
+
+        html += `
+          <tr data-program-id="${prog.id}">
+            <td>
+              ${prog.name}
+              ${isLiminar ? '<span class="liminar-badge">LIMINAR</span>' : ''}
+            </td>
+            <td>
+              <input type="number" value="${maxPriceData?.maxPrice || ''}" data-field="maxPrice" step="0.25" min="0" placeholder="Sem limite">
+            </td>
+          </tr>
+        `;
+      }
+
+      html += '</tbody></table>';
+      maxPricesContainer.innerHTML = html;
+    }
+
+    function renderMiles() {
+      const program = programs.find(p => p.id === selectedProgramId);
+      if (!program) {
+        milesContainer.innerHTML = '';
+        return;
+      }
+
+      const liminarProgram = programs.find(p => p.liminarOfId === selectedProgramId);
+      const programsToShow = [program];
+      if (liminarProgram) {
+        programsToShow.push(liminarProgram);
+      }
+
+      let html = '<table class="data-table"><thead><tr><th>Programa</th><th>Milhas Disponíveis</th></tr></thead><tbody>';
+
+      for (const prog of programsToShow) {
+        const milesData = userData.availableMiles.find(am => am.programId === prog.id);
+        const isLiminar = prog.isLiminar;
+
+        html += `
+          <tr data-program-id="${prog.id}">
+            <td>
+              ${prog.name}
+              ${isLiminar ? '<span class="liminar-badge">LIMINAR</span>' : ''}
+            </td>
+            <td>
+              <input type="number" value="${milesData?.availableMiles || ''}" data-field="availableMiles" step="1000" min="0" placeholder="0">
+            </td>
+          </tr>
+        `;
+      }
+
+      html += '</tbody></table>';
+      milesContainer.innerHTML = html;
+    }
+
+    // ============================================================================
+    // User Actions
+    // ============================================================================
+
+    function addPriceRow(programId) {
+      const tbody = document.getElementById(`priceTableBody-${programId}`);
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td><input type="number" placeholder="15" data-field="quantity" step="1" min="1"></td>
+        <td><input type="number" placeholder="20.00" data-field="price" step="0.25" min="0"></td>
+        <td><button class="delete-btn" onclick="deletePriceRow(this)">🗑️</button></td>
+      `;
+      tbody.appendChild(tr);
+    }
+
+    function deletePriceRow(btn) {
+      const row = btn.closest('tr');
+      const tbody = row.parentElement;
+      if (tbody.children.length > 1) {
+        row.remove();
+      } else {
+        // Clear values instead of removing last row
+        row.querySelectorAll('input').forEach(input => input.value = '');
+      }
+    }
+
+    async function savePrices() {
+      const statusEl = document.getElementById('priceStatus');
+      statusEl.className = 'status-message loading';
+      statusEl.innerHTML = '<span class="spinner"></span>Salvando...';
+
+      try {
+        const entries = [];
+        
+        // Collect all price entries from all tables
+        document.querySelectorAll('[id^="priceTableBody-"]').forEach(tbody => {
+          const programId = parseInt(tbody.id.replace('priceTableBody-', ''));
+          
+          tbody.querySelectorAll('tr').forEach(row => {
+            const quantityInput = row.querySelector('input[data-field="quantity"]');
+            const priceInput = row.querySelector('input[data-field="price"]');
+            
+            const quantity = parseInt(quantityInput.value);
+            const price = parseFloat(priceInput.value);
+            
+            if (!isNaN(quantity) && !isNaN(price) && quantity > 0 && price > 0) {
+              entries.push({ programId, quantity, price });
+            }
+          });
+        });
+
+        await savePricesApi(entries);
+        await fetchUserData(); // Refresh data
+        
+        statusEl.className = 'status-message success';
+        statusEl.textContent = '✅ Preços salvos com sucesso!';
+        
+        setTimeout(() => { statusEl.className = 'status-message'; }, 3000);
+      } catch (error) {
+        statusEl.className = 'status-message error';
+        statusEl.textContent = '❌ Erro ao salvar: ' + error.message;
+      }
+    }
+
+    async function saveMaxPrices() {
+      const statusEl = document.getElementById('maxPriceStatus');
+      statusEl.className = 'status-message loading';
+      statusEl.innerHTML = '<span class="spinner"></span>Salvando...';
+
+      try {
+        const maxPrices = [];
+        
+        maxPricesContainer.querySelectorAll('tr[data-program-id]').forEach(row => {
+          const programId = parseInt(row.dataset.programId);
+          const maxPriceInput = row.querySelector('input[data-field="maxPrice"]');
+          const maxPrice = parseFloat(maxPriceInput.value);
+          
+          if (!isNaN(maxPrice) && maxPrice > 0) {
+            maxPrices.push({ programId, maxPrice });
+          }
+        });
+
+        await saveMaxPricesApi(maxPrices);
+        await fetchUserData();
+        
+        statusEl.className = 'status-message success';
+        statusEl.textContent = '✅ Preços máximos salvos com sucesso!';
+        
+        setTimeout(() => { statusEl.className = 'status-message'; }, 3000);
+      } catch (error) {
+        statusEl.className = 'status-message error';
+        statusEl.textContent = '❌ Erro ao salvar: ' + error.message;
+      }
+    }
+
+    async function saveMiles() {
+      const statusEl = document.getElementById('milesStatus');
+      statusEl.className = 'status-message loading';
+      statusEl.innerHTML = '<span class="spinner"></span>Salvando...';
+
+      try {
+        const miles = [];
+        
+        milesContainer.querySelectorAll('tr[data-program-id]').forEach(row => {
+          const programId = parseInt(row.dataset.programId);
+          const milesInput = row.querySelector('input[data-field="availableMiles"]');
+          const availableMiles = parseInt(milesInput.value);
+          
+          if (!isNaN(availableMiles) && availableMiles >= 0) {
+            miles.push({ programId, availableMiles });
+          }
+        });
+
+        await saveMilesApi(miles);
+        await fetchUserData();
+        
+        statusEl.className = 'status-message success';
+        statusEl.textContent = '✅ Estoque salvo com sucesso!';
+        
+        setTimeout(() => { statusEl.className = 'status-message'; }, 3000);
+      } catch (error) {
+        statusEl.className = 'status-message error';
+        statusEl.textContent = '❌ Erro ao salvar: ' + error.message;
+      }
+    }
+
+    // ============================================================================
+    // Initialization
+    // ============================================================================
+
+    async function init() {
+      try {
+        // Verify token first
+        const statusResponse = await fetch(`/dashboard/${token}/status`);
+        const status = await statusResponse.json();
+        
+        if (!status.valid) {
+          loadingOverlay.innerHTML = `
+            <div style="text-align: center; padding: 40px;">
+              <div style="font-size: 48px; margin-bottom: 16px;">⚠️</div>
+              <h2 style="color: #721c24; margin-bottom: 8px;">Link Inválido</h2>
+              <p style="color: #666;">Este link expirou ou é inválido. Por favor, solicite um novo link no bot.</p>
+            </div>
+          `;
+          return;
+        }
+
+        // Fetch data
+        await Promise.all([fetchPrograms(), fetchUserData()]);
+        
+        // Render UI
+        renderProgramTabs();
+        
+        // Hide loading
+        loadingOverlay.classList.add('hidden');
+      } catch (error) {
+        console.error('Initialization error:', error);
+        loadingOverlay.innerHTML = `
+          <div style="text-align: center; padding: 40px;">
+            <div style="font-size: 48px; margin-bottom: 16px;">❌</div>
+            <h2 style="color: #721c24; margin-bottom: 8px;">Erro ao Carregar</h2>
+            <p style="color: #666;">${error.message}</p>
+            <button onclick="location.reload()" class="btn btn-primary" style="margin-top: 20px;">Tentar Novamente</button>
+          </div>
+        `;
+      }
+    }
+
+    // Start
+    init();
+  </script>
+</body>
+</html>

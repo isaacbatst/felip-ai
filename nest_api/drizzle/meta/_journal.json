@@ -36,6 +36,13 @@
       "when": 1769645631387,
       "tag": "0004_bored_nick_fury",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1738275600000,
+      "tag": "0005_user_data_migration",
+      "breakpoints": true
     }
   ]
 }

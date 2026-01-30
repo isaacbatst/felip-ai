@@ -1,4 +1,4 @@
-import { pgTable, text, integer, bigint, timestamp, index, unique, jsonb, boolean } from 'drizzle-orm/pg-core';
+import { pgTable, text, integer, bigint, timestamp, index, unique, jsonb, boolean, real } from 'drizzle-orm/pg-core';
 
 /**
  * Sessions table - stores conversation and login session data
@@ -130,5 +130,108 @@ export const authTokens = pgTable(
   (table) => [
     index('auth_tokens_request_id_idx').on(table.requestId),
     index('auth_tokens_expires_at_idx').on(table.expiresAt),
+  ],
+);
+
+// ============================================================================
+// User Data Management Tables (replacing Google Spreadsheet)
+// ============================================================================
+
+/**
+ * Miles programs table - global list of available miles programs
+ * Supports liminar relationships (e.g., SMILES LIMINAR is liminar version of SMILES)
+ * If liminarOfId is NULL, it's a normal program. If NOT NULL, it's a liminar version.
+ */
+export const milesPrograms = pgTable(
+  'miles_programs',
+  {
+    id: integer('id').primaryKey().generatedAlwaysAsIdentity(),
+    name: text('name').notNull().unique(), // Program name (e.g., "SMILES", "SMILES LIMINAR")
+    liminarOfId: integer('liminar_of_id'), // References miles_programs.id (NULL = normal, NOT NULL = liminar of that program)
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => [
+    index('miles_programs_name_idx').on(table.name),
+    index('miles_programs_liminar_of_id_idx').on(table.liminarOfId),
+  ],
+);
+
+/**
+ * Dashboard tokens table - stores time-sensitive tokens for web dashboard access
+ * Users get a link via bot command to access their dashboard
+ */
+export const dashboardTokens = pgTable(
+  'dashboard_tokens',
+  {
+    token: text('token').primaryKey(), // Secure random token (48 chars hex)
+    userId: text('user_id').notNull(), // Telegram user ID
+    expiresAt: timestamp('expires_at').notNull(), // Token expiration
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => [
+    index('dashboard_tokens_user_id_idx').on(table.userId),
+    index('dashboard_tokens_expires_at_idx').on(table.expiresAt),
+  ],
+);
+
+/**
+ * User price entries table - per-user price tables
+ * Each user can have different prices per program and quantity tier
+ */
+export const userPriceEntries = pgTable(
+  'user_price_entries',
+  {
+    id: integer('id').primaryKey().generatedAlwaysAsIdentity(),
+    userId: text('user_id').notNull(), // Telegram user ID
+    programId: integer('program_id').notNull(), // References miles_programs.id
+    quantity: integer('quantity').notNull(), // Quantity tier (e.g., 15, 30, 50 for 15k, 30k, 50k)
+    price: real('price').notNull(), // Price for this quantity
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => [
+    index('user_price_entries_user_id_idx').on(table.userId),
+    index('user_price_entries_program_id_idx').on(table.programId),
+    unique('user_price_entries_user_program_quantity_unique').on(table.userId, table.programId, table.quantity),
+  ],
+);
+
+/**
+ * User max prices table - per-user PREÇO TETO (maximum price) per program
+ */
+export const userMaxPrices = pgTable(
+  'user_max_prices',
+  {
+    id: integer('id').primaryKey().generatedAlwaysAsIdentity(),
+    userId: text('user_id').notNull(), // Telegram user ID
+    programId: integer('program_id').notNull(), // References miles_programs.id
+    maxPrice: real('max_price').notNull(), // Maximum price limit
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => [
+    index('user_max_prices_user_id_idx').on(table.userId),
+    index('user_max_prices_program_id_idx').on(table.programId),
+    unique('user_max_prices_user_program_unique').on(table.userId, table.programId),
+  ],
+);
+
+/**
+ * User available miles table - per-user stock/availability per program
+ */
+export const userAvailableMiles = pgTable(
+  'user_available_miles',
+  {
+    id: integer('id').primaryKey().generatedAlwaysAsIdentity(),
+    userId: text('user_id').notNull(), // Telegram user ID
+    programId: integer('program_id').notNull(), // References miles_programs.id
+    availableMiles: integer('available_miles').notNull(), // Available miles stock
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => [
+    index('user_available_miles_user_id_idx').on(table.userId),
+    index('user_available_miles_program_id_idx').on(table.programId),
+    unique('user_available_miles_user_program_unique').on(table.userId, table.programId),
   ],
 );

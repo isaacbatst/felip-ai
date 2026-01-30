@@ -6,6 +6,8 @@ import { ConversationRepository, ConversationData } from '@/infrastructure/persi
 import { TelegramUserClientProxyService } from '../../tdlib/telegram-user-client-proxy.service';
 import { ActiveGroupsRepository } from '@/infrastructure/persistence/active-groups.repository';
 import { BotStatusRepository } from '@/infrastructure/persistence/bot-status.repository';
+import { DashboardTokenRepository } from '@/infrastructure/persistence/dashboard-token.repository';
+import { AppConfigService } from '@/config/app.config';
 import type {
   CommandContext,
 } from '@felip-ai/shared-types';
@@ -25,6 +27,8 @@ export class TelegramCommandHandler {
     private readonly telegramUserClient: TelegramUserClientProxyService,
     private readonly activeGroupsRepository: ActiveGroupsRepository,
     private readonly botStatusRepository: BotStatusRepository,
+    private readonly dashboardTokenRepository: DashboardTokenRepository,
+    private readonly appConfig: AppConfigService,
   ) {}
 
   async handleStart(ctx: Context): Promise<void> {
@@ -689,6 +693,54 @@ export class TelegramCommandHandler {
     } catch (error) {
       this.logger.error('Error handling /off command', { error });
       await ctx.reply('❌ Erro ao desativar o bot. Tente novamente.');
+    }
+  }
+
+  async handleDashboard(ctx: Context): Promise<void> {
+    try {
+      const telegramUserId = ctx.from?.id;
+      if (!telegramUserId) {
+        await ctx.reply('❌ Não foi possível identificar seu usuário.');
+        return;
+      }
+
+      // Check if user is logged in
+      const loggedInUserId = await this.conversationRepository.isLoggedIn(telegramUserId);
+      if (!loggedInUserId) {
+        await ctx.reply('❌ Você precisa estar logado para usar este comando.\n\nUse /login para fazer login.');
+        return;
+      }
+
+      // Generate dashboard access token (60 minutes TTL)
+      const loggedInUserIdStr = loggedInUserId.toString();
+      const { token, expiresAt } = await this.dashboardTokenRepository.createToken(loggedInUserIdStr, 60);
+
+      // Build dashboard URL
+      const baseUrl = this.appConfig.getAppBaseUrl();
+      const dashboardUrl = `${baseUrl}/dashboard/${token}`;
+
+      // Format expiration time
+      const expiresInMinutes = Math.round((expiresAt.getTime() - Date.now()) / 60000);
+
+      const message = 
+        `⚙️ *Dashboard de Configurações*\n\n` +
+        `Acesse o link abaixo para gerenciar suas configurações de milhas:\n\n` +
+        `🔗 [Abrir Dashboard](${dashboardUrl})\n\n` +
+        `⏱️ Este link expira em ${expiresInMinutes} minutos.\n\n` +
+        `_No dashboard você pode configurar:_\n` +
+        `• Tabelas de preços por programa\n` +
+        `• Preços máximos (PREÇO TETO)\n` +
+        `• Estoque de milhas disponíveis`;
+
+      await ctx.reply(message, { 
+        parse_mode: 'Markdown',
+        link_preview_options: { is_disabled: true }
+      });
+
+      this.logger.log(`Dashboard token generated for user ${loggedInUserIdStr}`);
+    } catch (error) {
+      this.logger.error('Error handling /dashboard command', { error });
+      await ctx.reply('❌ Erro ao gerar link do dashboard. Tente novamente.');
     }
   }
 }
