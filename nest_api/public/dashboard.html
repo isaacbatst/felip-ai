@@ -132,34 +132,36 @@
 
             <!-- Price Cards -->
             <template x-if="getPriceEntries(prog.id).length > 0">
-              <template x-for="(entry, i) in getPriceEntries(prog.id)" :key="i">
-                <div class="data-card price-data-card" :data-program-id="prog.id">
-                  <div class="data-card-header">
-                    <span class="data-card-badge" x-text="`${entry.quantity || 0}k`"></span>
-                    <div class="data-card-actions">
-                      <button class="data-card-save" @click="saveSinglePriceEntry(prog.id, i)"
-                        :disabled="!isValidPriceEntry(entry) || savingEntryIndex === i"
-                        x-show="isValidPriceEntry(entry)">
-                        <span x-show="savingEntryIndex === i" class="spinner" style="width: 14px; height: 14px;"></span>
-                        <span x-show="savingEntryIndex !== i"><i data-lucide="check"></i></span>
-                      </button>
-                      <button class="data-card-delete" @click="removePriceEntry(prog.id, i)"><i data-lucide="x"></i></button>
+              <div class="price-cards-list">
+                <template x-for="(entry, i) in getPriceEntries(prog.id)" :key="i">
+                  <div class="data-card price-data-card" :data-program-id="prog.id">
+                    <div class="data-card-header">
+                      <span class="data-card-badge" x-text="`${entry.quantity || 0}k`"></span>
+                      <div class="data-card-actions">
+                        <button class="data-card-save" @click="saveSinglePriceEntry(prog.id, i)"
+                          :disabled="!isValidPriceEntry(entry) || savingEntryIndex === i"
+                          x-show="isValidPriceEntry(entry)">
+                          <span x-show="savingEntryIndex === i" class="spinner" style="width: 14px; height: 14px;"></span>
+                          <span x-show="savingEntryIndex !== i"><i data-lucide="check"></i></span>
+                        </button>
+                        <button class="data-card-delete" @click="removePriceEntry(prog.id, i)"><i data-lucide="x"></i></button>
+                      </div>
+                    </div>
+                    <div class="data-card-fields">
+                      <div class="data-card-field">
+                        <label>Quantidade (k)</label>
+                        <input type="number" x-model.number="entry.quantity" @input="markAsChanged()" step="1" min="1"
+                          placeholder="15">
+                      </div>
+                      <div class="data-card-field">
+                        <label>Preço (R$)</label>
+                        <input type="number" x-model.number="entry.price" @input="markAsChanged()" step="0.25" min="0"
+                          placeholder="20.00">
+                      </div>
                     </div>
                   </div>
-                  <div class="data-card-fields">
-                    <div class="data-card-field">
-                      <label>Quantidade (k)</label>
-                      <input type="number" x-model.number="entry.quantity" @input="markAsChanged()" step="1" min="1"
-                        placeholder="15">
-                    </div>
-                    <div class="data-card-field">
-                      <label>Preço (R$)</label>
-                      <input type="number" x-model.number="entry.price" @input="markAsChanged()" step="0.25" min="0"
-                        placeholder="20.00">
-                    </div>
-                  </div>
-                </div>
-              </template>
+                </template>
+              </div>
             </template>
 
             <!-- Empty state message -->

@@ -704,10 +704,40 @@ h1 {
   margin-top: 4px;
 }
 
+/* Price cards list wrapper - controls layout direction */
+.price-cards-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Mobile: vertical layout for price card fields */
+.price-cards-list .price-data-card .data-card-fields {
+  flex-direction: column;
+}
+
+/* Desktop: horizontal layout */
+@media (min-width: 769px) {
+  .price-cards-list {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 16px;
+  }
+
+  .price-cards-list .price-data-card {
+    flex: 0 0 auto;
+    min-width: 200px;
+    max-width: 280px;
+  }
+
+  .price-cards-list .price-data-card .data-card-fields {
+    flex-direction: row;
+  }
+}
+
 /* Desktop: horizontal layout */
 @media (min-width: 769px) {
   .price-carousel-wrapper {
-    flex-direction: row;
     flex-wrap: wrap;
     gap: 16px;
   }
