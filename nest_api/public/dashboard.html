@@ -6,6 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Dashboard - Configurações de Milhas</title>
   <link rel="stylesheet" href="/public/dashboard.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
   <script defer src="https://unpkg.com/alpinejs@3.13.3/dist/cdn.min.js"></script>
 </head>
 
@@ -17,7 +18,7 @@
       <p style="margin-top: 16px; color: #666;">Carregando...</p>
     </div>
     <div style="text-align: center; padding: 40px;" x-show="errorMessage">
-      <div style="margin-bottom: 16px;"><i data-lucide="alert-triangle" class="icon-error"></i></div>
+      <div style="margin-bottom: 16px;"><i class="fa-solid fa-triangle-exclamation icon-error"></i></div>
       <h2 style="color: #721c24; margin-bottom: 8px;">Link Inválido</h2>
       <p style="color: #666;" x-text="errorMessage"></p>
     </div>
@@ -48,7 +49,7 @@
           </button>
         </template>
       </div>
-      <button class="program-selector-btn" @click="openBottomSheet()"><i data-lucide="menu"></i></button>
+      <button class="program-selector-btn" @click="openBottomSheet()"><i class="fa-solid fa-bars"></i></button>
     </div>
 
     <div class="mobile-controls">
@@ -60,10 +61,10 @@
       <!-- Overview Toggle (Mobile) -->
       <button class="overview-toggle" @click="toggleOverview()">
         <template x-if="showOverview">
-          <span><i data-lucide="arrow-left"></i> Voltar para detalhes</span>
+          <span><i class="fa-solid fa-arrow-left"></i> Voltar para detalhes</span>
         </template>
         <template x-if="!showOverview">
-          <span><i data-lucide="layout-grid"></i> Ver todos os programas</span>
+          <span><i class="fa-solid fa-table-cells"></i> Ver todos os programas</span>
         </template>
       </button>
     </div>
@@ -91,21 +92,21 @@
       <!-- Section Tabs -->
       <div class="section-tabs">
         <button class="section-tab" :class="{ 'active': activeSection === 'prices' }" @click="activeSection = 'prices'">
-          <i data-lucide="bar-chart-2"></i> Preços
+          <i class="fa-solid fa-chart-simple"></i> Preços
         </button>
         <button class="section-tab" :class="{ 'active': activeSection === 'maxPrices' }"
           @click="activeSection = 'maxPrices'">
-          <i data-lucide="lock"></i> Preço Máximo
+          <i class="fa-solid fa-lock"></i> Preço Máximo
         </button>
         <button class="section-tab" :class="{ 'active': activeSection === 'miles' }" @click="activeSection = 'miles'">
-          <i data-lucide="package"></i> Estoque
+          <i class="fa-solid fa-box"></i> Estoque
         </button>
       </div>
 
       <!-- Price Tables Section -->
       <div class="section" x-show="activeSection === 'prices'">
         <div class="section-header">
-          <h2><i data-lucide="bar-chart-2"></i> Tabela de Preços</h2>
+          <h2><i class="fa-solid fa-chart-simple"></i> Tabela de Preços</h2>
         </div>
         <p class="section-description">
           Configure os preços por quantidade (em milhares). Ex: 15 = 15k milhas
@@ -142,9 +143,9 @@
                           :disabled="!isValidPriceEntry(entry) || savingEntryIndex === i"
                           x-show="isValidPriceEntry(entry)">
                           <span x-show="savingEntryIndex === i" class="spinner" style="width: 14px; height: 14px;"></span>
-                          <span x-show="savingEntryIndex !== i"><i data-lucide="check"></i></span>
+                          <span x-show="savingEntryIndex !== i"><i class="fa-solid fa-check"></i></span>
                         </button>
-                        <button class="data-card-delete" @click="removePriceEntry(prog.id, i)"><i data-lucide="x"></i></button>
+                        <button class="data-card-delete" @click="removePriceEntry(prog.id, i)"><i class="fa-solid fa-xmark"></i></button>
                       </div>
                     </div>
                     <div class="data-card-fields">
@@ -180,7 +181,7 @@
       <!-- Max Prices Section -->
       <div class="section" x-show="activeSection === 'maxPrices'">
         <div class="section-header">
-          <h2><i data-lucide="lock"></i> Preço Máximo (PREÇO TETO)</h2>
+          <h2><i class="fa-solid fa-lock"></i> Preço Máximo (PREÇO TETO)</h2>
         </div>
         <p class="section-description">
           Define o preço máximo que será cobrado para cada programa
@@ -217,7 +218,7 @@
       <!-- Available Miles Section -->
       <div class="section" x-show="activeSection === 'miles'">
         <div class="section-header">
-          <h2><i data-lucide="package"></i> Estoque de Milhas</h2>
+          <h2><i class="fa-solid fa-box"></i> Estoque de Milhas</h2>
         </div>
         <p class="section-description">
           Configure a quantidade de milhas disponíveis para cada programa
@@ -259,7 +260,7 @@
     <div class="bottom-sheet" :class="{ 'visible': bottomSheetOpen }">
       <div class="bottom-sheet-header">
         <h3>Selecionar Programa</h3>
-        <button class="bottom-sheet-close" @click="closeBottomSheet()"><i data-lucide="x"></i></button>
+        <button class="bottom-sheet-close" @click="closeBottomSheet()"><i class="fa-solid fa-xmark"></i></button>
       </div>
       <div style="padding: 20px 16px;">
         <input type="search" class="bottom-sheet-search" placeholder="Buscar programa..." x-model="programSearch">
@@ -285,7 +286,6 @@
       x-text="toast.message">
     </div>
   </div>
-  <script src="https://unpkg.com/lucide@0.563.0"></script>
   <script>
     function dashboard() {
       return {
@@ -401,9 +401,6 @@
             }
 
             this.loading = false;
-            this.$nextTick(() => {
-              lucide.createIcons();
-            });
           } catch (error) {
             console.error('Initialization error:', error);
             this.errorMessage = error.message;
