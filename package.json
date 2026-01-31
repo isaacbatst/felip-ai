@@ -4,16 +4,18 @@
   "private": true,
   "packageManager": "pnpm@10.25.0",
   "scripts": {
-    "dev": "pnpm --filter nest_api start:dev",
-    "expose": "pnpm --filter nest_api expose",
+    "dev": "concurrently -n nest,css -c blue,magenta \"pnpm --filter nest_api start:dev\" \"pnpm --filter nest_api css:watch\"",
     "dev:nest": "pnpm --filter nest_api start:dev",
+    "dev:css": "pnpm --filter nest_api css:watch",
     "dev:nest:debug": "pnpm --filter nest_api start:debug",
     "dev:worker": "pnpm --filter tdlib_worker dev",
+    "expose": "pnpm --filter nest_api expose",
     "build:nest": "pnpm --filter nest_api build",
     "build:worker": "pnpm --filter tdlib_worker build",
     "build": "pnpm build:nest && pnpm build:worker"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.3.10"
+    "@biomejs/biome": "^2.3.10",
+    "concurrently": "^9.2.1"
   }
 }
