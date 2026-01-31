@@ -4,6 +4,8 @@
   "private": true,
   "packageManager": "pnpm@10.25.0",
   "scripts": {
+    "dev": "pnpm --filter nest_api start:dev",
+    "expose": "pnpm --filter nest_api expose",
     "dev:nest": "pnpm --filter nest_api start:dev",
     "dev:nest:debug": "pnpm --filter nest_api start:debug",
     "dev:worker": "pnpm --filter tdlib_worker dev",

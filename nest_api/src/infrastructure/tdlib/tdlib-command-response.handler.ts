@@ -262,7 +262,7 @@ export class TdlibCommandResponseHandler {
       await this.botService.bot.api.sendMessage(
         context.chatId,
         '❌ Senha incorreta.\n\n' +
-        'Por favor, verifique sua senha de dois fatores e tente novamente usando o link enviado anteriormente.',
+        'Por favor, verifique sua senha de dois fatores e inicie o processo de login novamente com /login.',
       );
       return;
     }

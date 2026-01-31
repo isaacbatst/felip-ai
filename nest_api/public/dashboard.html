@@ -114,44 +114,6 @@
       display: block;
     }
 
-    .data-table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-bottom: 15px;
-    }
-
-    .data-table th,
-    .data-table td {
-      padding: 12px;
-      text-align: left;
-      border-bottom: 1px solid #e0e0e0;
-    }
-
-    .data-table th {
-      background: #f0f0f0;
-      font-weight: 600;
-      font-size: 13px;
-      color: #555;
-    }
-
-    .data-table input {
-      width: 100%;
-      padding: 8px 12px;
-      border: 1px solid #e0e0e0;
-      border-radius: 6px;
-      font-size: 14px;
-      transition: border-color 0.2s;
-    }
-
-    .data-table input:focus {
-      outline: none;
-      border-color: #667eea;
-    }
-
-    .data-table input[type="number"] {
-      text-align: right;
-    }
-
     .btn {
       padding: 12px 24px;
       font-size: 14px;
@@ -191,35 +153,6 @@
       gap: 10px;
       justify-content: flex-end;
       margin-top: 15px;
-    }
-
-    .add-row-btn {
-      padding: 8px 16px;
-      font-size: 13px;
-      background: #e8f4f8;
-      color: #0077b6;
-      border: 1px dashed #0077b6;
-      border-radius: 6px;
-      cursor: pointer;
-      transition: all 0.2s;
-    }
-
-    .add-row-btn:hover {
-      background: #d4edda;
-    }
-
-    .delete-btn {
-      padding: 6px 12px;
-      font-size: 12px;
-      background: #fee2e2;
-      color: #dc2626;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-    }
-
-    .delete-btn:hover {
-      background: #fecaca;
     }
 
     .status-message {
@@ -303,39 +236,735 @@
       margin-bottom: 16px;
     }
 
-    @media (max-width: 768px) {
-      .container {
+    /* ============================================================================
+       MOBILE UX IMPROVEMENTS
+       ============================================================================ */
+
+    /* Mobile Pills Navigation */
+    .program-pills-container {
+      display: none;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 20px;
+      position: sticky;
+      top: 0;
+      background: white;
+      padding: 12px 0;
+      z-index: 100;
+      border-bottom: 1px solid #e0e0e0;
+    }
+
+    .program-pills {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      flex: 1;
+      padding: 4px 0;
+      scroll-behavior: smooth;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
+    }
+
+    .program-pills::-webkit-scrollbar {
+      display: none;
+    }
+
+    .pill {
+      flex-shrink: 0;
+      padding: 10px 16px;
+      background: #f0f0f0;
+      border: none;
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: 500;
+      color: #555;
+      cursor: pointer;
+      transition: all 0.2s;
+      white-space: nowrap;
+    }
+
+    .pill.active {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+    }
+
+    .program-selector-btn {
+      flex-shrink: 0;
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      border: 2px solid #667eea;
+      background: white;
+      color: #667eea;
+      font-size: 16px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* Bottom Sheet */
+    .bottom-sheet-overlay {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.5);
+      z-index: 1000;
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+
+    .bottom-sheet-overlay.visible {
+      display: block;
+      opacity: 1;
+    }
+
+    .bottom-sheet {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: white;
+      border-radius: 20px 20px 0 0;
+      max-height: 70vh;
+      transform: translateY(100%);
+      transition: transform 0.3s ease-out;
+      z-index: 1001;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .bottom-sheet.visible {
+      transform: translateY(0);
+    }
+
+    .bottom-sheet-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid #e0e0e0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .bottom-sheet-close {
+      width: 36px;
+      height: 36px;
+      border: none;
+      background: #f0f0f0;
+      border-radius: 50%;
+      font-size: 20px;
+      color: #666;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .bottom-sheet-close:active {
+      background: #e0e0e0;
+    }
+
+    .bottom-sheet-header h3 {
+      font-size: 18px;
+      margin: 0;
+      color: #333;
+    }
+
+    .bottom-sheet-search {
+      width: 100%;
+      padding: 12px 16px;
+      border: 1px solid #e0e0e0;
+      border-radius: 10px;
+      font-size: 16px;
+      outline: none;
+    }
+
+    .bottom-sheet-search:focus {
+      border-color: #667eea;
+    }
+
+    .bottom-sheet-content {
+      overflow-y: auto;
+      padding: 16px 20px;
+      flex: 1;
+    }
+
+    .program-list-item {
+      display: flex;
+      align-items: center;
+      padding: 16px;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: background 0.2s;
+      margin-bottom: 8px;
+    }
+
+    .program-list-item:hover,
+    .program-list-item:active {
+      background: #f5f5f5;
+    }
+
+    .program-list-item.active {
+      background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
+      border: 2px solid #667eea;
+    }
+
+    .program-list-item-name {
+      font-weight: 500;
+      font-size: 16px;
+      color: #333;
+    }
+
+    .program-list-item-stats {
+      font-size: 13px;
+      color: #666;
+      margin-top: 4px;
+    }
+
+    /* Card Layout (usado em mobile e desktop) */
+    .data-cards {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .data-card {
+      background: white;
+      border: 1px solid #e0e0e0;
+      border-radius: 12px;
+      padding: 16px;
+      position: relative;
+      transition: box-shadow 0.2s, border-color 0.2s;
+    }
+
+    .data-card:hover {
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+      border-color: #c0c0c0;
+    }
+
+    .data-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+
+    .data-card-title {
+      font-weight: 600;
+      font-size: 14px;
+      color: #333;
+    }
+
+    .data-card-badge {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 4px 12px;
+      border-radius: 12px;
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .data-card-delete {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      border: none;
+      background: #fee2e2;
+      color: #dc2626;
+      font-size: 18px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.2s, transform 0.2s;
+    }
+
+    .data-card-delete:hover {
+      background: #fecaca;
+      transform: scale(1.1);
+    }
+
+    .data-card-fields {
+      display: flex;
+      gap: 12px;
+    }
+
+    .data-card-field {
+      flex: 1;
+    }
+
+    .data-card-field label {
+      display: block;
+      font-size: 12px;
+      color: #666;
+      margin-bottom: 6px;
+      font-weight: 500;
+    }
+
+    .data-card-field input {
+      width: 100%;
+      padding: 12px;
+      border: 1px solid #e0e0e0;
+      border-radius: 8px;
+      font-size: 16px;
+      text-align: center;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    .data-card-field input:focus {
+      outline: none;
+      border-color: #667eea;
+      box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    }
+
+    .add-card-btn {
+      width: 100%;
+      padding: 16px;
+      border: 2px dashed #667eea;
+      border-radius: 12px;
+      background: transparent;
+      color: #667eea;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      margin-top: 12px;
+      transition: background 0.2s, border-color 0.2s;
+    }
+
+    .add-card-btn:hover {
+      background: rgba(102, 126, 234, 0.05);
+      border-color: #764ba2;
+    }
+
+    /* Desktop: Cards em grid */
+    @media (min-width: 769px) {
+      .data-cards {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+        gap: 16px;
+      }
+
+      .data-card {
         padding: 20px;
       }
 
-      .section {
-        padding: 15px;
+      .data-card-field input {
+        padding: 10px 12px;
+        font-size: 14px;
       }
 
-      .tabs {
-        flex-direction: column;
+      .add-card-btn {
+        grid-column: 1 / -1;
+        max-width: 300px;
       }
 
-      .tab-btn {
-        width: 100%;
-        text-align: center;
-      }
-
+      /* Esconder tabelas no desktop também */
       .data-table {
+        display: none !important;
+      }
+
+      .add-row-btn {
+        display: none !important;
+      }
+
+      /* Desktop: esconder controles de paginação */
+      .price-carousel-controls {
+        display: none !important;
+      }
+
+      .price-carousel-wrapper .data-card {
+        display: block !important;
+      }
+    }
+
+    /* Mobile: Carrossel de Preços */
+    .price-carousel-wrapper {
+      position: relative;
+    }
+
+    .price-carousel-controls {
+      display: none;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+      padding: 0 4px;
+    }
+
+    .carousel-nav-btn {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      border: 2px solid #667eea;
+      background: white;
+      color: #667eea;
+      font-size: 18px;
+      font-weight: bold;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s;
+    }
+
+    .carousel-nav-btn:hover {
+      background: #667eea;
+      color: white;
+    }
+
+    .carousel-nav-btn:disabled {
+      opacity: 0.3;
+      cursor: not-allowed;
+    }
+
+    .carousel-indicator {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 14px;
+      color: #666;
+    }
+
+    .carousel-dots {
+      display: flex;
+      gap: 6px;
+    }
+
+    .carousel-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #e0e0e0;
+      transition: all 0.2s;
+      cursor: pointer;
+    }
+
+    .carousel-dot:hover {
+      background: #c0c0c0;
+    }
+
+    .carousel-dot.active {
+      background: #667eea;
+      width: 20px;
+      border-radius: 4px;
+    }
+
+    .carousel-dot.active:hover {
+      background: #5a6fd6;
+    }
+
+    /* Mobile carousel behavior */
+    @media (max-width: 768px) {
+      .price-carousel-controls {
+        display: flex;
+      }
+
+      .price-carousel-wrapper .data-card {
+        display: none;
+      }
+
+      .price-carousel-wrapper .data-card.carousel-active {
+        display: block;
+      }
+
+      .price-carousel-wrapper .add-card-btn {
+        margin-top: 16px;
+      }
+    }
+
+    /* Floating Action Button */
+    .fab-container {
+      display: none;
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      z-index: 500;
+    }
+
+    .fab {
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      border: none;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      font-size: 24px;
+      cursor: pointer;
+      box-shadow: 0 4px 20px rgba(102, 126, 234, 0.4);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+
+    .fab:active {
+      transform: scale(0.95);
+    }
+
+    .fab.saving {
+      background: #f0f0f0;
+      pointer-events: none;
+    }
+
+    .fab.has-changes {
+      animation: fab-pulse 2s infinite;
+    }
+
+    @keyframes fab-pulse {
+      0%, 100% { box-shadow: 0 4px 20px rgba(102, 126, 234, 0.4); }
+      50% { box-shadow: 0 4px 30px rgba(102, 126, 234, 0.7); }
+    }
+
+    .fab-tooltip {
+      position: absolute;
+      right: 64px;
+      top: 50%;
+      transform: translateY(-50%);
+      background: #333;
+      color: white;
+      padding: 8px 12px;
+      border-radius: 8px;
+      font-size: 13px;
+      white-space: nowrap;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s;
+    }
+
+    .fab-container:hover .fab-tooltip {
+      opacity: 1;
+    }
+
+    /* Program indicator (mobile) */
+    .program-indicator {
+      display: none;
+      text-align: center;
+      padding: 8px;
+      color: #666;
+      font-size: 13px;
+    }
+
+    .program-indicator strong {
+      color: #333;
+    }
+
+    /* Overview Grid */
+    .overview-grid {
+      display: none;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+      padding: 16px 0;
+    }
+
+    .overview-card {
+      background: white;
+      border: 1px solid #e0e0e0;
+      border-radius: 12px;
+      padding: 16px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .overview-card:active {
+      background: #f5f5f5;
+      transform: scale(0.98);
+    }
+
+    .overview-card.active {
+      border-color: #667eea;
+      background: linear-gradient(135deg, rgba(102, 126, 234, 0.05) 0%, rgba(118, 75, 162, 0.05) 100%);
+    }
+
+    .overview-card-name {
+      font-weight: 600;
+      font-size: 14px;
+      color: #333;
+      margin-bottom: 8px;
+    }
+
+    .overview-card-stats {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .overview-card-stat {
+      font-size: 12px;
+      color: #666;
+    }
+
+    .overview-card-stat span {
+      color: #667eea;
+      font-weight: 600;
+    }
+
+    .overview-toggle {
+      display: none;
+      width: 100%;
+      padding: 12px;
+      border: none;
+      background: transparent;
+      color: #667eea;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      margin-bottom: 8px;
+    }
+
+    /* Status toast (mobile) */
+    .toast {
+      position: fixed;
+      bottom: 100px;
+      left: 50%;
+      transform: translateX(-50%) translateY(100px);
+      background: #333;
+      color: white;
+      padding: 12px 24px;
+      border-radius: 24px;
+      font-size: 14px;
+      z-index: 1000;
+      opacity: 0;
+      transition: all 0.3s;
+    }
+
+    .toast.visible {
+      transform: translateX(-50%) translateY(0);
+      opacity: 1;
+    }
+
+    .toast.success {
+      background: #10b981;
+    }
+
+    .toast.error {
+      background: #ef4444;
+    }
+
+    /* Mobile Media Query */
+    @media (max-width: 768px) {
+      body {
+        padding: 0;
+        background: white;
+      }
+
+      .container {
+        padding: 16px;
+        border-radius: 0;
+        box-shadow: none;
+      }
+
+      .header {
+        margin-bottom: 16px;
+        padding-bottom: 16px;
+      }
+
+      .logo {
+        font-size: 36px;
+      }
+
+      h1 {
+        font-size: 20px;
+      }
+
+      .subtitle {
         font-size: 13px;
       }
 
-      .data-table th,
-      .data-table td {
-        padding: 8px;
+      /* Hide desktop tabs */
+      .tabs {
+        display: none;
       }
 
-      .btn-group {
+      /* Show mobile navigation */
+      .program-pills-container {
+        display: flex;
+      }
+
+      .program-indicator {
+        display: block;
+      }
+
+      .overview-toggle {
+        display: block;
+      }
+
+      /* Section styling for mobile */
+      .section {
+        padding: 0;
+        background: transparent;
+        margin-bottom: 24px;
+      }
+
+      .section-header {
+        display: flex;
+        margin-bottom: 12px;
+        padding: 12px 0;
+        border-bottom: 1px solid #e0e0e0;
+      }
+
+      .section-header h2 {
+        font-size: 16px;
+      }
+
+      .section-description {
+        display: none;
+      }
+
+      /* Cards em coluna no mobile */
+      .data-cards {
+        display: flex;
         flex-direction: column;
       }
 
-      .btn {
-        width: 100%;
+      /* Hide desktop save buttons, use FAB */
+      .btn-group {
+        display: none;
+      }
+
+      /* Show FAB */
+      .fab-container {
+        display: block;
+      }
+
+      /* Hide status messages (use toast instead) */
+      .status-message {
+        display: none !important;
+      }
+    }
+
+    /* Desktop adjustments */
+    @media (min-width: 769px) {
+      .program-pills-container,
+      .program-indicator,
+      .bottom-sheet-overlay,
+      .bottom-sheet,
+      .fab-container,
+      .overview-toggle,
+      .overview-grid,
+      .toast {
+        display: none !important;
+      }
+
+      .section {
+        display: block !important;
+      }
+
+      .section-header,
+      .section-description,
+      .btn-group {
+        display: flex !important;
+      }
+
+      /* Cards visíveis no desktop */
+      .cards-container {
+        display: block !important;
       }
     }
   </style>
@@ -351,63 +980,119 @@
   <div class="container">
     <div class="header">
       <div class="logo">⚙️</div>
-      <h1>Configurações de Milhas</h1>
+      <h1>Dashboard</h1>
       <p class="subtitle">Gerencie suas tabelas de preços, preços máximos e estoque de milhas</p>
     </div>
 
-    <!-- Programs Tabs -->
+    <!-- Programs Tabs (Desktop) -->
     <div id="programTabs" class="tabs"></div>
 
-    <!-- Price Tables Section -->
-    <div class="section">
-      <div class="section-header">
-        <h2>📊 Tabela de Preços</h2>
+    <!-- Mobile Pills Navigation -->
+    <div class="program-pills-container">
+      <div id="programPills" class="program-pills"></div>
+      <button class="program-selector-btn" onclick="openBottomSheet()">☰</button>
+    </div>
+
+    <!-- Program Indicator (Mobile) -->
+    <div class="program-indicator">
+      Programa: <strong id="currentProgramName">-</strong>
+      <span id="programPosition"></span>
+    </div>
+
+    <!-- Overview Toggle (Mobile) -->
+    <button class="overview-toggle" onclick="toggleOverview()">
+      <span id="overviewToggleText">📊 Ver todos os programas</span>
+    </button>
+
+    <!-- Overview Grid (Mobile) -->
+    <div id="overviewGrid" class="overview-grid"></div>
+
+    <!-- Content Container (with swipe support on mobile) -->
+    <div id="mobileContent">
+      <!-- Price Tables Section -->
+      <div class="section">
+        <div class="section-header">
+          <h2>📊 Tabela de Preços</h2>
+        </div>
+        <p class="section-description">
+          Configure os preços por quantidade (em milhares). Ex: 15 = 15k milhas
+        </p>
+        
+        <div id="priceCardsContainer" class="data-cards"></div>
+        <div id="priceStatus" class="status-message"></div>
+        <div class="btn-group">
+          <button type="button" class="btn btn-primary" onclick="savePrices()">
+            Salvar Preços
+          </button>
+        </div>
       </div>
-      <p class="section-description">
-        Configure os preços por quantidade (em milhares). Ex: 15 = 15k milhas
-      </p>
-      <div id="priceTablesContainer"></div>
-      <div id="priceStatus" class="status-message"></div>
-      <div class="btn-group">
-        <button type="button" class="btn btn-primary" onclick="savePrices()">
-          Salvar Preços
-        </button>
+
+      <!-- Max Prices Section -->
+      <div class="section">
+        <div class="section-header">
+          <h2>🔒 Preço Máximo (PREÇO TETO)</h2>
+        </div>
+        <p class="section-description">
+          Define o preço máximo que será cobrado para cada programa
+        </p>
+        
+        <div id="maxPriceCardsContainer" class="data-cards"></div>
+        <div id="maxPriceStatus" class="status-message"></div>
+        <div class="btn-group">
+          <button type="button" class="btn btn-primary" onclick="saveMaxPrices()">
+            Salvar Preços Máximos
+          </button>
+        </div>
+      </div>
+
+      <!-- Available Miles Section -->
+      <div class="section">
+        <div class="section-header">
+          <h2>📦 Estoque de Milhas</h2>
+        </div>
+        <p class="section-description">
+          Configure a quantidade de milhas disponíveis para cada programa
+        </p>
+        
+        <div id="milesCardsContainer" class="data-cards"></div>
+        <div id="milesStatus" class="status-message"></div>
+        <div class="btn-group">
+          <button type="button" class="btn btn-primary" onclick="saveMiles()">
+            Salvar Estoque
+          </button>
+        </div>
       </div>
     </div>
 
-    <!-- Max Prices Section -->
-    <div class="section">
-      <div class="section-header">
-        <h2>🔒 Preço Máximo (PREÇO TETO)</h2>
+    <!-- Bottom Sheet -->
+    <div id="bottomSheetOverlay" class="bottom-sheet-overlay" onclick="closeBottomSheet()"></div>
+    <div id="bottomSheet" class="bottom-sheet">
+      <div class="bottom-sheet-header">
+        <h3>Selecionar Programa</h3>
+        <button class="bottom-sheet-close" onclick="closeBottomSheet()">×</button>
       </div>
-      <p class="section-description">
-        Define o preço máximo que será cobrado para cada programa
-      </p>
-      <div id="maxPricesContainer"></div>
-      <div id="maxPriceStatus" class="status-message"></div>
-      <div class="btn-group">
-        <button type="button" class="btn btn-primary" onclick="saveMaxPrices()">
-          Salvar Preços Máximos
-        </button>
+      <div style="padding: 20px 16px;">
+        <input 
+          type="search" 
+          class="bottom-sheet-search" 
+          placeholder="Buscar programa..." 
+          id="programSearch"
+          oninput="filterPrograms(this.value)"
+        >
       </div>
+      <div class="bottom-sheet-content" id="programList"></div>
     </div>
 
-    <!-- Available Miles Section -->
-    <div class="section">
-      <div class="section-header">
-        <h2>📦 Estoque de Milhas</h2>
-      </div>
-      <p class="section-description">
-        Configure a quantidade de milhas disponíveis para cada programa
-      </p>
-      <div id="milesContainer"></div>
-      <div id="milesStatus" class="status-message"></div>
-      <div class="btn-group">
-        <button type="button" class="btn btn-primary" onclick="saveMiles()">
-          Salvar Estoque
-        </button>
-      </div>
+    <!-- FAB (Floating Action Button) -->
+    <div class="fab-container" id="fabContainer">
+      <span class="fab-tooltip">Salvar alterações</span>
+      <button class="fab" id="fabSave" onclick="saveAll()">
+        <span id="fabIcon">💾</span>
+      </button>
     </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="toast"></div>
   </div>
 
   <script>
@@ -419,13 +1104,298 @@
     let programs = [];
     let userData = { priceEntries: [], maxPrices: [], availableMiles: [] };
     let selectedProgramId = null;
+    let hasUnsavedChanges = false;
+    let showOverview = false;
+    let touchStartX = 0;
+    let touchStartY = 0;
+    let priceCarouselIndex = {}; // { programId: currentIndex }
 
     // Elements
     const loadingOverlay = document.getElementById('loadingOverlay');
     const programTabs = document.getElementById('programTabs');
-    const priceTablesContainer = document.getElementById('priceTablesContainer');
-    const maxPricesContainer = document.getElementById('maxPricesContainer');
-    const milesContainer = document.getElementById('milesContainer');
+    const programPills = document.getElementById('programPills');
+    const bottomSheet = document.getElementById('bottomSheet');
+    const bottomSheetOverlay = document.getElementById('bottomSheetOverlay');
+    const programList = document.getElementById('programList');
+    const overviewGrid = document.getElementById('overviewGrid');
+    const mobileContent = document.getElementById('mobileContent');
+    const fabContainer = document.getElementById('fabContainer');
+    const fabSave = document.getElementById('fabSave');
+    const toast = document.getElementById('toast');
+
+    // ============================================================================
+    // Mobile Helper Functions
+    // ============================================================================
+
+    function isMobile() {
+      return window.innerWidth <= 768;
+    }
+
+    function showToast(message, type = 'success') {
+      toast.textContent = message;
+      toast.className = `toast ${type} visible`;
+      setTimeout(() => {
+        toast.className = 'toast';
+      }, 3000);
+    }
+
+    function markAsChanged() {
+      hasUnsavedChanges = true;
+      if (fabSave) {
+        fabSave.classList.add('has-changes');
+      }
+    }
+
+    function markAsSaved() {
+      hasUnsavedChanges = false;
+      if (fabSave) {
+        fabSave.classList.remove('has-changes');
+      }
+    }
+
+    // ============================================================================
+    // Bottom Sheet Functions
+    // ============================================================================
+
+    function openBottomSheet() {
+      bottomSheetOverlay.classList.add('visible');
+      bottomSheet.classList.add('visible');
+      document.getElementById('programSearch').value = '';
+      renderProgramList();
+    }
+
+    function closeBottomSheet() {
+      bottomSheetOverlay.classList.remove('visible');
+      bottomSheet.classList.remove('visible');
+    }
+
+    function filterPrograms(query) {
+      renderProgramList(query.toLowerCase());
+    }
+
+    function renderProgramList(filter = '') {
+      const normalPrograms = programs.filter(p => !p.isLiminar);
+      const filtered = filter 
+        ? normalPrograms.filter(p => p.name.toLowerCase().includes(filter))
+        : normalPrograms;
+      
+      programList.innerHTML = filtered.map(p => {
+        const priceCount = userData.priceEntries.filter(e => e.programId === p.id).length;
+        const milesData = userData.availableMiles.find(m => m.programId === p.id);
+        const miles = milesData ? (milesData.availableMiles / 1000).toFixed(0) + 'k' : '0';
+        
+        return `
+          <div class="program-list-item ${selectedProgramId === p.id ? 'active' : ''}" 
+               onclick="selectProgramFromSheet(${p.id})">
+            <div>
+              <div class="program-list-item-name">${p.name}</div>
+              <div class="program-list-item-stats">${priceCount} preços • ${miles} milhas</div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function selectProgramFromSheet(programId) {
+      selectProgram(programId);
+      closeBottomSheet();
+    }
+
+    // ============================================================================
+    // Overview Mode
+    // ============================================================================
+
+    function toggleOverview() {
+      showOverview = !showOverview;
+      const toggleText = document.getElementById('overviewToggleText');
+      
+      if (showOverview) {
+        overviewGrid.style.display = 'grid';
+        mobileContent.style.display = 'none';
+        toggleText.textContent = '← Voltar para detalhes';
+        renderOverviewGrid();
+      } else {
+        overviewGrid.style.display = 'none';
+        mobileContent.style.display = 'block';
+        toggleText.textContent = '📊 Ver todos os programas';
+      }
+    }
+
+    function renderOverviewGrid() {
+      const normalPrograms = programs.filter(p => !p.isLiminar);
+      
+      overviewGrid.innerHTML = normalPrograms.map(p => {
+        const priceCount = userData.priceEntries.filter(e => e.programId === p.id).length;
+        const milesData = userData.availableMiles.find(m => m.programId === p.id);
+        const miles = milesData ? milesData.availableMiles : 0;
+        const maxPriceData = userData.maxPrices.find(mp => mp.programId === p.id);
+        const maxPrice = maxPriceData ? maxPriceData.maxPrice : null;
+        
+        return `
+          <div class="overview-card ${selectedProgramId === p.id ? 'active' : ''}" 
+               onclick="selectProgramFromOverview(${p.id})">
+            <div class="overview-card-name">${p.name}</div>
+            <div class="overview-card-stats">
+              <div class="overview-card-stat">Preços: <span>${priceCount}</span></div>
+              <div class="overview-card-stat">Milhas: <span>${(miles/1000).toFixed(0)}k</span></div>
+              ${maxPrice ? `<div class="overview-card-stat">Teto: <span>R$ ${maxPrice.toFixed(2)}</span></div>` : ''}
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function selectProgramFromOverview(programId) {
+      selectProgram(programId);
+      toggleOverview();
+    }
+
+    // ============================================================================
+    // Swipe Gestures
+    // ============================================================================
+
+    function setupSwipeGestures() {
+      if (!mobileContent) return;
+      
+      mobileContent.addEventListener('touchstart', (e) => {
+        touchStartX = e.touches[0].clientX;
+        touchStartY = e.touches[0].clientY;
+      }, { passive: true });
+
+      mobileContent.addEventListener('touchend', (e) => {
+        const touchEndX = e.changedTouches[0].clientX;
+        const touchEndY = e.changedTouches[0].clientY;
+        
+        const diffX = touchStartX - touchEndX;
+        const diffY = touchStartY - touchEndY;
+        
+        // Only handle horizontal swipes (ignore vertical scrolling)
+        if (Math.abs(diffX) > 80 && Math.abs(diffX) > Math.abs(diffY) * 2) {
+          if (diffX > 0) {
+            navigateProgram(1); // Next
+          } else {
+            navigateProgram(-1); // Previous
+          }
+        }
+      }, { passive: true });
+    }
+
+    function navigateProgram(direction) {
+      const normalPrograms = programs.filter(p => !p.isLiminar);
+      const currentIndex = normalPrograms.findIndex(p => p.id === selectedProgramId);
+      
+      if (currentIndex === -1) return;
+      
+      const newIndex = currentIndex + direction;
+      
+      if (newIndex >= 0 && newIndex < normalPrograms.length) {
+        selectProgram(normalPrograms[newIndex].id);
+        // Visual feedback
+        mobileContent.style.transition = 'transform 0.2s';
+        mobileContent.style.transform = `translateX(${direction * -10}px)`;
+        setTimeout(() => {
+          mobileContent.style.transform = 'translateX(0)';
+        }, 200);
+      }
+    }
+
+    // ============================================================================
+    // Save All (FAB)
+    // ============================================================================
+
+    async function saveAll() {
+      if (!hasUnsavedChanges) {
+        showToast('Nenhuma alteração para salvar', 'success');
+        return;
+      }
+
+      const fabIcon = document.getElementById('fabIcon');
+      fabIcon.innerHTML = '<span class="spinner" style="width:20px;height:20px;border-width:2px;"></span>';
+      fabSave.classList.add('saving');
+
+      try {
+        // Collect and save prices
+        const priceEntries = collectPriceEntries();
+        if (priceEntries.length > 0) {
+          await savePricesApi(priceEntries);
+        }
+
+        // Collect and save max prices
+        const maxPricesData = collectMaxPrices();
+        if (maxPricesData.length > 0) {
+          await saveMaxPricesApi(maxPricesData);
+        }
+
+        // Collect and save miles
+        const milesData = collectMiles();
+        if (milesData.length > 0) {
+          await saveMilesApi(milesData);
+        }
+
+        await fetchUserData();
+        markAsSaved();
+        showToast('✅ Tudo salvo com sucesso!', 'success');
+        
+        // Re-render to update counts
+        renderAll();
+      } catch (error) {
+        showToast('❌ Erro ao salvar: ' + error.message, 'error');
+      } finally {
+        fabIcon.textContent = '💾';
+        fabSave.classList.remove('saving');
+      }
+    }
+
+    function collectPriceEntries() {
+      const entries = [];
+      
+      document.querySelectorAll('.price-data-card').forEach(card => {
+        const programId = parseInt(card.dataset.programId);
+        const quantityInput = card.querySelector('input[data-field="quantity"]');
+        const priceInput = card.querySelector('input[data-field="price"]');
+        
+        const quantity = parseInt(quantityInput?.value);
+        const price = parseFloat(priceInput?.value);
+        
+        if (!isNaN(quantity) && !isNaN(price) && quantity > 0 && price > 0) {
+          entries.push({ programId, quantity, price });
+        }
+      });
+
+      return entries;
+    }
+
+    function collectMaxPrices() {
+      const maxPrices = [];
+      
+      document.querySelectorAll('.maxprice-data-card').forEach(card => {
+        const programId = parseInt(card.dataset.programId);
+        const maxPriceInput = card.querySelector('input[data-field="maxPrice"]');
+        const maxPrice = parseFloat(maxPriceInput?.value);
+        
+        if (!isNaN(maxPrice) && maxPrice > 0) {
+          maxPrices.push({ programId, maxPrice });
+        }
+      });
+
+      return maxPrices;
+    }
+
+    function collectMiles() {
+      const miles = [];
+      
+      document.querySelectorAll('.miles-data-card').forEach(card => {
+        const programId = parseInt(card.dataset.programId);
+        const milesInput = card.querySelector('input[data-field="availableMiles"]');
+        const availableMiles = parseInt(milesInput?.value);
+        
+        if (!isNaN(availableMiles) && availableMiles >= 0) {
+          miles.push({ programId, availableMiles });
+        }
+      });
+
+      return miles;
+    }
 
     // ============================================================================
     // API Functions
@@ -494,12 +1464,21 @@
     // UI Rendering
     // ============================================================================
 
+    function renderAll() {
+      renderProgramTabs();
+      renderProgramPills();
+      renderPriceCards();
+      renderMaxPriceCards();
+      renderMilesCards();
+      updateProgramIndicator();
+    }
+
     function renderProgramTabs() {
       programTabs.innerHTML = programs
         .filter(p => !p.isLiminar) // Only show normal programs as tabs
         .map((p, index) => `
           <button 
-            class="tab-btn ${index === 0 ? 'active' : ''}" 
+            class="tab-btn ${selectedProgramId === p.id ? 'active' : ''}" 
             data-program-id="${p.id}"
             onclick="selectProgram(${p.id})"
           >
@@ -507,8 +1486,74 @@
           </button>
         `)
         .join('');
+    }
 
-      // Select first program
+    function renderProgramPills() {
+      const normalPrograms = programs.filter(p => !p.isLiminar);
+      
+      programPills.innerHTML = normalPrograms.map(p => `
+        <button 
+          class="pill ${selectedProgramId === p.id ? 'active' : ''}" 
+          data-program-id="${p.id}"
+          onclick="selectProgram(${p.id})"
+        >
+          ${p.name}
+        </button>
+      `).join('');
+
+      // Scroll active pill into view
+      setTimeout(() => {
+        const activePill = programPills.querySelector('.pill.active');
+        if (activePill) {
+          activePill.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+        }
+      }, 100);
+    }
+
+    function updateProgramIndicator() {
+      const program = programs.find(p => p.id === selectedProgramId);
+      const normalPrograms = programs.filter(p => !p.isLiminar);
+      const currentIndex = normalPrograms.findIndex(p => p.id === selectedProgramId);
+      
+      const nameEl = document.getElementById('currentProgramName');
+      const positionEl = document.getElementById('programPosition');
+      
+      if (program && nameEl) {
+        nameEl.textContent = program.name;
+      }
+      if (positionEl && currentIndex !== -1) {
+        positionEl.textContent = ` (${currentIndex + 1}/${normalPrograms.length})`;
+      }
+    }
+
+    function selectProgram(programId) {
+      selectedProgramId = programId;
+      
+      // Update active tab (desktop)
+      document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.classList.toggle('active', parseInt(btn.dataset.programId) === programId);
+      });
+
+      // Update active pill (mobile)
+      document.querySelectorAll('.pill').forEach(btn => {
+        btn.classList.toggle('active', parseInt(btn.dataset.programId) === programId);
+      });
+
+      // Scroll active pill into view
+      const activePill = programPills?.querySelector('.pill.active');
+      if (activePill) {
+        activePill.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+      }
+
+      // Re-render all content
+      renderPriceCards();
+      renderMaxPriceCards();
+      renderMilesCards();
+      updateProgramIndicator();
+    }
+
+    // Select first program on init
+    function initFirstProgram() {
       if (programs.length > 0) {
         const normalPrograms = programs.filter(p => !p.isLiminar);
         if (normalPrograms.length > 0) {
@@ -517,28 +1562,17 @@
       }
     }
 
-    function selectProgram(programId) {
-      selectedProgramId = programId;
-      
-      // Update active tab
-      document.querySelectorAll('.tab-btn').forEach(btn => {
-        btn.classList.toggle('active', parseInt(btn.dataset.programId) === programId);
-      });
+    // Price Cards
+    function renderPriceCards() {
+      const container = document.getElementById('priceCardsContainer');
+      if (!container) return;
 
-      // Re-render tables for selected program
-      renderPriceTables();
-      renderMaxPrices();
-      renderMiles();
-    }
-
-    function renderPriceTables() {
       const program = programs.find(p => p.id === selectedProgramId);
       if (!program) {
-        priceTablesContainer.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📭</div><p>Nenhum programa selecionado</p></div>';
+        container.innerHTML = '<div class="empty-state"><p>Nenhum programa selecionado</p></div>';
         return;
       }
 
-      // Get all programs to show (selected + its liminar version)
       const liminarProgram = programs.find(p => p.liminarOfId === selectedProgramId);
       const programsToShow = [program];
       if (liminarProgram) {
@@ -550,49 +1584,228 @@
       for (const prog of programsToShow) {
         const entries = userData.priceEntries.filter(e => e.programId === prog.id);
         const isLiminar = prog.isLiminar;
+        const totalCards = entries.length || 1;
+        
+        // Initialize carousel index if not set
+        if (priceCarouselIndex[prog.id] === undefined) {
+          priceCarouselIndex[prog.id] = 0;
+        }
+        // Ensure index is within bounds
+        if (priceCarouselIndex[prog.id] >= totalCards) {
+          priceCarouselIndex[prog.id] = totalCards - 1;
+        }
+        const currentIndex = priceCarouselIndex[prog.id];
 
-        html += `
-          <div style="margin-bottom: 20px;">
-            <h3 style="font-size: 15px; margin-bottom: 10px; color: #333;">
-              ${prog.name}
-              ${isLiminar ? '<span class="liminar-badge">LIMINAR</span>' : ''}
-            </h3>
-            <table class="data-table" data-program-id="${prog.id}">
-              <thead>
-                <tr>
-                  <th style="width: 40%">Quantidade (k)</th>
-                  <th style="width: 40%">Preço (R$)</th>
-                  <th style="width: 20%"></th>
-                </tr>
-              </thead>
-              <tbody id="priceTableBody-${prog.id}">
-                ${entries.length > 0 ? entries.map((e, i) => `
-                  <tr>
-                    <td><input type="number" value="${e.quantity}" data-field="quantity" step="1" min="1"></td>
-                    <td><input type="number" value="${e.price}" data-field="price" step="0.25" min="0"></td>
-                    <td><button class="delete-btn" onclick="deletePriceRow(this)">🗑️</button></td>
-                  </tr>
-                `).join('') : `
-                  <tr>
-                    <td><input type="number" placeholder="15" data-field="quantity" step="1" min="1"></td>
-                    <td><input type="number" placeholder="20.00" data-field="price" step="0.25" min="0"></td>
-                    <td><button class="delete-btn" onclick="deletePriceRow(this)">🗑️</button></td>
-                  </tr>
-                `}
-              </tbody>
-            </table>
-            <button class="add-row-btn" onclick="addPriceRow(${prog.id})">+ Adicionar Linha</button>
-          </div>
-        `;
+        html += `<div class="price-carousel-wrapper" data-carousel-program="${prog.id}" style="margin-bottom: 16px;">
+          <h4 style="font-size: 14px; margin-bottom: 12px; color: #333;">
+            ${prog.name}
+            ${isLiminar ? '<span class="liminar-badge">LIMINAR</span>' : ''}
+          </h4>
+          
+          <div class="price-carousel-controls">
+            <button class="carousel-nav-btn" onclick="navigatePriceCarousel(${prog.id}, -1)" ${currentIndex === 0 ? 'disabled' : ''}>‹</button>
+            <div class="carousel-indicator">
+              <div class="carousel-dots">
+                ${Array.from({length: totalCards}, (_, i) => 
+                  `<div class="carousel-dot ${i === currentIndex ? 'active' : ''}" onclick="goToPriceCard(${prog.id}, ${i})"></div>`
+                ).join('')}
+              </div>
+              <span>${currentIndex + 1} / ${totalCards}</span>
+            </div>
+            <button class="carousel-nav-btn" onclick="navigatePriceCarousel(${prog.id}, 1)" ${currentIndex === totalCards - 1 ? 'disabled' : ''}>›</button>
+          </div>`;
+
+        if (entries.length > 0) {
+          html += entries.map((e, i) => `
+            <div class="data-card price-data-card ${i === currentIndex ? 'carousel-active' : ''}" data-program-id="${prog.id}" data-card-index="${i}">
+              <div class="data-card-header">
+                <span class="data-card-badge">${e.quantity}k</span>
+                <button class="data-card-delete" onclick="deletePriceCard(this, ${prog.id})">×</button>
+              </div>
+              <div class="data-card-fields">
+                <div class="data-card-field">
+                  <label>Quantidade (k)</label>
+                  <input type="number" value="${e.quantity}" data-field="quantity" step="1" min="1" oninput="markAsChanged()">
+                </div>
+                <div class="data-card-field">
+                  <label>Preço (R$)</label>
+                  <input type="number" value="${e.price}" data-field="price" step="0.25" min="0" oninput="markAsChanged()">
+                </div>
+              </div>
+            </div>
+          `).join('');
+        } else {
+          html += `
+            <div class="data-card price-data-card carousel-active" data-program-id="${prog.id}" data-card-index="0">
+              <div class="data-card-header">
+                <span class="data-card-title">Novo Preço</span>
+                <button class="data-card-delete" onclick="deletePriceCard(this, ${prog.id})">×</button>
+              </div>
+              <div class="data-card-fields">
+                <div class="data-card-field">
+                  <label>Quantidade (k)</label>
+                  <input type="number" placeholder="15" data-field="quantity" step="1" min="1" oninput="markAsChanged()">
+                </div>
+                <div class="data-card-field">
+                  <label>Preço (R$)</label>
+                  <input type="number" placeholder="20.00" data-field="price" step="0.25" min="0" oninput="markAsChanged()">
+                </div>
+              </div>
+            </div>
+          `;
+        }
+
+        html += `<button class="add-card-btn" onclick="addPriceCard(${prog.id})">+ Adicionar Preço</button></div>`;
       }
 
-      priceTablesContainer.innerHTML = html;
+      container.innerHTML = html;
     }
 
-    function renderMaxPrices() {
+    // Carousel navigation functions
+    function navigatePriceCarousel(programId, direction) {
+      const wrapper = document.querySelector(`[data-carousel-program="${programId}"]`);
+      if (!wrapper) return;
+
+      const cards = wrapper.querySelectorAll('.price-data-card');
+      const totalCards = cards.length;
+      
+      let newIndex = (priceCarouselIndex[programId] || 0) + direction;
+      newIndex = Math.max(0, Math.min(newIndex, totalCards - 1));
+      
+      goToPriceCard(programId, newIndex);
+    }
+
+    function goToPriceCard(programId, index) {
+      const wrapper = document.querySelector(`[data-carousel-program="${programId}"]`);
+      if (!wrapper) return;
+
+      const cards = wrapper.querySelectorAll('.price-data-card');
+      const totalCards = cards.length;
+      
+      priceCarouselIndex[programId] = index;
+
+      // Update active card
+      cards.forEach((card, i) => {
+        card.classList.toggle('carousel-active', i === index);
+      });
+
+      // Update dots
+      const dots = wrapper.querySelectorAll('.carousel-dot');
+      dots.forEach((dot, i) => {
+        dot.classList.toggle('active', i === index);
+      });
+
+      // Update counter
+      const counter = wrapper.querySelector('.carousel-indicator span');
+      if (counter) {
+        counter.textContent = `${index + 1} / ${totalCards}`;
+      }
+
+      // Update nav buttons
+      const prevBtn = wrapper.querySelector('.carousel-nav-btn:first-child');
+      const nextBtn = wrapper.querySelector('.carousel-nav-btn:last-child');
+      if (prevBtn) prevBtn.disabled = index === 0;
+      if (nextBtn) nextBtn.disabled = index === totalCards - 1;
+    }
+
+    function addPriceCard(programId) {
+      const wrapper = document.querySelector(`[data-carousel-program="${programId}"]`);
+      if (!wrapper) return;
+
+      const cards = wrapper.querySelectorAll('.price-data-card');
+      const newIndex = cards.length;
+      
+      const addBtn = wrapper.querySelector('.add-card-btn');
+      const newCard = document.createElement('div');
+      newCard.className = 'data-card price-data-card';
+      newCard.dataset.programId = programId;
+      newCard.dataset.cardIndex = newIndex;
+      newCard.innerHTML = `
+        <div class="data-card-header">
+          <span class="data-card-title">Novo Preço</span>
+          <button class="data-card-delete" onclick="deletePriceCard(this, ${programId})">×</button>
+        </div>
+        <div class="data-card-fields">
+          <div class="data-card-field">
+            <label>Quantidade (k)</label>
+            <input type="number" placeholder="15" data-field="quantity" step="1" min="1" oninput="markAsChanged()">
+          </div>
+          <div class="data-card-field">
+            <label>Preço (R$)</label>
+            <input type="number" placeholder="20.00" data-field="price" step="0.25" min="0" oninput="markAsChanged()">
+          </div>
+        </div>
+      `;
+      
+      addBtn.parentElement.insertBefore(newCard, addBtn);
+      markAsChanged();
+      
+      // Navigate to the new card and update carousel controls
+      updateCarouselControls(programId);
+      goToPriceCard(programId, newIndex);
+    }
+
+    function deletePriceCard(btn, programId) {
+      const card = btn.closest('.data-card');
+      const wrapper = document.querySelector(`[data-carousel-program="${programId}"]`);
+      if (!wrapper) return;
+
+      const cards = wrapper.querySelectorAll('.price-data-card');
+      
+      if (cards.length > 1) {
+        const currentIndex = priceCarouselIndex[programId] || 0;
+        card.remove();
+        markAsChanged();
+        
+        // Update carousel controls and navigate
+        updateCarouselControls(programId);
+        const newIndex = Math.min(currentIndex, cards.length - 2);
+        goToPriceCard(programId, Math.max(0, newIndex));
+      } else {
+        // Clear values instead of removing
+        card.querySelectorAll('input').forEach(input => {
+          input.value = '';
+        });
+        markAsChanged();
+      }
+    }
+
+    function updateCarouselControls(programId) {
+      const wrapper = document.querySelector(`[data-carousel-program="${programId}"]`);
+      if (!wrapper) return;
+
+      const cards = wrapper.querySelectorAll('.price-data-card');
+      const totalCards = cards.length;
+      const currentIndex = priceCarouselIndex[programId] || 0;
+
+      // Update dots
+      const dotsContainer = wrapper.querySelector('.carousel-dots');
+      if (dotsContainer) {
+        dotsContainer.innerHTML = Array.from({length: totalCards}, (_, i) => 
+          `<div class="carousel-dot ${i === currentIndex ? 'active' : ''}" onclick="goToPriceCard(${programId}, ${i})"></div>`
+        ).join('');
+      }
+
+      // Update counter
+      const counter = wrapper.querySelector('.carousel-indicator span');
+      if (counter) {
+        counter.textContent = `${currentIndex + 1} / ${totalCards}`;
+      }
+
+      // Update card indices
+      cards.forEach((card, i) => {
+        card.dataset.cardIndex = i;
+      });
+    }
+
+    // Max Price Cards
+    function renderMaxPriceCards() {
+      const container = document.getElementById('maxPriceCardsContainer');
+      if (!container) return;
+
       const program = programs.find(p => p.id === selectedProgramId);
       if (!program) {
-        maxPricesContainer.innerHTML = '';
+        container.innerHTML = '';
         return;
       }
 
@@ -602,33 +1815,41 @@
         programsToShow.push(liminarProgram);
       }
 
-      let html = '<table class="data-table"><thead><tr><th>Programa</th><th>Preço Máximo (R$)</th></tr></thead><tbody>';
+      let html = '';
 
       for (const prog of programsToShow) {
         const maxPriceData = userData.maxPrices.find(mp => mp.programId === prog.id);
         const isLiminar = prog.isLiminar;
 
         html += `
-          <tr data-program-id="${prog.id}">
-            <td>
-              ${prog.name}
-              ${isLiminar ? '<span class="liminar-badge">LIMINAR</span>' : ''}
-            </td>
-            <td>
-              <input type="number" value="${maxPriceData?.maxPrice || ''}" data-field="maxPrice" step="0.25" min="0" placeholder="Sem limite">
-            </td>
-          </tr>
+          <div class="data-card maxprice-data-card" data-program-id="${prog.id}">
+            <div class="data-card-header">
+              <span class="data-card-title">
+                ${prog.name}
+                ${isLiminar ? '<span class="liminar-badge">LIMINAR</span>' : ''}
+              </span>
+            </div>
+            <div class="data-card-fields">
+              <div class="data-card-field" style="flex: 1;">
+                <label>Preço Máximo (R$)</label>
+                <input type="number" value="${maxPriceData?.maxPrice || ''}" data-field="maxPrice" step="0.25" min="0" placeholder="Sem limite" oninput="markAsChanged()">
+              </div>
+            </div>
+          </div>
         `;
       }
 
-      html += '</tbody></table>';
-      maxPricesContainer.innerHTML = html;
+      container.innerHTML = html;
     }
 
-    function renderMiles() {
+    // Miles Cards
+    function renderMilesCards() {
+      const container = document.getElementById('milesCardsContainer');
+      if (!container) return;
+
       const program = programs.find(p => p.id === selectedProgramId);
       if (!program) {
-        milesContainer.innerHTML = '';
+        container.innerHTML = '';
         return;
       }
 
@@ -638,54 +1859,36 @@
         programsToShow.push(liminarProgram);
       }
 
-      let html = '<table class="data-table"><thead><tr><th>Programa</th><th>Milhas Disponíveis</th></tr></thead><tbody>';
+      let html = '';
 
       for (const prog of programsToShow) {
         const milesData = userData.availableMiles.find(am => am.programId === prog.id);
         const isLiminar = prog.isLiminar;
 
         html += `
-          <tr data-program-id="${prog.id}">
-            <td>
-              ${prog.name}
-              ${isLiminar ? '<span class="liminar-badge">LIMINAR</span>' : ''}
-            </td>
-            <td>
-              <input type="number" value="${milesData?.availableMiles || ''}" data-field="availableMiles" step="1000" min="0" placeholder="0">
-            </td>
-          </tr>
+          <div class="data-card miles-data-card" data-program-id="${prog.id}">
+            <div class="data-card-header">
+              <span class="data-card-title">
+                ${prog.name}
+                ${isLiminar ? '<span class="liminar-badge">LIMINAR</span>' : ''}
+              </span>
+            </div>
+            <div class="data-card-fields">
+              <div class="data-card-field" style="flex: 1;">
+                <label>Milhas Disponíveis</label>
+                <input type="number" value="${milesData?.availableMiles || ''}" data-field="availableMiles" step="1000" min="0" placeholder="0" oninput="markAsChanged()">
+              </div>
+            </div>
+          </div>
         `;
       }
 
-      html += '</tbody></table>';
-      milesContainer.innerHTML = html;
+      container.innerHTML = html;
     }
 
     // ============================================================================
     // User Actions
     // ============================================================================
-
-    function addPriceRow(programId) {
-      const tbody = document.getElementById(`priceTableBody-${programId}`);
-      const tr = document.createElement('tr');
-      tr.innerHTML = `
-        <td><input type="number" placeholder="15" data-field="quantity" step="1" min="1"></td>
-        <td><input type="number" placeholder="20.00" data-field="price" step="0.25" min="0"></td>
-        <td><button class="delete-btn" onclick="deletePriceRow(this)">🗑️</button></td>
-      `;
-      tbody.appendChild(tr);
-    }
-
-    function deletePriceRow(btn) {
-      const row = btn.closest('tr');
-      const tbody = row.parentElement;
-      if (tbody.children.length > 1) {
-        row.remove();
-      } else {
-        // Clear values instead of removing last row
-        row.querySelectorAll('input').forEach(input => input.value = '');
-      }
-    }
 
     async function savePrices() {
       const statusEl = document.getElementById('priceStatus');
@@ -693,35 +1896,20 @@
       statusEl.innerHTML = '<span class="spinner"></span>Salvando...';
 
       try {
-        const entries = [];
-        
-        // Collect all price entries from all tables
-        document.querySelectorAll('[id^="priceTableBody-"]').forEach(tbody => {
-          const programId = parseInt(tbody.id.replace('priceTableBody-', ''));
-          
-          tbody.querySelectorAll('tr').forEach(row => {
-            const quantityInput = row.querySelector('input[data-field="quantity"]');
-            const priceInput = row.querySelector('input[data-field="price"]');
-            
-            const quantity = parseInt(quantityInput.value);
-            const price = parseFloat(priceInput.value);
-            
-            if (!isNaN(quantity) && !isNaN(price) && quantity > 0 && price > 0) {
-              entries.push({ programId, quantity, price });
-            }
-          });
-        });
-
+        const entries = collectPriceEntries();
         await savePricesApi(entries);
-        await fetchUserData(); // Refresh data
+        await fetchUserData();
+        renderPriceCards();
         
         statusEl.className = 'status-message success';
         statusEl.textContent = '✅ Preços salvos com sucesso!';
+        showToast('✅ Preços salvos com sucesso!', 'success');
         
         setTimeout(() => { statusEl.className = 'status-message'; }, 3000);
       } catch (error) {
         statusEl.className = 'status-message error';
         statusEl.textContent = '❌ Erro ao salvar: ' + error.message;
+        showToast('❌ Erro ao salvar: ' + error.message, 'error');
       }
     }
 
@@ -731,28 +1919,20 @@
       statusEl.innerHTML = '<span class="spinner"></span>Salvando...';
 
       try {
-        const maxPrices = [];
-        
-        maxPricesContainer.querySelectorAll('tr[data-program-id]').forEach(row => {
-          const programId = parseInt(row.dataset.programId);
-          const maxPriceInput = row.querySelector('input[data-field="maxPrice"]');
-          const maxPrice = parseFloat(maxPriceInput.value);
-          
-          if (!isNaN(maxPrice) && maxPrice > 0) {
-            maxPrices.push({ programId, maxPrice });
-          }
-        });
-
+        const maxPrices = collectMaxPrices();
         await saveMaxPricesApi(maxPrices);
         await fetchUserData();
+        renderMaxPriceCards();
         
         statusEl.className = 'status-message success';
         statusEl.textContent = '✅ Preços máximos salvos com sucesso!';
+        showToast('✅ Preços máximos salvos!', 'success');
         
         setTimeout(() => { statusEl.className = 'status-message'; }, 3000);
       } catch (error) {
         statusEl.className = 'status-message error';
         statusEl.textContent = '❌ Erro ao salvar: ' + error.message;
+        showToast('❌ Erro ao salvar: ' + error.message, 'error');
       }
     }
 
@@ -762,28 +1942,20 @@
       statusEl.innerHTML = '<span class="spinner"></span>Salvando...';
 
       try {
-        const miles = [];
-        
-        milesContainer.querySelectorAll('tr[data-program-id]').forEach(row => {
-          const programId = parseInt(row.dataset.programId);
-          const milesInput = row.querySelector('input[data-field="availableMiles"]');
-          const availableMiles = parseInt(milesInput.value);
-          
-          if (!isNaN(availableMiles) && availableMiles >= 0) {
-            miles.push({ programId, availableMiles });
-          }
-        });
-
+        const miles = collectMiles();
         await saveMilesApi(miles);
         await fetchUserData();
+        renderMilesCards();
         
         statusEl.className = 'status-message success';
         statusEl.textContent = '✅ Estoque salvo com sucesso!';
+        showToast('✅ Estoque salvo!', 'success');
         
         setTimeout(() => { statusEl.className = 'status-message'; }, 3000);
       } catch (error) {
         statusEl.className = 'status-message error';
         statusEl.textContent = '❌ Erro ao salvar: ' + error.message;
+        showToast('❌ Erro ao salvar: ' + error.message, 'error');
       }
     }
 
@@ -811,8 +1983,14 @@
         // Fetch data
         await Promise.all([fetchPrograms(), fetchUserData()]);
         
-        // Render UI
-        renderProgramTabs();
+        // Initialize first program selection
+        initFirstProgram();
+        
+        // Render all UI
+        renderAll();
+        
+        // Setup mobile swipe gestures
+        setupSwipeGestures();
         
         // Hide loading
         loadingOverlay.classList.add('hidden');
@@ -828,6 +2006,16 @@
         `;
       }
     }
+
+    // Handle window resize
+    window.addEventListener('resize', () => {
+      // Re-render on orientation change
+      if (showOverview && !isMobile()) {
+        showOverview = false;
+        overviewGrid.style.display = 'none';
+        mobileContent.style.display = 'block';
+      }
+    });
 
     // Start
     init();
