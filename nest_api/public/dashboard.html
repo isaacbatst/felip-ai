@@ -17,7 +17,7 @@
       <p style="margin-top: 16px; color: #666;">Carregando...</p>
     </div>
     <div style="text-align: center; padding: 40px;" x-show="errorMessage">
-      <div style="font-size: 48px; margin-bottom: 16px;">⚠️</div>
+      <div style="margin-bottom: 16px;"><i data-lucide="alert-triangle" class="icon-error"></i></div>
       <h2 style="color: #721c24; margin-bottom: 8px;">Link Inválido</h2>
       <p style="color: #666;" x-text="errorMessage"></p>
     </div>
@@ -48,7 +48,7 @@
           </button>
         </template>
       </div>
-      <button class="program-selector-btn" @click="openBottomSheet()">☰</button>
+      <button class="program-selector-btn" @click="openBottomSheet()"><i data-lucide="menu"></i></button>
     </div>
 
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
@@ -59,7 +59,12 @@
 
       <!-- Overview Toggle (Mobile) -->
       <button class="overview-toggle" @click="toggleOverview()">
-        <span x-text="showOverview ? '← Voltar para detalhes' : '📊 Ver todos os programas'"></span>
+        <template x-if="showOverview">
+          <span><i data-lucide="arrow-left"></i> Voltar para detalhes</span>
+        </template>
+        <template x-if="!showOverview">
+          <span><i data-lucide="layout-grid"></i> Ver todos os programas</span>
+        </template>
       </button>
     </div>
 
@@ -86,21 +91,21 @@
       <!-- Section Tabs -->
       <div class="section-tabs">
         <button class="section-tab" :class="{ 'active': activeSection === 'prices' }" @click="activeSection = 'prices'">
-          📊 Preços
+          <i data-lucide="bar-chart-2"></i> Preços
         </button>
         <button class="section-tab" :class="{ 'active': activeSection === 'maxPrices' }"
           @click="activeSection = 'maxPrices'">
-          🔒 Preço Máximo
+          <i data-lucide="lock"></i> Preço Máximo
         </button>
         <button class="section-tab" :class="{ 'active': activeSection === 'miles' }" @click="activeSection = 'miles'">
-          📦 Estoque
+          <i data-lucide="package"></i> Estoque
         </button>
       </div>
 
       <!-- Price Tables Section -->
       <div class="section" x-show="activeSection === 'prices'">
         <div class="section-header">
-          <h2>📊 Tabela de Preços</h2>
+          <h2><i data-lucide="bar-chart-2"></i> Tabela de Preços</h2>
         </div>
         <p class="section-description">
           Configure os preços por quantidade (em milhares). Ex: 15 = 15k milhas
@@ -136,9 +141,9 @@
                         :disabled="!isValidPriceEntry(entry) || savingEntryIndex === i"
                         x-show="isValidPriceEntry(entry)">
                         <span x-show="savingEntryIndex === i" class="spinner" style="width: 14px; height: 14px;"></span>
-                        <span x-show="savingEntryIndex !== i">✓</span>
+                        <span x-show="savingEntryIndex !== i"><i data-lucide="check"></i></span>
                       </button>
-                      <button class="data-card-delete" @click="removePriceEntry(prog.id, i)">×</button>
+                      <button class="data-card-delete" @click="removePriceEntry(prog.id, i)"><i data-lucide="x"></i></button>
                     </div>
                   </div>
                   <div class="data-card-fields">
@@ -173,7 +178,7 @@
       <!-- Max Prices Section -->
       <div class="section" x-show="activeSection === 'maxPrices'">
         <div class="section-header">
-          <h2>🔒 Preço Máximo (PREÇO TETO)</h2>
+          <h2><i data-lucide="lock"></i> Preço Máximo (PREÇO TETO)</h2>
         </div>
         <p class="section-description">
           Define o preço máximo que será cobrado para cada programa
@@ -210,7 +215,7 @@
       <!-- Available Miles Section -->
       <div class="section" x-show="activeSection === 'miles'">
         <div class="section-header">
-          <h2>📦 Estoque de Milhas</h2>
+          <h2><i data-lucide="package"></i> Estoque de Milhas</h2>
         </div>
         <p class="section-description">
           Configure a quantidade de milhas disponíveis para cada programa
@@ -252,7 +257,7 @@
     <div class="bottom-sheet" :class="{ 'visible': bottomSheetOpen }">
       <div class="bottom-sheet-header">
         <h3>Selecionar Programa</h3>
-        <button class="bottom-sheet-close" @click="closeBottomSheet()">×</button>
+        <button class="bottom-sheet-close" @click="closeBottomSheet()"><i data-lucide="x"></i></button>
       </div>
       <div style="padding: 20px 16px;">
         <input type="search" class="bottom-sheet-search" placeholder="Buscar programa..." x-model="programSearch">
@@ -278,7 +283,7 @@
       x-text="toast.message">
     </div>
   </div>
-
+  <script src="https://unpkg.com/lucide@0.563.0"></script>
   <script>
     function dashboard() {
       return {
@@ -394,6 +399,9 @@
             }
 
             this.loading = false;
+            this.$nextTick(() => {
+              lucide.createIcons();
+            });
           } catch (error) {
             console.error('Initialization error:', error);
             this.errorMessage = error.message;
