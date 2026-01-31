@@ -63,6 +63,12 @@ interface UpdateMilesDto {
   miles: AvailableMilesInput[];
 }
 
+interface UpdateSinglePriceDto {
+  programId: number;
+  quantity: number;
+  price: number;
+}
+
 interface ApiResponse<T = unknown> {
   success: boolean;
   data?: T;
@@ -237,6 +243,35 @@ export class DashboardController {
     await this.userDataRepository.setPriceEntries(userId, body.entries);
 
     this.logger.log(`Updated ${body.entries.length} price entries for user ${userId}`);
+
+    res.status(HttpStatus.OK).json({
+      success: true,
+    } satisfies ApiResponse);
+  }
+
+  /**
+   * PUT /dashboard/:token/price - Update a single price entry
+   */
+  @Put(':token/price')
+  async updateSinglePrice(
+    @Param('token') token: string,
+    @Body() body: UpdateSinglePriceDto,
+    @Res() res: Response,
+  ): Promise<void> {
+    const userId = await this.validateAndGetUserId(token, res);
+    if (!userId) return;
+
+    if (typeof body.programId !== 'number' || typeof body.quantity !== 'number' || typeof body.price !== 'number') {
+      res.status(HttpStatus.BAD_REQUEST).json({
+        success: false,
+        error: 'Invalid entry format. Must have programId, quantity, and price as numbers.',
+      } satisfies ApiResponse);
+      return;
+    }
+
+    await this.userDataRepository.upsertPriceEntry(userId, body);
+
+    this.logger.log(`Updated price entry for user ${userId}: program=${body.programId}, qty=${body.quantity}`);
 
     res.status(HttpStatus.OK).json({
       success: true,
