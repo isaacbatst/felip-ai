@@ -26,6 +26,9 @@
   <div class="container" x-show="!loading && !errorMessage">
     <div class="header">
       <h1>Dashboard</h1>
+      <div class="header-timer" x-show="expiresAt" :class="{ 'warning': timerWarning, 'expired': timerExpired }">
+        <span x-text="timerExpired ? 'Link expirado' : `Expira em: ${countdownDisplay}`"></span>
+      </div>
     </div>
     <!-- Programs Tabs (Desktop) -->
     <div class="tabs">
@@ -48,15 +51,17 @@
       <button class="program-selector-btn" @click="openBottomSheet()">☰</button>
     </div>
 
-    <!-- Program Indicator (Mobile) -->
-    <div class="program-indicator">
-      Programa: <strong x-text="selectedProgram?.name || '-'"></strong>
-    </div>
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+      <!-- Program Indicator (Mobile) -->
+      <div class="program-indicator">
+        Programa: <strong x-text="selectedProgram?.name || '-'"></strong>
+      </div>
 
-    <!-- Overview Toggle (Mobile) -->
-    <button class="overview-toggle" @click="toggleOverview()">
-      <span x-text="showOverview ? '← Voltar para detalhes' : '📊 Ver todos os programas'"></span>
-    </button>
+      <!-- Overview Toggle (Mobile) -->
+      <button class="overview-toggle" @click="toggleOverview()">
+        <span x-text="showOverview ? '← Voltar para detalhes' : '📊 Ver todos os programas'"></span>
+      </button>
+    </div>
 
     <!-- Overview Grid (Mobile) -->
     <div class="overview-grid" :style="{ display: showOverview ? 'grid' : 'none' }">
@@ -127,8 +132,7 @@
                   <div class="data-card-header">
                     <span class="data-card-badge" x-text="`${entry.quantity || 0}k`"></span>
                     <div class="data-card-actions">
-                      <button class="data-card-save" 
-                        @click="saveSinglePriceEntry(prog.id, i)" 
+                      <button class="data-card-save" @click="saveSinglePriceEntry(prog.id, i)"
                         :disabled="!isValidPriceEntry(entry) || savingEntryIndex === i"
                         x-show="isValidPriceEntry(entry)">
                         <span x-show="savingEntryIndex === i" class="spinner" style="width: 14px; height: 14px;"></span>
@@ -311,6 +315,13 @@
         // Individual save state
         savingEntryIndex: null,
 
+        // Timer state
+        expiresAt: null,
+        countdownDisplay: '--:--',
+        timerWarning: false,
+        timerExpired: false,
+        countdownInterval: null,
+
         // ============================================================================
         // Computed Properties (as getters)
         // ============================================================================
@@ -368,6 +379,12 @@
             if (!status.valid) {
               this.errorMessage = 'Este link expirou ou é inválido. Por favor, solicite um novo link no bot.';
               return;
+            }
+
+            // Capturar expiresAt e iniciar countdown
+            if (status.expiresAt) {
+              this.expiresAt = new Date(status.expiresAt).getTime();
+              this.startCountdown();
             }
 
             await Promise.all([this.fetchPrograms(), this.fetchUserData()]);
@@ -513,14 +530,14 @@
         async saveSinglePriceEntry(programId, index) {
           const entries = this.getPriceEntries(programId);
           const entry = entries[index];
-          
+
           if (!this.isValidPriceEntry(entry)) {
             this.showToast('Preencha quantidade e preço', 'error');
             return;
           }
 
           this.savingEntryIndex = index;
-          
+
           try {
             await this.saveSinglePriceApi({
               programId: entry.programId,
@@ -797,6 +814,35 @@
         selectProgramFromSheet(programId) {
           this.selectProgram(programId);
           this.closeBottomSheet();
+        },
+
+        // ============================================================================
+        // Timer / Countdown
+        // ============================================================================
+        formatTime(seconds) {
+          const mins = Math.floor(seconds / 60);
+          const secs = seconds % 60;
+          return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+        },
+
+        updateCountdown() {
+          if (!this.expiresAt) return;
+
+          const now = Date.now();
+          const remaining = Math.max(0, Math.floor((this.expiresAt - now) / 1000));
+
+          this.countdownDisplay = this.formatTime(remaining);
+          this.timerWarning = remaining <= 60 && remaining > 0;
+          this.timerExpired = remaining <= 0;
+
+          if (remaining <= 0 && this.countdownInterval) {
+            clearInterval(this.countdownInterval);
+          }
+        },
+
+        startCountdown() {
+          this.updateCountdown();
+          this.countdownInterval = setInterval(() => this.updateCountdown(), 1000);
         },
 
         // ============================================================================

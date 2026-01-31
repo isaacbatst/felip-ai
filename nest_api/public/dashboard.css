@@ -23,10 +23,31 @@ body {
 }
 
 .header {
-  text-align: center;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   margin-bottom: 30px;
   padding-bottom: 20px;
   border-bottom: 2px solid #f0f0f0;
+}
+
+.header-timer {
+  padding: 8px 16px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #666;
+  white-space: nowrap;
+}
+
+.header-timer.warning {
+  background: #fff3cd;
+  color: #856404;
+}
+
+.header-timer.expired {
+  background: #f8d7da;
+  color: #721c24;
 }
 
 .logo {
@@ -776,7 +797,6 @@ h1 {
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
-  margin-bottom: 8px;
 }
 
 /* Status toast (mobile) */
