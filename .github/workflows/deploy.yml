@@ -84,6 +84,6 @@ jobs:
           name: felip-ai
           file: stack.yml
           host: congressosimulator.com.br
-          user: felip-ai
+          user: root
           ssh_key: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}
           env_file: ./envfile
