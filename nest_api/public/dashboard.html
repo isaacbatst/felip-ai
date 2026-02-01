@@ -650,7 +650,9 @@
         // Helper Methods
         // ============================================================================
         getPriceEntries(programId) {
-          return this.userData.priceEntries.filter(e => e.programId === programId);
+          return this.userData.priceEntries
+            .filter(e => e.programId === programId)
+            .sort((a, b) => a.quantity - b.quantity);
         },
 
         isValidPriceEntry(entry) {
