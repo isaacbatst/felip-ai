@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { Injectable, Logger } from '@nestjs/common';
 import { zodTextFormat } from 'openai/helpers/zod';
 import { MessageParser } from '../../domain/interfaces/message-parser.interface';
@@ -27,7 +28,7 @@ export class MessageParserService extends MessageParser {
     super();
     this.config = {
       model: 'gpt-5-nano',
-    }
+    };
   }
   async parse(text: string, availableProviders?: Provider[]): Promise<PurchaseRequest | null> {
     try {
@@ -36,12 +37,13 @@ export class MessageParserService extends MessageParser {
         providers: availableProviders?.join(', ') || '',
         text: text,
       };
-      this.logger.debug('[VARIABLES] Variables:', variables);
+      const id = randomUUID();
+      this.logger.debug('[VARIABLES] Variables:', { id, ...variables, });
       const response = await client.responses.parse({
         model: this.config.model,
         prompt: {
           id: this.promptId,
-          version: '5',
+          version: '9',
           variables,
         },
         reasoning: {
@@ -53,15 +55,9 @@ export class MessageParserService extends MessageParser {
         },
       });
 
-      if (response.usage) {
-        this.logger.debug('[TOKENS] OpenAI usage:', {
-          inputTokens: response.usage.input_tokens,
-          outputTokens: response.usage.output_tokens,
-          total: response.usage.total_tokens,
-        });
-      }
-
       const parsed = response.output_parsed;
+
+      this.logger.debug('[PARSED] Parsed:', { id, ...parsed });
 
       if (!parsed || !parsed.isPurchaseProposal) {
         return null;
