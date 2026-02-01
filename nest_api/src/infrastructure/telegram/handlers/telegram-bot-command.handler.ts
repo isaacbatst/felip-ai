@@ -711,9 +711,10 @@ export class TelegramCommandHandler {
         return;
       }
 
-      // Generate dashboard access token (60 minutes TTL)
+      // Generate dashboard access token
       const loggedInUserIdStr = loggedInUserId.toString();
-      const { token, expiresAt } = await this.dashboardTokenRepository.createToken(loggedInUserIdStr, 1);
+      const ttlMinutes = this.appConfig.getDashboardTokenTtlMinutes();
+      const { token, expiresAt } = await this.dashboardTokenRepository.createToken(loggedInUserIdStr, ttlMinutes);
 
       // Build dashboard URL
       const baseUrl = this.appConfig.getAppBaseUrl();

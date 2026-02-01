@@ -116,5 +116,14 @@ export class AppConfigService {
     const value = this.configService.get<string>('AUTH_TOKEN_TTL_MINUTES', '10');
     return Number.parseInt(value, 10);
   }
+
+  /**
+   * Dashboard token time-to-live in minutes
+   * Determines how long dashboard access tokens are valid before expiring
+   */
+  getDashboardTokenTtlMinutes(): number {
+    const value = this.configService.get<string>('DASHBOARD_TOKEN_TTL_MINUTES', '60');
+    return Number.parseInt(value, 10);
+  }
 }
 
