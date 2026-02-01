@@ -593,6 +593,9 @@
   .bg-green-100 {
     background-color: var(--color-green-100);
   }
+  .bg-primary {
+    background-color: var(--color-primary);
+  }
   .bg-red-100 {
     background-color: var(--color-red-100);
   }
@@ -946,6 +949,13 @@
     &:hover {
       @media (hover: hover) {
         color: var(--color-primary);
+      }
+    }
+  }
+  .hover\:opacity-90 {
+    &:hover {
+      @media (hover: hover) {
+        opacity: 90%;
       }
     }
   }
