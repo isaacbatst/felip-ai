@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Put,
+  Delete,
   Param,
   Body,
   Res,
@@ -34,6 +35,7 @@ interface ProgramResponse {
 
 interface UserDataResponse {
   priceEntries: Array<{
+    id: number;
     programId: number;
     programName: string;
     quantity: number;
@@ -64,6 +66,7 @@ interface UpdateMilesDto {
 }
 
 interface UpdateSinglePriceDto {
+  id?: number;
   programId: number;
   quantity: number;
   price: number;
@@ -188,6 +191,7 @@ export class DashboardController {
       success: true,
       data: {
         priceEntries: priceEntries.map((e) => ({
+          id: e.id,
           programId: e.programId,
           programName: programMap.get(e.programId) ?? 'Unknown',
           quantity: e.quantity,
@@ -251,6 +255,8 @@ export class DashboardController {
 
   /**
    * PUT /dashboard/:token/price - Update a single price entry
+   * If id is provided, updates the existing entry by id
+   * If id is not provided, creates or updates by (userId, programId, quantity)
    */
   @Put(':token/price')
   async updateSinglePrice(
@@ -269,9 +275,57 @@ export class DashboardController {
       return;
     }
 
-    await this.userDataRepository.upsertPriceEntry(userId, body);
+    // If id is provided, update by id (allows changing quantity)
+    if (typeof body.id === 'number') {
+      const updated = await this.userDataRepository.updatePriceEntryById(body.id, {
+        quantity: body.quantity,
+        price: body.price,
+      });
 
-    this.logger.log(`Updated price entry for user ${userId}: program=${body.programId}, qty=${body.quantity}`);
+      if (!updated) {
+        res.status(HttpStatus.NOT_FOUND).json({
+          success: false,
+          error: 'Price entry not found.',
+        } satisfies ApiResponse);
+        return;
+      }
+
+      this.logger.log(`Updated price entry by id=${body.id} for user ${userId}: qty=${body.quantity}, price=${body.price}`);
+    } else {
+      // No id provided, use upsert by (userId, programId, quantity)
+      await this.userDataRepository.upsertPriceEntry(userId, body);
+      this.logger.log(`Upserted price entry for user ${userId}: program=${body.programId}, qty=${body.quantity}`);
+    }
+
+    res.status(HttpStatus.OK).json({
+      success: true,
+    } satisfies ApiResponse);
+  }
+
+  /**
+   * DELETE /dashboard/:token/price/:id - Delete a single price entry by ID
+   */
+  @Delete(':token/price/:id')
+  async deleteSinglePrice(
+    @Param('token') token: string,
+    @Param('id') id: string,
+    @Res() res: Response,
+  ): Promise<void> {
+    const userId = await this.validateAndGetUserId(token, res);
+    if (!userId) return;
+
+    const entryId = parseInt(id, 10);
+    if (Number.isNaN(entryId)) {
+      res.status(HttpStatus.BAD_REQUEST).json({
+        success: false,
+        error: 'Invalid id format. Must be a number.',
+      } satisfies ApiResponse);
+      return;
+    }
+
+    await this.userDataRepository.deletePriceEntryById(entryId);
+
+    this.logger.log(`Deleted price entry id=${entryId} for user ${userId}`);
 
     res.status(HttpStatus.OK).json({
       success: true,

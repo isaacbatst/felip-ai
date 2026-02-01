@@ -95,6 +95,16 @@ export abstract class UserDataRepository {
    */
   abstract deletePriceEntries(userId: string): Promise<void>;
 
+  /**
+   * Update a single price entry by ID
+   */
+  abstract updatePriceEntryById(id: number, data: { quantity: number; price: number }): Promise<UserPriceEntryData | null>;
+
+  /**
+   * Delete a single price entry by ID
+   */
+  abstract deletePriceEntryById(id: number): Promise<void>;
+
   // ============================================================================
   // Max Prices
   // ============================================================================

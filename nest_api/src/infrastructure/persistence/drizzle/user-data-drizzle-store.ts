@@ -114,6 +114,27 @@ export class UserDataDrizzleStore extends UserDataRepository {
     await this.db.delete(userPriceEntries).where(eq(userPriceEntries.userId, userId));
   }
 
+  async updatePriceEntryById(
+    id: number,
+    data: { quantity: number; price: number },
+  ): Promise<UserPriceEntryData | null> {
+    const result = await this.db
+      .update(userPriceEntries)
+      .set({
+        quantity: data.quantity,
+        price: data.price,
+        updatedAt: new Date(),
+      })
+      .where(eq(userPriceEntries.id, id))
+      .returning();
+
+    return result.length > 0 ? this.mapToPriceEntryData(result[0]) : null;
+  }
+
+  async deletePriceEntryById(id: number): Promise<void> {
+    await this.db.delete(userPriceEntries).where(eq(userPriceEntries.id, id));
+  }
+
   // ============================================================================
   // Max Prices
   // ============================================================================

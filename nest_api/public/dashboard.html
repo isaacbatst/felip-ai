@@ -569,11 +569,16 @@
           this.savingEntryIndex = index;
 
           try {
-            await this.saveSinglePriceApi({
+            const payload = {
               programId: entry.programId,
               quantity: entry.quantity,
               price: entry.price,
-            });
+            };
+            // Include id if it exists (for updating existing entries)
+            if (entry.id) {
+              payload.id = entry.id;
+            }
+            await this.saveSinglePriceApi(payload);
             this.showToast('Preço salvo!', 'success');
           } catch (error) {
             this.showToast('Erro ao salvar: ' + error.message, 'error');
@@ -714,10 +719,30 @@
           this.carouselIndex[programId] = entries.length - 1;
         },
 
-        removePriceEntry(programId, index) {
+        async removePriceEntry(programId, index) {
           const entries = this.getPriceEntries(programId);
-          const globalIndex = this.userData.priceEntries.indexOf(entries[index]);
+          const entry = entries[index];
+          const globalIndex = this.userData.priceEntries.indexOf(entry);
+
           if (globalIndex > -1) {
+            // If entry has an id (persisted in DB), call DELETE API
+            if (entry.id) {
+              try {
+                const res = await fetch(`/dashboard/${this.token}/price/${entry.id}`, {
+                  method: 'DELETE',
+                });
+                const data = await res.json();
+                if (!data.success) {
+                  this.showToast('Erro ao remover: ' + (data.error || 'Falha ao remover'), 'error');
+                  return;
+                }
+              } catch (error) {
+                this.showToast('Erro ao remover: ' + error.message, 'error');
+                return;
+              }
+            }
+
+            // Remove from local array
             this.userData.priceEntries.splice(globalIndex, 1);
             this.hasUnsavedChanges = true;
 
@@ -725,6 +750,10 @@
             const currentIndex = this.carouselIndex[programId] || 0;
             if (currentIndex >= entries.length - 1) {
               this.carouselIndex[programId] = Math.max(0, entries.length - 2);
+            }
+
+            if (entry.id) {
+              this.showToast('Preço removido!', 'success');
             }
           }
         },
