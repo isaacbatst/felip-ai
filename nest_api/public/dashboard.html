@@ -160,13 +160,17 @@
                     <div class="data-card-fields flex gap-3">
                       <div class="data-card-field flex-1">
                         <label class="block text-xs text-gray-500 mb-1.5 font-medium">Quantidade (k)</label>
-                        <input type="number" x-model.number="entry.quantity" @input="markAsChanged()" step="1" min="1"
-                          placeholder="15" class="w-full p-2 md:p-3 border border-gray-200 rounded-lg text-base text-center transition-all">
+                        <input type="text" inputmode="numeric" :value="entry.quantity || ''"
+                          @input="formatInput($event, false); entry.quantity = parseNumber($event.target.value, false) || 0; markAsChanged()"
+                          placeholder="15" class="w-full p-2 md:p-3 border rounded-lg text-base text-center transition-all"
+                          :class="entry.quantity > 0 ? 'border-gray-200' : 'border-red-400'">
                       </div>
                       <div class="data-card-field flex-1">
                         <label class="block text-xs text-gray-500 mb-1.5 font-medium">Preço (R$)</label>
-                        <input type="number" x-model.number="entry.price" @input="markAsChanged()" step="0.25" min="0"
-                          placeholder="20.00" class="w-full p-2 md:p-3 border border-gray-200 rounded-lg text-base text-center transition-all">
+                        <input type="text" inputmode="decimal" :value="entry.price || ''"
+                          @input="formatInput($event, true); entry.price = parseNumber($event.target.value, true) || 0; markAsChanged()"
+                          placeholder="20.00" class="w-full p-2 md:p-3 border rounded-lg text-base text-center transition-all"
+                          :class="entry.price > 0 ? 'border-gray-200' : 'border-red-400'">
                       </div>
                     </div>
                   </div>
@@ -208,8 +212,8 @@
               <div class="data-card-fields flex gap-3">
                 <div class="data-card-field flex-1">
                   <label class="block text-xs text-gray-500 mb-1.5 font-medium">Preço Máximo (R$)</label>
-                  <input type="number" :value="getMaxPrice(prog.id)?.maxPrice || ''"
-                    @input="updateMaxPrice(prog.id, $event.target.value)" step="0.25" min="0" placeholder="Sem limite" class="w-full p-3 border border-gray-200 rounded-lg text-base text-center transition-all">
+                  <input type="text" inputmode="decimal" :value="getMaxPrice(prog.id)?.maxPrice || ''"
+                    @input="formatInput($event, true); updateMaxPrice(prog.id, $event.target.value)" placeholder="Sem limite" class="w-full p-3 border border-gray-200 rounded-lg text-base text-center transition-all">
                 </div>
               </div>
             </div>
@@ -245,8 +249,8 @@
               <div class="data-card-fields flex gap-3">
                 <div class="data-card-field flex-1">
                   <label class="block text-xs text-gray-500 mb-1.5 font-medium">Milhas Disponíveis</label>
-                  <input type="number" :value="getMiles(prog.id)?.availableMiles || ''"
-                    @input="updateMiles(prog.id, $event.target.value)" step="1000" min="0" placeholder="0" class="w-full p-3 border border-gray-200 rounded-lg text-base text-center transition-all">
+                  <input type="text" inputmode="numeric" :value="getMiles(prog.id)?.availableMiles || ''"
+                    @input="formatInput($event, false); updateMiles(prog.id, $event.target.value)" placeholder="0" class="w-full p-3 border border-gray-200 rounded-lg text-base text-center transition-all">
                 </div>
               </div>
             </div>
@@ -743,7 +747,7 @@
 
         updateMaxPrice(programId, value) {
           const entry = this.ensureMaxPriceEntry(programId);
-          entry.maxPrice = parseFloat(value) || 0;
+          entry.maxPrice = this.parseNumber(value, true) || 0;
           this.hasUnsavedChanges = true;
         },
 
@@ -765,7 +769,7 @@
 
         updateMiles(programId, value) {
           const entry = this.ensureMilesEntry(programId);
-          entry.availableMiles = parseInt(value) || 0;
+          entry.availableMiles = this.parseNumber(value, false) || 0;
           this.hasUnsavedChanges = true;
         },
 
@@ -904,6 +908,26 @@
         // ============================================================================
         isMobile() {
           return window.innerWidth <= 768;
+        },
+
+        parseNumber(value, allowDecimal = true) {
+          if (!value && value !== 0) return null;
+          // Substitui vírgula por ponto e remove caracteres inválidos
+          const normalized = String(value).replace(',', '.').replace(/[^\d.]/g, '');
+          const parsed = allowDecimal ? parseFloat(normalized) : parseInt(normalized, 10);
+          return Number.isNaN(parsed) ? null : parsed;
+        },
+
+        formatInput(event, allowDecimal = true) {
+          const input = event.target;
+          // Permite apenas dígitos, ponto e vírgula
+          const pattern = allowDecimal ? /[^\d.,]/g : /[^\d]/g;
+          input.value = input.value.replace(pattern, '');
+        },
+
+        isValidNumber(value, min = 0, allowDecimal = true) {
+          const parsed = this.parseNumber(value, allowDecimal);
+          return parsed !== null && parsed >= min;
         },
 
         markAsChanged() {
