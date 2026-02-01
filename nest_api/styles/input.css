@@ -1,0 +1,96 @@
+@import "tailwindcss";
+
+/* Tell Tailwind where to find content files */
+@source "../public/**/*.html";
+
+@theme {
+  /* Colors */
+  --color-primary: #667eea;
+  --color-secondary: #764ba2;
+
+  /* Fonts */
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+}
+
+/* Alpine.js cloak */
+[x-cloak] { display: none !important; }
+
+/* Spinner animation */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.75s linear infinite;
+  vertical-align: middle;
+}
+
+/* Custom scrollbar - not supported by Tailwind */
+.program-pills {
+  scrollbar-width: none;
+}
+
+.program-pills::-webkit-scrollbar {
+  height: 0px;
+}
+
+/* Global focus state */
+input:focus {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+/* Responsive visibility */
+@media (max-width: 768px) {
+  .tabs {
+    display: none;
+  }
+
+  .program-pills-container {
+    display: flex !important;
+  }
+
+  .mobile-controls {
+    display: flex !important;
+  }
+
+  .overview-toggle {
+    display: block !important;
+  }
+
+  .section-description {
+    display: none !important;
+  }
+}
+
+@media (min-width: 769px) {
+  .program-pills-container,
+  .mobile-controls,
+  .overview-toggle,
+  .overview-grid {
+    display: none !important;
+  }
+
+  .data-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  }
+
+  .price-cards-list {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+
+  .price-cards-list .price-data-card {
+    flex: 0 0 auto;
+    min-width: 200px;
+    max-width: 280px;
+  }
+}

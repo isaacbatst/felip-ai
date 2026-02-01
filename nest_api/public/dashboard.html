@@ -5,61 +5,69 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Dashboard - Configurações de Milhas</title>
-  <link rel="stylesheet" href="/public/dashboard.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/public/output.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
   <script defer src="https://unpkg.com/alpinejs@3.13.3/dist/cdn.min.js"></script>
 </head>
 
-<body x-data="dashboard()" x-init="init()" x-cloak>
+<body x-data="dashboard()" x-init="init()" x-cloak class="font-sans bg-white md:bg-gradient-to-br md:from-primary md:to-secondary min-h-screen p-5 max-md:p-0 ">
   <!-- Loading Overlay -->
-  <div class="loading-overlay" :class="{ 'hidden': !loading && !errorMessage }">
-    <div style="text-align: center;" x-show="loading && !errorMessage">
+  <div class="fixed inset-0 bg-white/90 flex items-center justify-center z-[1000]" x-show="loading || errorMessage">
+    <div class="text-center" x-show="loading && !errorMessage">
       <div class="spinner" style="width: 40px; height: 40px; border-width: 4px;"></div>
-      <p style="margin-top: 16px; color: #666;">Carregando...</p>
+      <p class="mt-4 text-gray-500">Carregando...</p>
     </div>
-    <div style="text-align: center; padding: 40px;" x-show="errorMessage">
-      <div style="margin-bottom: 16px;"><i class="fa-solid fa-triangle-exclamation icon-error"></i></div>
-      <h2 style="color: #721c24; margin-bottom: 8px;">Link Inválido</h2>
-      <p style="color: #666;" x-text="errorMessage"></p>
+    <div class="text-center p-10" x-show="errorMessage">
+      <div class="mb-4"><i class="fa-solid fa-triangle-exclamation w-12 h-12 text-red-800"></i></div>
+      <h2 class="text-red-800 mb-2 text-lg font-semibold">Link Inválido</h2>
+      <p class="text-gray-500" x-text="errorMessage"></p>
     </div>
   </div>
 
-  <div class="container" x-show="!loading && !errorMessage">
-    <div class="header">
-      <h1>Dashboard</h1>
-      <div class="header-timer" x-show="expiresAt" :class="{ 'warning': timerWarning, 'expired': timerExpired }">
+  <div class="bg-white p-8 rounded-2xl shadow-2xl max-w-4xl mx-auto max-md:p-4 max-md:rounded-none max-md:shadow-none" x-show="!loading && !errorMessage">
+    <div class="flex justify-between items-center mb-4 pb-5 border-b-2 border-gray-100 max-md:pb-4 max-md:mb-0">
+      <h1 class="text-gray-800 text-2xl font-semibold max-md:text-xl">Dashboard</h1>
+      <div class="px-4 py-2 rounded-lg text-sm whitespace-nowrap" x-show="expiresAt" :class="timerExpired ? 'bg-red-100 text-red-800' : timerWarning ? 'bg-amber-100 text-amber-700' : 'bg-gray-50 text-gray-500'">
         <span x-text="timerExpired ? 'Link expirado' : `Expira em: ${countdownDisplay}`"></span>
       </div>
     </div>
+    
     <!-- Programs Tabs (Desktop) -->
-    <div class="tabs">
+    <div class="tabs flex gap-2.5 mb-5 flex-wrap">
       <template x-for="p in normalPrograms" :key="p.id">
-        <button class="tab-btn" :class="{ 'active': selectedProgramId === p.id }" @click="selectProgram(p.id)"
+        <button class="tab-btn px-5 py-2.5 border-2 rounded-lg cursor-pointer text-sm font-medium transition-all" 
+          :class="selectedProgramId === p.id ? 'bg-linear-135 from-primary to-secondary text-white border-transparent' : 'border-gray-200 bg-white hover:border-primary hover:text-primary'" 
+          @click="selectProgram(p.id)"
           x-text="p.name">
         </button>
       </template>
     </div>
 
     <!-- Mobile Pills Navigation -->
-    <div class="program-pills-container">
-      <div class="program-pills">
+    <div class="program-pills-container hidden items-center gap-2 mb-5 sticky top-0 bg-white py-3 z-50 border-b border-gray-200">
+      <div class="program-pills flex gap-2 overflow-x-auto flex-1 py-3 scroll-smooth">
         <template x-for="p in normalPrograms" :key="p.id">
-          <button class="pill" :class="{ 'active': selectedProgramId === p.id }" @click="selectProgram(p.id)"
+          <button class="pill shrink-0 px-4 py-2.5 border-none rounded-full text-sm font-medium cursor-pointer transition-all whitespace-nowrap" 
+            :class="selectedProgramId === p.id ? 'active bg-linear-135 from-primary to-secondary text-white' : 'bg-gray-100 text-gray-600'" 
+            @click="selectProgram(p.id)"
             x-text="p.name">
           </button>
         </template>
       </div>
-      <button class="program-selector-btn" @click="openBottomSheet()"><i class="fa-solid fa-bars"></i></button>
+      <button class="shrink-0 w-10 h-10 rounded-full border-2 border-primary bg-white text-primary text-base cursor-pointer flex items-center justify-center" @click="openBottomSheet()"><i class="fa-solid fa-bars"></i></button>
     </div>
 
-    <div class="mobile-controls">
+    <div class="mobile-controls hidden justify-between items-center mb-4">
       <!-- Program Indicator (Mobile) -->
-      <div class="program-indicator">
-        Programa: <strong x-text="selectedProgram?.name || '-'"></strong>
+      <div class="text-center p-2 text-gray-500 text-sm">
+        Programa: <strong class="text-gray-800" x-text="selectedProgram?.name || '-'"></strong>
       </div>
 
       <!-- Overview Toggle (Mobile) -->
-      <button class="overview-toggle" @click="toggleOverview()">
+      <button class="overview-toggle hidden w-full p-3 border-none bg-transparent text-primary text-sm font-medium cursor-pointer" @click="toggleOverview()">
         <template x-if="showOverview">
           <span><i class="fa-solid fa-arrow-left"></i> Voltar para detalhes</span>
         </template>
@@ -70,16 +78,17 @@
     </div>
 
     <!-- Overview Grid (Mobile) -->
-    <div class="overview-grid" :style="{ display: showOverview ? 'grid' : 'none' }">
+    <div class="overview-grid hidden grid-cols-2 gap-3 py-4" :style="{ display: showOverview ? 'grid' : 'none' }">
       <template x-for="p in normalPrograms" :key="p.id">
-        <div class="overview-card" :class="{ 'active': selectedProgramId === p.id }"
+        <div class="bg-white border rounded-xl p-4 cursor-pointer transition-all active:bg-gray-50 active:scale-[0.98]" 
+          :class="selectedProgramId === p.id ? 'border-primary bg-linear-135 from-primary/5 to-secondary/5' : 'border-gray-200'"
           @click="selectProgramFromOverview(p.id)">
-          <div class="overview-card-name" x-text="p.name"></div>
-          <div class="overview-card-stats">
-            <div class="overview-card-stat">Preços: <span x-text="getPriceCount(p.id)"></span></div>
-            <div class="overview-card-stat">Milhas: <span x-text="getMilesDisplay(p.id)"></span></div>
+          <div class="font-semibold text-sm text-gray-800 mb-2" x-text="p.name"></div>
+          <div class="flex flex-col gap-1">
+            <div class="text-xs text-gray-500">Preços: <span class="text-primary font-semibold" x-text="getPriceCount(p.id)"></span></div>
+            <div class="text-xs text-gray-500">Milhas: <span class="text-primary font-semibold" x-text="getMilesDisplay(p.id)"></span></div>
             <template x-if="getMaxPriceDisplay(p.id)">
-              <div class="overview-card-stat">Teto: <span x-text="getMaxPriceDisplay(p.id)"></span></div>
+              <div class="text-xs text-gray-500">Teto: <span class="text-primary font-semibold" x-text="getMaxPriceDisplay(p.id)"></span></div>
             </template>
           </div>
         </div>
@@ -90,74 +99,74 @@
     <div id="mobileContent" x-show="!showOverview" @touchstart="onTouchStart($event)" @touchend="onTouchEnd($event)">
 
       <!-- Section Tabs -->
-      <div class="section-tabs">
-        <button class="section-tab" :class="{ 'active': activeSection === 'prices' }" @click="activeSection = 'prices'">
+      <div class="section-tabs flex justify-center gap-0 mb-5 border-b-2 border-gray-100">
+        <button class="px-5 py-3 border-none bg-transparent cursor-pointer text-sm font-medium border-b-3 -mb-0.5 transition-all flex flex-col gap-1 hover:text-primary" :class="activeSection === 'prices' ? 'text-primary border-b-primary' : 'text-gray-500 border-transparent'" @click="activeSection = 'prices'">
           <i class="fa-solid fa-chart-simple"></i> Preços
         </button>
-        <button class="section-tab" :class="{ 'active': activeSection === 'maxPrices' }"
+        <button class="px-5 py-3 border-none bg-transparent cursor-pointer text-sm font-medium border-b-3 -mb-0.5 transition-all flex flex-col gap-1 hover:text-primary" :class="activeSection === 'maxPrices' ? 'text-primary border-b-primary' : 'text-gray-500 border-transparent'"
           @click="activeSection = 'maxPrices'">
-          <i class="fa-solid fa-lock"></i> Preço Máximo
+          <i class="fa-solid fa-lock"></i> Teto
         </button>
-        <button class="section-tab" :class="{ 'active': activeSection === 'miles' }" @click="activeSection = 'miles'">
+        <button class="px-5 py-3 border-none bg-transparent cursor-pointer text-sm font-medium border-b-3 -mb-0.5 transition-all flex flex-col gap-1 hover:text-primary" :class="activeSection === 'miles' ? 'text-primary border-b-primary' : 'text-gray-500 border-transparent'" @click="activeSection = 'miles'">
           <i class="fa-solid fa-box"></i> Estoque
         </button>
       </div>
 
       <!-- Price Tables Section -->
-      <div class="section" x-show="activeSection === 'prices'">
-        <div class="section-header">
-          <h2><i class="fa-solid fa-chart-simple"></i> Tabela de Preços</h2>
+      <div class="section mb-8 p-5 bg-gray-50 rounded-xl max-md:p-0 max-md:mb-6" x-show="activeSection === 'prices'">
+        <div class="section-header flex justify-between items-center mb-4 max-md:mx-3 max-md:py-3 max-md:border-b max-md:border-gray-200">
+          <h2 class="text-gray-800 text-lg font-semibold flex items-center gap-1 max-md:text-base"><i class="fa-solid fa-chart-simple"></i> Tabela de Preços</h2>
         </div>
-        <p class="section-description">
+        <p class="section-description text-gray-500 text-sm mb-4">
           Configure os preços por quantidade (em milhares). Ex: 15 = 15k milhas
         </p>
 
         <!-- Price Type Tabs (only when has liminar - mobile only) -->
-        <div class="price-type-tabs" x-show="hasLiminar()">
-          <button class="price-type-tab" :class="{ 'active': priceTypeTab === 'normal' }"
+        <div class="price-type-tabs flex gap-0 mb-4 bg-gray-100 rounded-lg p-1 max-w-xs" x-show="hasLiminar()">
+          <button class="flex-1 px-4 py-2.5 border-none rounded-md text-sm font-medium cursor-pointer transition-all hover:text-primary" :class="priceTypeTab === 'normal' ? 'bg-white text-primary shadow-sm' : 'bg-transparent text-gray-500'"
             @click="priceTypeTab = 'normal'">
             Normal
           </button>
-          <button class="price-type-tab" :class="{ 'active': priceTypeTab === 'liminar' }"
+          <button class="flex-1 px-4 py-2.5 border-none rounded-md text-sm font-medium cursor-pointer transition-all hover:text-primary" :class="priceTypeTab === 'liminar' ? 'bg-white text-primary shadow-sm' : 'bg-transparent text-gray-500'"
             @click="priceTypeTab = 'liminar'">
             Liminar
           </button>
         </div>
 
         <template x-for="prog in programsToShow" :key="prog.id">
-          <div class="price-carousel-wrapper" x-show="shouldShowPriceProgram(prog)" style="margin-bottom: 16px;">
-            <h4 class="price-program-header" x-show="!hasLiminar()">
+          <div class="price-carousel-wrapper relative flex flex-col gap-3 mb-4" x-show="shouldShowPriceProgram(prog)">
+            <h4 class="text-sm mb-3 text-gray-800" x-show="!hasLiminar()">
               <span x-text="prog.name"></span>
-              <span x-show="prog.isLiminar" class="liminar-badge">LIMINAR</span>
+              <span x-show="prog.isLiminar" class="inline-block py-0.5 px-2 bg-amber-100 text-amber-700 rounded text-[11px] font-semibold ml-2">LIMINAR</span>
             </h4>
 
             <!-- Price Cards -->
             <template x-if="getPriceEntries(prog.id).length > 0">
-              <div class="price-cards-list">
+              <div class="price-cards-list flex flex-col gap-3">
                 <template x-for="(entry, i) in getPriceEntries(prog.id)" :key="i">
-                  <div class="data-card price-data-card" :data-program-id="prog.id">
-                    <div class="data-card-header">
-                      <span class="data-card-badge" x-text="`${entry.quantity || 0}k`"></span>
-                      <div class="data-card-actions">
-                        <button class="data-card-save" @click="saveSinglePriceEntry(prog.id, i)"
+                  <div class="data-card price-data-card bg-white border border-gray-200 rounded-xl p-4 relative transition-all hover:shadow-md hover:border-gray-300" :data-program-id="prog.id">
+                    <div class="data-card-header flex justify-between items-center mb-3">
+                      <span class="bg-linear-135 from-primary to-secondary text-white px-3 py-1 rounded-xl text-sm font-semibold" x-text="`${entry.quantity || 0}k`"></span>
+                      <div class="data-card-actions flex gap-2 items-center">
+                        <button class="data-card-save w-8 h-8 rounded-full border-none bg-emerald-100 text-emerald-600 text-base cursor-pointer flex items-center justify-center transition-all hover:bg-emerald-200 hover:scale-110 disabled:opacity-50 disabled:cursor-not-allowed" @click="saveSinglePriceEntry(prog.id, i)"
                           :disabled="!isValidPriceEntry(entry) || savingEntryIndex === i"
                           x-show="isValidPriceEntry(entry)">
                           <span x-show="savingEntryIndex === i" class="spinner" style="width: 14px; height: 14px;"></span>
                           <span x-show="savingEntryIndex !== i"><i class="fa-solid fa-check"></i></span>
                         </button>
-                        <button class="data-card-delete" @click="removePriceEntry(prog.id, i)"><i class="fa-solid fa-xmark"></i></button>
+                        <button class="data-card-delete w-8 h-8 rounded-full border-none bg-red-100 text-red-600 text-lg cursor-pointer flex items-center justify-center transition-all hover:bg-red-200 hover:scale-110" @click="removePriceEntry(prog.id, i)"><i class="fa-solid fa-xmark"></i></button>
                       </div>
                     </div>
-                    <div class="data-card-fields">
-                      <div class="data-card-field">
-                        <label>Quantidade (k)</label>
+                    <div class="data-card-fields flex gap-3">
+                      <div class="data-card-field flex-1">
+                        <label class="block text-xs text-gray-500 mb-1.5 font-medium">Quantidade (k)</label>
                         <input type="number" x-model.number="entry.quantity" @input="markAsChanged()" step="1" min="1"
-                          placeholder="15">
+                          placeholder="15" class="w-full p-2 md:p-3 border border-gray-200 rounded-lg text-base text-center transition-all">
                       </div>
-                      <div class="data-card-field">
-                        <label>Preço (R$)</label>
+                      <div class="data-card-field flex-1">
+                        <label class="block text-xs text-gray-500 mb-1.5 font-medium">Preço (R$)</label>
                         <input type="number" x-model.number="entry.price" @input="markAsChanged()" step="0.25" min="0"
-                          placeholder="20.00">
+                          placeholder="20.00" class="w-full p-2 md:p-3 border border-gray-200 rounded-lg text-base text-center transition-all">
                       </div>
                     </div>
                   </div>
@@ -167,86 +176,86 @@
 
             <!-- Empty state message -->
             <template x-if="getPriceEntries(prog.id).length === 0">
-              <div class="empty-state" style="text-align: center; padding: 20px; color: #666;">
+              <div class="text-center p-5 text-gray-500">
                 <p>Nenhum preço cadastrado. Clique em "Adicionar Preço" para começar.</p>
               </div>
             </template>
 
-            <button class="add-card-btn" @click="addPriceEntry(prog.id)">+ Adicionar Preço</button>
+            <button class="add-card-btn w-full p-4 border-2 border-dashed border-primary rounded-xl bg-transparent text-primary text-base font-semibold cursor-pointer flex items-center justify-center gap-2 mt-3 transition-all hover:bg-primary/5 hover:border-secondary" @click="addPriceEntry(prog.id)">+ Adicionar Preço</button>
           </div>
         </template>
 
       </div>
 
       <!-- Max Prices Section -->
-      <div class="section" x-show="activeSection === 'maxPrices'">
-        <div class="section-header">
-          <h2><i class="fa-solid fa-lock"></i> Preço Máximo (PREÇO TETO)</h2>
+      <div class="section mb-8 p-5 bg-gray-50 rounded-xl max-md:p-0 max-md:mb-6" x-show="activeSection === 'maxPrices'">
+        <div class="section-header flex justify-between items-center mb-4 max-md:mx-3 max-md:py-3 max-md:border-b max-md:border-gray-200">
+          <h2 class="text-gray-800 text-lg font-semibold flex items-center gap-1 max-md:text-base"><i class="fa-solid fa-lock"></i> Preço Máximo (PREÇO TETO)</h2>
         </div>
-        <p class="section-description">
+        <p class="section-description text-gray-500 text-sm mb-4">
           Define o preço máximo que será cobrado para cada programa
         </p>
 
-        <div class="data-cards">
+        <div class="data-cards flex flex-col gap-3">
           <template x-for="prog in programsToShow" :key="prog.id">
-            <div class="data-card maxprice-data-card" :data-program-id="prog.id">
-              <div class="data-card-header">
-                <span class="data-card-title">
+            <div class="data-card maxprice-data-card bg-white border border-gray-200 rounded-xl p-4 relative transition-all hover:shadow-md hover:border-gray-300" :data-program-id="prog.id">
+              <div class="data-card-header flex justify-between items-center mb-3">
+                <span class="data-card-title font-semibold text-sm text-gray-800">
                   <span x-text="prog.name"></span>
-                  <span x-show="prog.isLiminar" class="liminar-badge">LIMINAR</span>
+                  <span x-show="prog.isLiminar" class="inline-block py-0.5 px-2 bg-amber-100 text-amber-700 rounded text-[11px] font-semibold ml-2">LIMINAR</span>
                 </span>
               </div>
-              <div class="data-card-fields">
-                <div class="data-card-field" style="flex: 1;">
-                  <label>Preço Máximo (R$)</label>
+              <div class="data-card-fields flex gap-3">
+                <div class="data-card-field flex-1">
+                  <label class="block text-xs text-gray-500 mb-1.5 font-medium">Preço Máximo (R$)</label>
                   <input type="number" :value="getMaxPrice(prog.id)?.maxPrice || ''"
-                    @input="updateMaxPrice(prog.id, $event.target.value)" step="0.25" min="0" placeholder="Sem limite">
+                    @input="updateMaxPrice(prog.id, $event.target.value)" step="0.25" min="0" placeholder="Sem limite" class="w-full p-3 border border-gray-200 rounded-lg text-base text-center transition-all">
                 </div>
               </div>
             </div>
           </template>
         </div>
 
-        <div class="btn-group">
-          <button type="button" class="btn btn-primary" @click="saveMaxPrices()" :disabled="saving">
-            <span x-show="saving" class="spinner" style="width: 14px; height: 14px; margin-right: 8px;"></span>
+        <div class="btn-group flex gap-2.5 justify-end mt-4 max-md:justify-center">
+          <button type="button" class="bg-linear-135 from-primary to-secondary px-6 py-3 text-sm font-semibold border-none rounded-lg cursor-pointer transition-all text-white disabled:opacity-60 disabled:cursor-not-allowed hover:not-disabled:-translate-y-0.5 hover:not-disabled:shadow-lg" @click="saveMaxPrices()" :disabled="saving">
+            <span x-show="saving" class="spinner mr-2"></span>
             Salvar Preços Máximos
           </button>
         </div>
       </div>
 
       <!-- Available Miles Section -->
-      <div class="section" x-show="activeSection === 'miles'">
-        <div class="section-header">
-          <h2><i class="fa-solid fa-box"></i> Estoque de Milhas</h2>
+      <div class="section mb-8 p-5 bg-gray-50 rounded-xl max-md:p-0 max-md:mb-6" x-show="activeSection === 'miles'">
+        <div class="section-header flex justify-between items-center mb-4 max-md:mx-3 max-md:py-3 max-md:border-b max-md:border-gray-200">
+          <h2 class="text-gray-800 text-lg font-semibold flex items-center gap-1 max-md:text-base"><i class="fa-solid fa-box"></i> Estoque de Milhas</h2>
         </div>
-        <p class="section-description">
+        <p class="section-description text-gray-500 text-sm mb-4">
           Configure a quantidade de milhas disponíveis para cada programa
         </p>
 
-        <div class="data-cards">
+        <div class="data-cards flex flex-col gap-3">
           <template x-for="prog in programsToShow" :key="prog.id">
-            <div class="data-card miles-data-card" :data-program-id="prog.id">
-              <div class="data-card-header">
-                <span class="data-card-title">
+            <div class="data-card miles-data-card bg-white border border-gray-200 rounded-xl p-4 relative transition-all hover:shadow-md hover:border-gray-300" :data-program-id="prog.id">
+              <div class="data-card-header flex justify-between items-center mb-3">
+                <span class="data-card-title font-semibold text-sm text-gray-800">
                   <span x-text="prog.name"></span>
-                  <span x-show="prog.isLiminar" class="liminar-badge">LIMINAR</span>
+                  <span x-show="prog.isLiminar" class="inline-block py-0.5 px-2 bg-amber-100 text-amber-700 rounded text-[11px] font-semibold ml-2">LIMINAR</span>
                 </span>
               </div>
-              <div class="data-card-fields">
-                <div class="data-card-field" style="flex: 1;">
-                  <label>Milhas Disponíveis</label>
+              <div class="data-card-fields flex gap-3">
+                <div class="data-card-field flex-1">
+                  <label class="block text-xs text-gray-500 mb-1.5 font-medium">Milhas Disponíveis</label>
                   <input type="number" :value="getMiles(prog.id)?.availableMiles || ''"
-                    @input="updateMiles(prog.id, $event.target.value)" step="1000" min="0" placeholder="0">
+                    @input="updateMiles(prog.id, $event.target.value)" step="1000" min="0" placeholder="0" class="w-full p-3 border border-gray-200 rounded-lg text-base text-center transition-all">
                 </div>
               </div>
             </div>
           </template>
         </div>
 
-        <div class="btn-group">
-          <button type="button" class="btn btn-primary" @click="saveMiles()" :disabled="saving">
-            <span x-show="saving" class="spinner" style="width: 14px; height: 14px; margin-right: 8px;"></span>
+        <div class="btn-group flex gap-2.5 justify-end mt-4 max-md:justify-center">
+          <button type="button" class="bg-linear-135 from-primary to-secondary px-6 py-3 text-sm font-semibold border-none rounded-lg cursor-pointer transition-all text-white disabled:opacity-60 disabled:cursor-not-allowed hover:not-disabled:-translate-y-0.5 hover:not-disabled:shadow-lg" @click="saveMiles()" :disabled="saving">
+            <span x-show="saving" class="spinner mr-2"></span>
             Salvar Estoque
           </button>
         </div>
@@ -254,24 +263,28 @@
     </div>
 
     <!-- Bottom Sheet Overlay -->
-    <div class="bottom-sheet-overlay" :class="{ 'visible': bottomSheetOpen }" @click="closeBottomSheet()"></div>
+    <div class="fixed inset-0 bg-black/50 z-[1000] transition-opacity duration-300 md:hidden"
+      :class="bottomSheetOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'"
+      @click="closeBottomSheet()"></div>
 
     <!-- Bottom Sheet -->
-    <div class="bottom-sheet" :class="{ 'visible': bottomSheetOpen }">
-      <div class="bottom-sheet-header">
-        <h3>Selecionar Programa</h3>
-        <button class="bottom-sheet-close" @click="closeBottomSheet()"><i class="fa-solid fa-xmark"></i></button>
+    <div class="fixed bottom-0 left-0 right-0 bg-white rounded-t-[20px] max-h-[70vh] z-[1001] flex flex-col transition-transform duration-300 ease-out md:hidden"
+      :class="bottomSheetOpen ? 'translate-y-0' : 'translate-y-full'">
+      <div class="bottom-sheet-header p-5 border-b border-gray-200 flex items-center justify-between">
+        <h3 class="text-lg m-0 text-gray-800">Selecionar Programa</h3>
+        <button class="bottom-sheet-close w-9 h-9 border-none bg-gray-100 rounded-full text-xl text-gray-500 cursor-pointer flex items-center justify-center shrink-0 active:bg-gray-200" @click="closeBottomSheet()"><i class="fa-solid fa-xmark"></i></button>
       </div>
-      <div style="padding: 20px 16px;">
-        <input type="search" class="bottom-sheet-search" placeholder="Buscar programa..." x-model="programSearch">
+      <div class="p-5">
+        <input type="search" class="bottom-sheet-search w-full p-3 border border-gray-200 rounded-xl text-base outline-none focus:border-primary" placeholder="Buscar programa..." x-model="programSearch">
       </div>
-      <div class="bottom-sheet-content">
+      <div class="bottom-sheet-content overflow-y-auto mx-2.5 px-2.5 flex-1">
         <template x-for="p in filteredPrograms" :key="p.id">
-          <div class="program-list-item" :class="{ 'active': selectedProgramId === p.id }"
+          <div class="flex items-center p-4 rounded-xl cursor-pointer transition-colors mb-2" 
+            :class="selectedProgramId === p.id ? 'bg-linear-135 from-primary/10 to-secondary/10 border-2 border-primary' : 'hover:bg-gray-50 active:bg-gray-50'"
             @click="selectProgramFromSheet(p.id)">
             <div>
-              <div class="program-list-item-name" x-text="p.name"></div>
-              <div class="program-list-item-stats"
+              <div class="program-list-item-name font-medium text-base text-gray-800" x-text="p.name"></div>
+              <div class="program-list-item-stats text-sm text-gray-500 mt-1"
                 x-text="`${getPriceCount(p.id)} preços • ${getMilesDisplay(p.id)} milhas`">
               </div>
             </div>
@@ -281,8 +294,14 @@
     </div>
 
     <!-- Toast Notification -->
-    <div class="toast"
-      :class="{ 'visible': toast.visible, 'success': toast.type === 'success', 'error': toast.type === 'error' }"
+    <div class="fixed bottom-[100px] left-1/2 -translate-x-1/2 px-6 py-3 rounded-3xl text-sm z-[1000] text-white transition-all duration-300 md:hidden"
+      :class="{
+        'translate-y-[100px] opacity-0': !toast.visible,
+        'translate-y-0 opacity-100': toast.visible,
+        'bg-gray-800': !toast.type || (toast.type !== 'success' && toast.type !== 'error'),
+        'bg-emerald-500': toast.type === 'success',
+        'bg-red-500': toast.type === 'error'
+      }"
       x-text="toast.message">
     </div>
   </div>
