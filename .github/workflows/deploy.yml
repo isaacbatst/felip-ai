@@ -78,12 +78,14 @@ jobs:
           echo "RABBITMQ_USER=${{ secrets.RABBITMQ_USER }}" >> envfile
           echo "RABBITMQ_PASSWORD=${{ secrets.RABBITMQ_PASSWORD }}" >> envfile
           echo "APP_BASE_URL=https://chatbot.lfviagens.com" >> envfile
-      - name: Docker Stack Deploy
-        uses: cssnr/stack-deploy-action@v1
-        with:
-          name: felip-ai
-          file: stack.yml
-          host: congressosimulator.com.br
-          user: root
-          ssh_key: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}
-          env_file: ./envfile
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H congressosimulator.com.br >> ~/.ssh/known_hosts
+
+      - name: Update Nest API service only
+        run: |
+          ssh -i ~/.ssh/deploy_key felip-ai@congressosimulator.com.br \
+            "docker service update --image ghcr.io/isaacbatst/felip-ai:${{ github.sha }} felip-ai_nest_api"
