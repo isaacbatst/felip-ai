@@ -154,7 +154,12 @@
                           <span x-show="savingEntryIndex === i" class="spinner" style="width: 14px; height: 14px;"></span>
                           <span x-show="savingEntryIndex !== i"><i class="fa-solid fa-check"></i></span>
                         </button>
-                        <button class="data-card-delete w-8 h-8 rounded-full border-none bg-red-100 text-red-600 text-lg cursor-pointer flex items-center justify-center transition-all hover:bg-red-200 hover:scale-110" @click="removePriceEntry(prog.id, i)"><i class="fa-solid fa-xmark"></i></button>
+                        <button class="data-card-delete w-8 h-8 rounded-full border-none bg-red-100 text-red-600 text-lg cursor-pointer flex items-center justify-center transition-all hover:bg-red-200 hover:scale-110 disabled:opacity-50 disabled:cursor-not-allowed" 
+                          @click="removePriceEntry(prog.id, i)"
+                          :disabled="deletingEntryIndex === i">
+                          <span x-show="deletingEntryIndex === i" class="spinner" style="width: 14px; height: 14px;"></span>
+                          <span x-show="deletingEntryIndex !== i"><i class="fa-solid fa-xmark"></i></span>
+                        </button>
                       </div>
                     </div>
                     <div class="data-card-fields flex gap-3">
@@ -344,6 +349,9 @@
 
         // Individual save state
         savingEntryIndex: null,
+
+        // Individual delete state
+        deletingEntryIndex: null,
 
         // Timer state
         expiresAt: null,
@@ -727,6 +735,7 @@
           if (globalIndex > -1) {
             // If entry has an id (persisted in DB), call DELETE API
             if (entry.id) {
+              this.deletingEntryIndex = index;
               try {
                 const res = await fetch(`/dashboard/${this.token}/price/${entry.id}`, {
                   method: 'DELETE',
@@ -739,6 +748,8 @@
               } catch (error) {
                 this.showToast('Erro ao remover: ' + error.message, 'error');
                 return;
+              } finally {
+                this.deletingEntryIndex = null;
               }
             }
 
