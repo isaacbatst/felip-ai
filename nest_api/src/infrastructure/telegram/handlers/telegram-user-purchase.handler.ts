@@ -1,5 +1,6 @@
 import { TelegramUserClientProxyService } from '@/infrastructure/tdlib/telegram-user-client-proxy.service';
-import { Injectable, Logger } from '@nestjs/common';
+import { MilesProgramRepository } from '@/infrastructure/persistence/miles-program.repository';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { MessageParser } from '../../../domain/interfaces/message-parser.interface';
 import { PriceTableProvider } from '../../../domain/interfaces/price-table-provider.interface';
 import { PriceCalculatorService } from '../../../domain/services/price-calculator.service';
@@ -14,12 +15,21 @@ import type { Provider } from '../../../domain/types/provider.types';
 @Injectable()
 export class TelegramPurchaseHandler {
   private readonly logger = new Logger(TelegramPurchaseHandler.name);
+
+  // Fallback hardcoded liminar map (used when database lookup fails or MilesProgramRepository not available)
+  private static readonly LEGACY_LIMINAR_MAP: Record<string, string> = {
+    'SMILES': 'SMILES LIMINAR',
+    'AZUL/TUDO AZUL': 'AZUL LIMINAR',
+    'LATAM': 'LATAM LIMINAR',
+  };
+
   constructor(
     private readonly messageParser: MessageParser,
     private readonly priceTableProvider: PriceTableProvider,
     private readonly purchaseValidator: PurchaseValidatorService,
     private readonly priceCalculator: PriceCalculatorService,
     private readonly tdlibUserClient: TelegramUserClientProxyService,
+    @Optional() private readonly milesProgramRepository?: MilesProgramRepository,
   ) {}
 
   async handlePurchase(
@@ -63,7 +73,7 @@ export class TelegramPurchaseHandler {
     }
 
     // Determine the effective provider (normal or liminar) based on miles availability
-    const effectiveProvider = this.getEffectiveProvider(
+    const effectiveProvider = await this.getEffectiveProvider(
       selectedProvider,
       validatedRequest.quantity,
       priceTableResult.availableMiles,
@@ -137,13 +147,17 @@ export class TelegramPurchaseHandler {
    * Determines the effective provider (normal or liminar) based on miles availability.
    * If the normal program doesn't have enough miles, tries to use the liminar program.
    * Returns the effective provider if available, null otherwise.
+   * 
+   * Liminar lookup priority:
+   * 1. Database lookup via MilesProgramRepository (if available)
+   * 2. Fallback to hardcoded LEGACY_LIMINAR_MAP
    */
-  private getEffectiveProvider(
+  private async getEffectiveProvider(
     selectedProvider: Provider,
     quantity: number,
     availableMiles: Record<string, number | null>,
     availableProviders: Provider[],
-  ): Provider | null {
+  ): Promise<Provider | null> {
     const requiredMiles = quantity * 1000;
     const isLiminar = selectedProvider.toLowerCase().includes('liminar');
 
@@ -161,20 +175,14 @@ export class TelegramPurchaseHandler {
     }
 
     // If normal doesn't have enough miles, try liminar
-    const liminarMap: Record<string, string> = {
-      'SMILES': 'SMILES LIMINAR',
-      'AZUL/TUDO AZUL': 'AZUL LIMINAR',
-      'LATAM': 'LATAM LIMINAR',
-    };
-
-    const liminarProgram = liminarMap[selectedProvider];
-    if (!liminarProgram) {
+    const liminarProgramName = await this.findLiminarProgramName(selectedProvider);
+    if (!liminarProgramName) {
       return null;
     }
 
     // Check if liminar program exists in available providers
     const liminarProvider = availableProviders.find(
-      (p) => p.toUpperCase() === liminarProgram.toUpperCase(),
+      (p) => p.toUpperCase() === liminarProgramName.toUpperCase(),
     ) as Provider | undefined;
 
     if (!liminarProvider) {
@@ -191,6 +199,41 @@ export class TelegramPurchaseHandler {
     }
 
     return null;
+  }
+
+  /**
+   * Find the liminar program name for a given normal program.
+   * First tries database lookup, then falls back to hardcoded map.
+   */
+  private async findLiminarProgramName(normalProviderName: string): Promise<string | null> {
+    // Try database lookup first if repository is available
+    if (this.milesProgramRepository) {
+      try {
+        const normalProgram = await this.milesProgramRepository.getProgramByName(normalProviderName);
+        if (normalProgram) {
+          const liminarProgram = await this.milesProgramRepository.findLiminarFor(normalProgram.id);
+          if (liminarProgram) {
+            this.logger.debug('Found liminar program from database', {
+              normal: normalProviderName,
+              liminar: liminarProgram.name,
+            });
+            return liminarProgram.name;
+          }
+        }
+      } catch (error) {
+        this.logger.warn('Error looking up liminar program from database, falling back to hardcoded map', { error });
+      }
+    }
+
+    // Fallback to hardcoded map
+    const liminarName = TelegramPurchaseHandler.LEGACY_LIMINAR_MAP[normalProviderName];
+    if (liminarName) {
+      this.logger.debug('Using hardcoded liminar map', {
+        normal: normalProviderName,
+        liminar: liminarName,
+      });
+    }
+    return liminarName ?? null;
   }
 
   /**

@@ -14,6 +14,12 @@ import { BotStatusRepository } from "@/infrastructure/persistence/bot-status.rep
 import { BotStatusDrizzleStore } from "@/infrastructure/persistence/drizzle/bot-status-drizzle-store";
 import { AuthTokenRepository } from "@/infrastructure/persistence/auth-token.repository";
 import { AuthTokenDrizzleStore } from "@/infrastructure/persistence/drizzle/auth-token-drizzle-store";
+import { DashboardTokenRepository } from "@/infrastructure/persistence/dashboard-token.repository";
+import { DashboardTokenDrizzleStore } from "@/infrastructure/persistence/drizzle/dashboard-token-drizzle-store";
+import { UserDataRepository } from "@/infrastructure/persistence/user-data.repository";
+import { UserDataDrizzleStore } from "@/infrastructure/persistence/drizzle/user-data-drizzle-store";
+import { MilesProgramRepository } from "@/infrastructure/persistence/miles-program.repository";
+import { MilesProgramDrizzleStore } from "@/infrastructure/persistence/drizzle/miles-program-drizzle-store";
 
 @Module({
   imports: [DatabaseModule],
@@ -46,6 +52,18 @@ import { AuthTokenDrizzleStore } from "@/infrastructure/persistence/drizzle/auth
       provide: AuthTokenRepository,
       useClass: AuthTokenDrizzleStore,
     },
+    {
+      provide: DashboardTokenRepository,
+      useClass: DashboardTokenDrizzleStore,
+    },
+    {
+      provide: UserDataRepository,
+      useClass: UserDataDrizzleStore,
+    },
+    {
+      provide: MilesProgramRepository,
+      useClass: MilesProgramDrizzleStore,
+    },
   ],
   exports: [
     ConversationRepository,
@@ -55,6 +73,9 @@ import { AuthTokenDrizzleStore } from "@/infrastructure/persistence/drizzle/auth
     MessageEnqueuedLogRepository,
     BotStatusRepository,
     AuthTokenRepository,
+    DashboardTokenRepository,
+    UserDataRepository,
+    MilesProgramRepository,
   ],
 })
 export class PersistenceModule {}
