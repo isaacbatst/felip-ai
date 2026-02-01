@@ -5,8 +5,7 @@ import { AppConfigService } from '../config/app.config';
 import { DomainModule } from '../domain/domain.module';
 import { MessageParser } from '../domain/interfaces/message-parser.interface';
 import { PriceTableProvider } from '../domain/interfaces/price-table-provider.interface';
-import { GoogleSheetsCacheService } from './cache/google-sheets-cache.service';
-import { GoogleSheetsService } from './google-sheets/google-sheets.service';
+import { DatabasePriceTableProvider } from './cache/database-price-table-provider';
 import { MessageParserService } from './openai/message-parser.service';
 import { OpenAIService } from './openai/openai.service';
 import { QueueModule } from './queue/queue.module';
@@ -38,23 +37,11 @@ import { DashboardController } from './http/dashboard.controller';
   controllers: [AuthController, DashboardController],
   providers: [
     AppConfigService,
-    GoogleSheetsService,
     OpenAIService,
     TelegramUserClientProxyService,
     {
       provide: PriceTableProvider,
-      useFactory: (config: AppConfigService, googleSheetsService: GoogleSheetsService) => {
-        return new GoogleSheetsCacheService(
-          {
-            spreadsheetId: config.getGoogleSpreadsheetId(),
-            keyFile: config.getGoogleServiceAccountKeyFile(),
-            ttlSeconds: config.getPriceTableCacheTtlSeconds(),
-            debugPrefix: 'price-table-cache-v2',
-          },
-          googleSheetsService,
-        );
-      },
-      inject: [AppConfigService, GoogleSheetsService],
+      useClass: DatabasePriceTableProvider,
     },
     {
       provide: MessageParser,

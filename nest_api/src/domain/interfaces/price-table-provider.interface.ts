@@ -8,6 +8,6 @@ import type { PriceTableResultV2 } from '../types/google-sheets.types';
  */
 @Injectable()
 export abstract class PriceTableProvider {
-  abstract getPriceTable(): Promise<PriceTableResultV2>;
+  abstract getPriceTable(userId: string): Promise<PriceTableResultV2>;
 }
 

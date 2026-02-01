@@ -39,7 +39,7 @@ export class TelegramPurchaseHandler {
     text: string,
   ): Promise<void> {
     // Busca providers disponíveis primeiro para passar ao parser
-    const priceTableResult = await this.priceTableProvider.getPriceTable();
+    const priceTableResult = await this.priceTableProvider.getPriceTable(botUserId);
     const { priceTables, customMaxPrice } = priceTableResult;
     const providers = Object.keys(priceTables) as Provider[];
 

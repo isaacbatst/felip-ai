@@ -32,8 +32,21 @@ export class TelegramCommandHandler {
   ) {}
 
   async handleStart(ctx: Context): Promise<void> {
+    const telegramUserId = ctx.from?.id;
+    if (!telegramUserId) {
+      await ctx.reply('❌ Não foi possível identificar seu usuário.');
+      return;
+    }
+
+    // Get logged in userId for this telegram user
+    const loggedInUserId = await this.conversationRepository.isLoggedIn(telegramUserId);
+    if (!loggedInUserId) {
+      await ctx.reply('❌ Você precisa fazer login primeiro. Use /login para começar.');
+      return;
+    }
+
     // Revalida o cache antes de mostrar a tabela
-    const priceTableResult = await this.priceTableCache.getPriceTable();
+    const priceTableResult = await this.priceTableCache.getPriceTable(loggedInUserId.toString());
     const priceTablesFormatted = this.quoteFormatter.formatPriceTablesByProvider(priceTableResult.priceTables);
 
     const welcomeMessage = `📊 Tabelas de Preços por Provedor (1 CPF):${priceTablesFormatted}`;

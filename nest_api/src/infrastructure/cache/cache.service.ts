@@ -86,6 +86,7 @@ export abstract class CacheService<T> {
  * Classe abstrata específica para CacheService<PriceTableResultV2>
  * Permite usar a classe abstrata diretamente como token de injeção
  * Implementa PriceTableProvider para compatibilidade com a interface
+ * @deprecated Use DatabasePriceTableProvider instead
  */
 @Injectable()
 export abstract class AbstractPriceTableCache
@@ -95,8 +96,10 @@ export abstract class AbstractPriceTableCache
   /**
    * Implementa o método da interface PriceTableProvider
    * Delega para o método get() da classe base
+   * @param _userId ID do usuário (ignorado nesta implementação legada)
+   * @deprecated Use DatabasePriceTableProvider instead
    */
-  async getPriceTable(): Promise<PriceTableResultV2> {
+  async getPriceTable(_userId: string): Promise<PriceTableResultV2> {
     return await this.get();
   }
 }

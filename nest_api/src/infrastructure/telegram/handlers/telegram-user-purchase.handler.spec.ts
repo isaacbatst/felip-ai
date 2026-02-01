@@ -122,6 +122,7 @@ describe('TelegramPurchaseHandler', () => {
 
         await handler.handlePurchase(botUserId, chatId, messageId, 'SMILES 30k 1CPF');
 
+        expect(mockPriceTableProvider.getPriceTable).toHaveBeenCalledWith(botUserId);
         expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledTimes(1);
         const sentMessage = mockTdlibUserClient.sendMessage.mock.calls[0][2];
         expect(sentMessage).not.toContain('LIMINAR');
