@@ -7,8 +7,14 @@ import { RabbitMQPublisher, type RabbitMQConnection } from './rabbitmq-publisher
 // Re-export for convenience
 export type { CommandContext, TdlibCommand };
 
+// Reconnection configuration
+const INITIAL_RECONNECT_DELAY_MS = 5000;
+const MAX_RECONNECT_DELAY_MS = 60000;
+const RECONNECT_BACKOFF_MULTIPLIER = 2;
+
 /**
  * Processor responsável por processar comandos recebidos via RabbitMQ
+ * with automatic reconnection and consumer re-establishment
  */
 export class CommandProcessor {
   private connection: ChannelModel | null = null;
@@ -17,6 +23,14 @@ export class CommandProcessor {
   private loginSessionManager: LoginSessionManager;
   private readonly queueName: string;
   private readonly rabbitmqConfig: RabbitMQConnection;
+
+  // Reconnection state
+  private isConnecting = false;
+  private reconnectTimeout: NodeJS.Timeout | null = null;
+  private currentReconnectDelay = INITIAL_RECONNECT_DELAY_MS;
+  private isClosing = false;
+  private isConsumerActive = false;
+  private consumerTag: string | null = null;
 
   constructor(
     private readonly client: TelegramUserClient,
@@ -50,24 +64,122 @@ export class CommandProcessor {
   }
 
   private async connect(): Promise<void> {
+    if (this.isConnecting) {
+      console.log('[DEBUG] CommandProcessor: Already connecting, skipping...');
+      return;
+    }
+
+    if (this.connection && this.channel) {
+      return; // Already connected
+    }
+
+    this.isConnecting = true;
+
     try {
       const user = this.rabbitmqConfig.user || 'guest';
       const password = this.rabbitmqConfig.password || 'guest';
       const url = `amqp://${user}:${password}@${this.rabbitmqConfig.host}:${this.rabbitmqConfig.port}`;
+      const urlMasked = `amqp://${user}:****@${this.rabbitmqConfig.host}:${this.rabbitmqConfig.port}`;
+      
+      console.log(`[DEBUG] CommandProcessor: Connecting to ${urlMasked}...`);
       
       this.connection = await connect(url);
       this.channel = await this.connection.createChannel();
+      
+      // Set up event listeners for connection
+      this.connection.on('error', (err) => {
+        console.error(`[ERROR] CommandProcessor: Connection error: ${err.message}`);
+        this.handleConnectionError();
+      });
+
+      this.connection.on('close', () => {
+        if (!this.isClosing) {
+          console.warn('[WARN] CommandProcessor: Connection closed unexpectedly');
+          this.handleConnectionError();
+        }
+      });
+
+      // Set up event listeners for channel
+      this.channel.on('error', (err) => {
+        console.error(`[ERROR] CommandProcessor: Channel error: ${err.message}`);
+        this.handleConnectionError();
+      });
+
+      this.channel.on('close', () => {
+        if (!this.isClosing) {
+          console.warn('[WARN] CommandProcessor: Channel closed unexpectedly');
+          this.handleConnectionError();
+        }
+      });
       
       // Assert queue exists
       await this.channel.assertQueue(this.queueName, {
         durable: true,
       });
       
-      console.log(`[DEBUG] ✅ Connected to RabbitMQ and asserted queue: ${this.queueName}`);
+      console.log(`[DEBUG] ✅ CommandProcessor: Connected to RabbitMQ and asserted queue: ${this.queueName}`);
+      
+      // Reset reconnect delay on successful connection
+      this.currentReconnectDelay = INITIAL_RECONNECT_DELAY_MS;
+      this.isConnecting = false;
     } catch (error) {
-      console.error(`[ERROR] Failed to connect to RabbitMQ: ${error}`);
+      this.isConnecting = false;
+      console.error(`[ERROR] CommandProcessor: Failed to connect to RabbitMQ: ${error}`);
+      this.scheduleReconnect();
       throw error;
     }
+  }
+
+  private handleConnectionError(): void {
+    // Clear existing connection state
+    this.channel = null;
+    this.connection = null;
+    this.isConsumerActive = false;
+    this.consumerTag = null;
+    
+    if (!this.isClosing) {
+      this.scheduleReconnect();
+    }
+  }
+
+  private scheduleReconnect(): void {
+    if (this.reconnectTimeout) {
+      return; // Already scheduled
+    }
+
+    if (this.isClosing) {
+      return; // Don't reconnect if we're closing
+    }
+
+    console.log(`[DEBUG] CommandProcessor: Scheduling reconnection in ${this.currentReconnectDelay / 1000}s...`);
+    
+    this.reconnectTimeout = setTimeout(async () => {
+      this.reconnectTimeout = null;
+      
+      if (this.isClosing) {
+        return;
+      }
+      
+      if (!this.connection || !this.channel) {
+        try {
+          await this.reconnect();
+        } catch (error) {
+          console.error(`[ERROR] CommandProcessor: Reconnection failed: ${error}`);
+          // Increase delay with exponential backoff
+          this.currentReconnectDelay = Math.min(
+            this.currentReconnectDelay * RECONNECT_BACKOFF_MULTIPLIER,
+            MAX_RECONNECT_DELAY_MS
+          );
+        }
+      }
+    }, this.currentReconnectDelay);
+  }
+
+  private async reconnect(): Promise<void> {
+    console.log('[DEBUG] CommandProcessor: Attempting reconnection...');
+    await this.connect();
+    await this.setupConsumer();
+    console.log('[DEBUG] ✅ CommandProcessor: Reconnection successful, consumer re-established');
   }
 
   private async setupConsumer(): Promise<void> {
@@ -75,7 +187,12 @@ export class CommandProcessor {
       throw new Error('Channel not initialized');
     }
 
-    await this.channel.consume(
+    if (this.isConsumerActive) {
+      console.log('[DEBUG] CommandProcessor: Consumer already active, skipping setup');
+      return;
+    }
+
+    const { consumerTag } = await this.channel.consume(
       this.queueName,
       async (msg: ConsumeMessage | null) => {
         if (!msg) {
@@ -92,7 +209,7 @@ export class CommandProcessor {
           const command = message.data;
           const pattern = message.pattern || command.type;
 
-          console.log(`[DEBUG] ✅ Command received: ${pattern} (requestId: ${command.requestId})`);
+          console.log(`[DEBUG] ✅ CommandProcessor: Command received: ${pattern} (requestId: ${command.requestId})`);
 
           try {
             const result = await this.processCommand(command);
@@ -110,7 +227,7 @@ export class CommandProcessor {
             // Acknowledge message after successful processing
             this.channel?.ack(msg);
           } catch (error) {
-            console.error(`[ERROR] ❌ Command failed: ${pattern} (requestId: ${command.requestId})`, error);
+            console.error(`[ERROR] ❌ CommandProcessor: Command failed: ${pattern} (requestId: ${command.requestId})`, error);
             
             const errorMessage = error instanceof Error ? error.message : String(error);
             
@@ -125,11 +242,11 @@ export class CommandProcessor {
             }
             
             // Acknowledge message to remove from queue (accept failure)
-            console.log(`[DEBUG] Command failed - acknowledging message (accept failure): ${errorMessage}`);
+            console.log(`[DEBUG] CommandProcessor: Command failed - acknowledging message (accept failure): ${errorMessage}`);
             this.channel?.ack(msg);
           }
         } catch (error) {
-          console.error(`[ERROR] Error processing message: ${error}`);
+          console.error(`[ERROR] CommandProcessor: Error processing message: ${error}`);
           // Acknowledge message to remove from queue (accept failure)
           this.channel?.ack(msg);
         }
@@ -139,7 +256,9 @@ export class CommandProcessor {
       },
     );
 
-    console.log(`[DEBUG] ✅ Worker is now listening to queue: ${this.queueName}`);
+    this.consumerTag = consumerTag;
+    this.isConsumerActive = true;
+    console.log(`[DEBUG] ✅ CommandProcessor: Worker is now listening to queue: ${this.queueName} (consumerTag: ${consumerTag})`);
   }
 
   private async processCommand(command: TdlibCommand): Promise<unknown> {
@@ -237,13 +356,31 @@ export class CommandProcessor {
           throw new Error(`Unknown command type command-processor: ${(command as TdlibCommand).type}`);
       }
     } catch (error) {
-      console.error(`[ERROR] Error processing command ${command.type}:`, error);
+      console.error(`[ERROR] CommandProcessor: Error processing command ${command.type}:`, error);
       throw error;
     }
   }
 
   async close(): Promise<void> {
+    this.isClosing = true;
+    
+    // Clear any pending reconnection
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout);
+      this.reconnectTimeout = null;
+    }
+    
     try {
+      // Cancel consumer if active
+      if (this.channel && this.consumerTag) {
+        try {
+          await this.channel.cancel(this.consumerTag);
+          console.log(`[DEBUG] CommandProcessor: Consumer cancelled (tag: ${this.consumerTag})`);
+        } catch (cancelError) {
+          console.error('[ERROR] CommandProcessor: Error cancelling consumer:', cancelError);
+        }
+      }
+      
       if (this.channel) {
         await this.channel.close();
         this.channel = null;
@@ -253,9 +390,13 @@ export class CommandProcessor {
         this.connection = null;
       }
       await this.updatesPublisher.close();
-      console.log('[DEBUG] CommandProcessor closed successfully');
+      
+      this.isConsumerActive = false;
+      this.consumerTag = null;
+      
+      console.log('[DEBUG] CommandProcessor: Closed successfully');
     } catch (error) {
-      console.error('[ERROR] Error closing CommandProcessor:', error);
+      console.error('[ERROR] CommandProcessor: Error closing:', error);
     }
   }
 }
