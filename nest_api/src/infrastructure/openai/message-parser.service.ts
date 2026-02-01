@@ -38,7 +38,7 @@ export class MessageParserService extends MessageParser {
         text: text,
       };
       const id = randomUUID();
-      this.logger.debug('[VARIABLES] Variables:', { id, ...variables, });
+      this.logger.log('Parsing message', { id, ...variables, });
       const response = await client.responses.parse({
         model: this.config.model,
         prompt: {
@@ -57,7 +57,7 @@ export class MessageParserService extends MessageParser {
 
       const parsed = response.output_parsed;
 
-      this.logger.debug('[PARSED] Parsed:', { id, ...parsed });
+      this.logger.log('[PARSED] Parsed:', { id, ...parsed });
 
       if (!parsed || !parsed.isPurchaseProposal) {
         return null;
