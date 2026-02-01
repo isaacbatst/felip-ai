@@ -105,7 +105,7 @@
         </button>
         <button class="px-5 py-3 border-none bg-transparent cursor-pointer text-sm font-medium border-b-3 -mb-0.5 transition-all flex flex-col gap-1 hover:text-primary" :class="activeSection === 'maxPrices' ? 'text-primary border-b-primary' : 'text-gray-500 border-transparent'"
           @click="activeSection = 'maxPrices'">
-          <i class="fa-solid fa-lock"></i> Preço Máximo
+          <i class="fa-solid fa-lock"></i> Teto
         </button>
         <button class="px-5 py-3 border-none bg-transparent cursor-pointer text-sm font-medium border-b-3 -mb-0.5 transition-all flex flex-col gap-1 hover:text-primary" :class="activeSection === 'miles' ? 'text-primary border-b-primary' : 'text-gray-500 border-transparent'" @click="activeSection = 'miles'">
           <i class="fa-solid fa-box"></i> Estoque
@@ -157,16 +157,16 @@
                         <button class="data-card-delete w-8 h-8 rounded-full border-none bg-red-100 text-red-600 text-lg cursor-pointer flex items-center justify-center transition-all hover:bg-red-200 hover:scale-110" @click="removePriceEntry(prog.id, i)"><i class="fa-solid fa-xmark"></i></button>
                       </div>
                     </div>
-                    <div class="data-card-fields flex gap-3 max-md:flex-col">
+                    <div class="data-card-fields flex gap-3">
                       <div class="data-card-field flex-1">
                         <label class="block text-xs text-gray-500 mb-1.5 font-medium">Quantidade (k)</label>
                         <input type="number" x-model.number="entry.quantity" @input="markAsChanged()" step="1" min="1"
-                          placeholder="15" class="w-full p-3 border border-gray-200 rounded-lg text-base text-center transition-all">
+                          placeholder="15" class="w-full p-2 md:p-3 border border-gray-200 rounded-lg text-base text-center transition-all">
                       </div>
                       <div class="data-card-field flex-1">
                         <label class="block text-xs text-gray-500 mb-1.5 font-medium">Preço (R$)</label>
                         <input type="number" x-model.number="entry.price" @input="markAsChanged()" step="0.25" min="0"
-                          placeholder="20.00" class="w-full p-3 border border-gray-200 rounded-lg text-base text-center transition-all">
+                          placeholder="20.00" class="w-full p-2 md:p-3 border border-gray-200 rounded-lg text-base text-center transition-all">
                       </div>
                     </div>
                   </div>

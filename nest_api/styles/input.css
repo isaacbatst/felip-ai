@@ -33,26 +33,11 @@
 
 /* Custom scrollbar - not supported by Tailwind */
 .program-pills {
-  scrollbar-width: thin;
-  scrollbar-color: #667eea transparent;
+  scrollbar-width: none;
 }
 
 .program-pills::-webkit-scrollbar {
-  height: 4px;
-}
-
-.program-pills::-webkit-scrollbar-track {
-  background: transparent;
-  border-radius: 2px;
-}
-
-.program-pills::-webkit-scrollbar-thumb {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  border-radius: 2px;
-}
-
-.program-pills::-webkit-scrollbar-thumb:hover {
-  background: linear-gradient(135deg, #5a6fd6 0%, #6a4290 100%);
+  height: 0px;
 }
 
 /* Global focus state */
