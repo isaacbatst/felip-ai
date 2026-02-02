@@ -167,6 +167,8 @@
                         <label class="block text-xs text-gray-500 mb-1.5 font-medium">Quantidade (k)</label>
                         <input type="text" inputmode="numeric" :value="entry.quantity || ''"
                           @input="formatInput($event, false); entry.quantity = parseNumber($event.target.value, false) || 0; markAsChanged()"
+                          @focus="editingQuantityProgramId = prog.id"
+                          @blur="editingQuantityProgramId = null"
                           placeholder="15" class="w-full p-2 md:p-3 border rounded-lg text-base text-center transition-all"
                           :class="entry.quantity > 0 ? 'border-gray-200' : 'border-red-400'">
                       </div>
@@ -352,6 +354,9 @@
 
         // Individual delete state
         deletingEntryIndex: null,
+
+        // Editing quantity state (prevents reordering while typing)
+        editingQuantityProgramId: null,
 
         // Timer state
         expiresAt: null,
@@ -650,9 +655,15 @@
         // Helper Methods
         // ============================================================================
         getPriceEntries(programId) {
-          return this.userData.priceEntries
-            .filter(e => e.programId === programId)
-            .sort((a, b) => a.quantity - b.quantity);
+          const entries = this.userData.priceEntries
+            .filter(e => e.programId === programId);
+          
+          // Don't reorder while user is editing quantity to prevent losing focus
+          if (this.editingQuantityProgramId === programId) {
+            return entries;
+          }
+          
+          return entries.sort((a, b) => a.quantity - b.quantity);
         },
 
         isValidPriceEntry(entry) {
