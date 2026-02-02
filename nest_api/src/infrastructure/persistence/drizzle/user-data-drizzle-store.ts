@@ -89,6 +89,28 @@ export class UserDataDrizzleStore extends UserDataRepository {
     }
   }
 
+  async setPriceEntriesForProgram(userId: string, programId: number, entries: PriceEntryInput[]): Promise<void> {
+    // Delete existing entries for this program only
+    await this.db.delete(userPriceEntries).where(
+      and(
+        eq(userPriceEntries.userId, userId),
+        eq(userPriceEntries.programId, programId),
+      ),
+    );
+
+    // Insert new entries
+    if (entries.length > 0) {
+      await this.db.insert(userPriceEntries).values(
+        entries.map((entry) => ({
+          userId,
+          programId,
+          quantity: entry.quantity,
+          price: entry.price,
+        })),
+      );
+    }
+  }
+
   async upsertPriceEntry(userId: string, entry: PriceEntryInput): Promise<UserPriceEntryData> {
     const result = await this.db
       .insert(userPriceEntries)

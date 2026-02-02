@@ -148,17 +148,11 @@
                     <div class="data-card-header flex justify-between items-center mb-3">
                       <span class="bg-linear-135 from-primary to-secondary text-white px-3 py-1 rounded-xl text-sm font-semibold" x-text="`${entry.quantity || 0}k`"></span>
                       <div class="data-card-actions flex gap-2 items-center">
-                        <button class="data-card-save w-8 h-8 rounded-full border-none bg-emerald-100 text-emerald-600 text-base cursor-pointer flex items-center justify-center transition-all hover:bg-emerald-200 hover:scale-110 disabled:opacity-50 disabled:cursor-not-allowed" @click="saveSinglePriceEntry(prog.id, i)"
-                          :disabled="!isValidPriceEntry(entry) || savingEntryIndex === i"
-                          x-show="isValidPriceEntry(entry)">
-                          <span x-show="savingEntryIndex === i" class="spinner" style="width: 14px; height: 14px;"></span>
-                          <span x-show="savingEntryIndex !== i"><i class="fa-solid fa-check"></i></span>
-                        </button>
-                        <button class="data-card-delete w-8 h-8 rounded-full border-none bg-red-100 text-red-600 text-lg cursor-pointer flex items-center justify-center transition-all hover:bg-red-200 hover:scale-110 disabled:opacity-50 disabled:cursor-not-allowed" 
+                        <button class="data-card-delete w-8 h-8 rounded-full border-none bg-red-100 text-red-600 text-base cursor-pointer flex items-center justify-center transition-all hover:bg-red-200 hover:scale-110 disabled:opacity-50 disabled:cursor-not-allowed" 
                           @click="removePriceEntry(prog.id, i)"
                           :disabled="deletingEntryIndex === i">
                           <span x-show="deletingEntryIndex === i" class="spinner" style="width: 14px; height: 14px;"></span>
-                          <span x-show="deletingEntryIndex !== i"><i class="fa-solid fa-xmark"></i></span>
+                          <span x-show="deletingEntryIndex !== i"><i class="fa-solid fa-trash"></i></span>
                         </button>
                       </div>
                     </div>
@@ -192,6 +186,12 @@
             </template>
 
             <button class="add-card-btn w-full p-4 border-2 border-dashed border-primary rounded-xl bg-transparent text-primary text-base font-semibold cursor-pointer flex items-center justify-center gap-2 mt-3 transition-all hover:bg-primary/5 hover:border-secondary" @click="addPriceEntry(prog.id)">+ Adicionar Preço</button>
+            <button class="save-program-btn w-full p-4 border-2 border-emerald-500 rounded-xl bg-emerald-50 text-emerald-600 text-base font-semibold cursor-pointer flex items-center justify-center gap-2 mt-3 transition-all hover:bg-emerald-100 disabled:opacity-50 disabled:cursor-not-allowed"
+              @click="saveProgramPrices(prog.id)"
+              :disabled="savingProgramId === prog.id || !hasValidPricesForProgram(prog.id)">
+              <span x-show="savingProgramId === prog.id" class="spinner" style="width: 16px; height: 16px;"></span>
+              <span x-show="savingProgramId !== prog.id"><i class="fa-solid fa-floppy-disk"></i> Salvar Preços</span>
+            </button>
           </div>
         </template>
 
@@ -351,6 +351,9 @@
         // Individual save state
         savingEntryIndex: null,
 
+        // Program save state (for saving all prices of a program)
+        savingProgramId: null,
+
         // Individual delete state
         deletingEntryIndex: null,
 
@@ -492,6 +495,19 @@
           return data;
         },
 
+        async saveProgramPricesApi(programId, entries) {
+          const res = await fetch(`/dashboard/${this.token}/prices/${programId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ entries }),
+          });
+          const data = await res.json();
+          if (!data.success) {
+            throw new Error(data.error || 'Failed to save prices');
+          }
+          return data;
+        },
+
         async saveMaxPricesApi(maxPrices) {
           const res = await fetch(`/dashboard/${this.token}/max-prices`, {
             method: 'PUT',
@@ -603,6 +619,28 @@
           }
         },
 
+        async saveProgramPrices(programId) {
+          const entries = this.getPriceEntries(programId)
+            .filter(e => this.isValidPriceEntry(e))
+            .map(e => ({ quantity: e.quantity, price: e.price }));
+
+          if (entries.length === 0) {
+            this.showToast('Nenhum preço válido para salvar', 'error');
+            return;
+          }
+
+          this.savingProgramId = programId;
+          try {
+            await this.saveProgramPricesApi(programId, entries);
+            await this.fetchUserData();
+            this.showToast('Preços salvos!', 'success');
+          } catch (error) {
+            this.showToast('Erro ao salvar: ' + error.message, 'error');
+          } finally {
+            this.savingProgramId = null;
+          }
+        },
+
         async saveMaxPrices() {
           this.saving = true;
           try {
@@ -692,6 +730,11 @@
 
         isValidPriceEntry(entry) {
           return entry.quantity > 0 && entry.price > 0;
+        },
+
+        hasValidPricesForProgram(programId) {
+          const entries = this.getPriceEntries(programId);
+          return entries.some(e => this.isValidPriceEntry(e));
         },
 
         getMaxPrice(programId) {

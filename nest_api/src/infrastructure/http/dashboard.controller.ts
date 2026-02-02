@@ -254,6 +254,61 @@ export class DashboardController {
   }
 
   /**
+   * PUT /dashboard/:token/prices/:programId - Update price entries for a specific program
+   * Replaces all price entries for the given program only
+   */
+  @Put(':token/prices/:programId')
+  async updatePricesForProgram(
+    @Param('token') token: string,
+    @Param('programId') programId: string,
+    @Body() body: { entries: Array<{ quantity: number; price: number }> },
+    @Res() res: Response,
+  ): Promise<void> {
+    const userId = await this.validateAndGetUserId(token, res);
+    if (!userId) return;
+
+    const programIdNum = parseInt(programId, 10);
+    if (Number.isNaN(programIdNum)) {
+      res.status(HttpStatus.BAD_REQUEST).json({
+        success: false,
+        error: 'Invalid programId',
+      } satisfies ApiResponse);
+      return;
+    }
+
+    if (!body.entries || !Array.isArray(body.entries)) {
+      res.status(HttpStatus.BAD_REQUEST).json({
+        success: false,
+        error: 'entries must be an array',
+      } satisfies ApiResponse);
+      return;
+    }
+
+    // Validate entries
+    for (const entry of body.entries) {
+      if (typeof entry.quantity !== 'number' || typeof entry.price !== 'number') {
+        res.status(HttpStatus.BAD_REQUEST).json({
+          success: false,
+          error: 'Invalid entry format. Each entry must have quantity and price as numbers.',
+        } satisfies ApiResponse);
+        return;
+      }
+    }
+
+    await this.userDataRepository.setPriceEntriesForProgram(
+      userId,
+      programIdNum,
+      body.entries.map((e) => ({ programId: programIdNum, ...e })),
+    );
+
+    this.logger.log(`Updated ${body.entries.length} prices for program ${programIdNum}, user ${userId}`);
+
+    res.status(HttpStatus.OK).json({
+      success: true,
+    } satisfies ApiResponse);
+  }
+
+  /**
    * PUT /dashboard/:token/price - Update a single price entry
    * If id is provided, updates the existing entry by id
    * If id is not provided, creates or updates by (userId, programId, quantity)

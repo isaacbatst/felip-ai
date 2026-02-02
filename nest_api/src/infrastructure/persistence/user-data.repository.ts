@@ -86,6 +86,11 @@ export abstract class UserDataRepository {
   abstract setPriceEntries(userId: string, entries: PriceEntryInput[]): Promise<void>;
 
   /**
+   * Set price entries for a specific program (replaces existing entries for that program only)
+   */
+  abstract setPriceEntriesForProgram(userId: string, programId: number, entries: PriceEntryInput[]): Promise<void>;
+
+  /**
    * Upsert a single price entry
    */
   abstract upsertPriceEntry(userId: string, entry: PriceEntryInput): Promise<UserPriceEntryData>;
