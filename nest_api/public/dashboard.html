@@ -50,111 +50,79 @@
       </template>
     </div>
     
-    <!-- Programs Tabs (Desktop) -->
-    <div class="tabs flex gap-2.5 mb-5 flex-wrap">
-      <template x-for="p in normalPrograms" :key="p.id">
-        <button class="tab-btn px-5 py-2.5 border-2 rounded-lg cursor-pointer text-sm font-medium transition-all" 
-          :class="selectedProgramId === p.id ? 'bg-linear-135 from-primary to-secondary text-white border-transparent' : 'border-gray-200 bg-white hover:border-primary hover:text-primary'" 
-          @click="selectProgram(p.id)"
-          x-text="p.name">
-        </button>
-      </template>
+    <!-- Bot Status Toggle -->
+    <div class="bg-white border border-gray-200 rounded-xl p-4 mb-5 max-md:mx-0 max-md:rounded-none max-md:border-x-0 max-md:border-t-0">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-full flex items-center justify-center" 
+            :class="botStatus.isEnabled ? 'bg-emerald-100 text-emerald-600' : 'bg-gray-100 text-gray-400'">
+            <i class="fa-solid" :class="botStatus.isEnabled ? 'fa-play' : 'fa-pause'"></i>
+          </div>
+          <div>
+            <h4 class="font-semibold text-sm text-gray-800 mb-0.5">Bot <span :class="botStatus.isEnabled ? 'text-emerald-600' : 'text-gray-500'" x-text="botStatus.isEnabled ? 'Ativado' : 'Desativado'"></span></h4>
+            <p class="text-xs text-gray-500">Quando desativado, o bot ignora mensagens dos grupos</p>
+          </div>
+        </div>
+        <label class="relative inline-flex items-center cursor-pointer">
+          <input type="checkbox" class="sr-only peer" x-model="botStatus.isEnabled" @change="saveBotStatus()" :disabled="savingBotStatus">
+          <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500 peer-disabled:opacity-50"></div>
+        </label>
+      </div>
     </div>
 
-    <!-- Mobile Pills Navigation -->
-    <div class="program-pills-container hidden items-center gap-2 mb-5 sticky top-0 bg-white py-3 z-50 border-b border-gray-200">
-      <div class="program-pills flex gap-2 overflow-x-auto flex-1 py-3 scroll-smooth">
+    <!-- Section Tabs -->
+    <div class="section-tabs flex justify-center gap-0 mb-5 border-b-2 border-gray-100 flex-wrap max-md:gap-1 max-md:justify-start max-md:border-b-0">
+      <button class="px-5 py-3 border-none bg-transparent cursor-pointer text-sm font-medium border-b-3 -mb-0.5 transition-all flex flex-col gap-1 hover:text-primary max-md:px-3 max-md:py-2 max-md:flex-row max-md:items-center max-md:rounded-full max-md:border-0 max-md:mb-0" :class="activeSection === 'prices' ? 'text-primary border-b-primary max-md:bg-primary/10' : 'text-gray-500 border-transparent max-md:bg-gray-100'" @click="activeSection = 'prices'">
+        <i class="fa-solid fa-chart-simple"></i> Preços
+      </button>
+      <button class="px-5 py-3 border-none bg-transparent cursor-pointer text-sm font-medium border-b-3 -mb-0.5 transition-all flex flex-col gap-1 hover:text-primary max-md:px-3 max-md:py-2 max-md:flex-row max-md:items-center max-md:rounded-full max-md:border-0 max-md:mb-0" :class="activeSection === 'maxPrices' ? 'text-primary border-b-primary max-md:bg-primary/10' : 'text-gray-500 border-transparent max-md:bg-gray-100'"
+        @click="activeSection = 'maxPrices'">
+        <i class="fa-solid fa-lock"></i> Teto
+      </button>
+      <button class="px-5 py-3 border-none bg-transparent cursor-pointer text-sm font-medium border-b-3 -mb-0.5 transition-all flex flex-col gap-1 hover:text-primary max-md:px-3 max-md:py-2 max-md:flex-row max-md:items-center max-md:rounded-full max-md:border-0 max-md:mb-0" :class="activeSection === 'miles' ? 'text-primary border-b-primary max-md:bg-primary/10' : 'text-gray-500 border-transparent max-md:bg-gray-100'" @click="activeSection = 'miles'">
+        <i class="fa-solid fa-box"></i> Estoque
+      </button>
+      <button class="px-5 py-3 border-none bg-transparent cursor-pointer text-sm font-medium border-b-3 -mb-0.5 transition-all flex flex-col gap-1 hover:text-primary max-md:px-3 max-md:py-2 max-md:flex-row max-md:items-center max-md:rounded-full max-md:border-0 max-md:mb-0" :class="activeSection === 'counterOffer' ? 'text-primary border-b-primary max-md:bg-primary/10' : 'text-gray-500 border-transparent max-md:bg-gray-100'" @click="activeSection = 'counterOffer'">
+        <i class="fa-solid fa-message"></i> Proposta
+      </button>
+      <button class="px-5 py-3 border-none bg-transparent cursor-pointer text-sm font-medium border-b-3 -mb-0.5 transition-all flex flex-col gap-1 hover:text-primary max-md:px-3 max-md:py-2 max-md:flex-row max-md:items-center max-md:rounded-full max-md:border-0 max-md:mb-0" :class="activeSection === 'groups' ? 'text-primary border-b-primary max-md:bg-primary/10' : 'text-gray-500 border-transparent max-md:bg-gray-100'" @click="activeSection = 'groups'; fetchGroupsIfNeeded()">
+        <i class="fa-solid fa-users"></i> Grupos
+      </button>
+    </div>
+
+    <!-- Price Tables Section -->
+    <div class="section mb-8 p-5 bg-gray-50 rounded-xl max-md:p-0 max-md:mb-6" x-show="activeSection === 'prices'">
+      <div class="section-header flex justify-between items-center mb-4 max-md:mx-3 max-md:py-3 max-md:border-b max-md:border-gray-200">
+        <h2 class="text-gray-800 text-lg font-semibold flex items-center gap-1 max-md:text-base"><i class="fa-solid fa-chart-simple"></i> Tabela de Preços</h2>
+      </div>
+      <p class="section-description text-gray-500 text-sm mb-4">
+        Configure os preços por quantidade (em milhares). Ex: 15 = 15k milhas
+      </p>
+
+      <!-- Program Tabs -->
+      <div class="flex gap-2 mb-4 flex-wrap max-md:mx-3">
         <template x-for="p in normalPrograms" :key="p.id">
-          <button class="pill shrink-0 px-4 py-2.5 border-none rounded-full text-sm font-medium cursor-pointer transition-all whitespace-nowrap" 
-            :class="selectedProgramId === p.id ? 'active bg-linear-135 from-primary to-secondary text-white' : 'bg-gray-100 text-gray-600'" 
+          <button class="px-4 py-2 border-2 rounded-lg cursor-pointer text-sm font-medium transition-all" 
+            :class="selectedProgramId === p.id ? 'bg-linear-135 from-primary to-secondary text-white border-transparent' : 'border-gray-200 bg-white hover:border-primary hover:text-primary'" 
             @click="selectProgram(p.id)"
             x-text="p.name">
           </button>
         </template>
       </div>
-      <button class="shrink-0 w-10 h-10 rounded-full border-2 border-primary bg-white text-primary text-base cursor-pointer flex items-center justify-center" @click="openBottomSheet()"><i class="fa-solid fa-bars"></i></button>
-    </div>
 
-    <div class="mobile-controls hidden justify-between items-center mb-4">
-      <!-- Program Indicator (Mobile) -->
-      <div class="text-center p-2 text-gray-500 text-sm">
-        Programa: <strong class="text-gray-800" x-text="selectedProgram?.name || '-'"></strong>
-      </div>
-
-      <!-- Overview Toggle (Mobile) -->
-      <button class="overview-toggle hidden w-full p-3 border-none bg-transparent text-primary text-sm font-medium cursor-pointer" @click="toggleOverview()">
-        <template x-if="showOverview">
-          <span><i class="fa-solid fa-arrow-left"></i> Voltar para detalhes</span>
-        </template>
-        <template x-if="!showOverview">
-          <span><i class="fa-solid fa-table-cells"></i> Ver todos os programas</span>
-        </template>
-      </button>
-    </div>
-
-    <!-- Overview Grid (Mobile) -->
-    <div class="overview-grid hidden grid-cols-2 gap-3 py-4" :style="{ display: showOverview ? 'grid' : 'none' }">
-      <template x-for="p in normalPrograms" :key="p.id">
-        <div class="bg-white border rounded-xl p-4 cursor-pointer transition-all active:bg-gray-50 active:scale-[0.98]" 
-          :class="selectedProgramId === p.id ? 'border-primary bg-linear-135 from-primary/5 to-secondary/5' : 'border-gray-200'"
-          @click="selectProgramFromOverview(p.id)">
-          <div class="font-semibold text-sm text-gray-800 mb-2" x-text="p.name"></div>
-          <div class="flex flex-col gap-1">
-            <div class="text-xs text-gray-500">Preços: <span class="text-primary font-semibold" x-text="getPriceCount(p.id)"></span></div>
-            <div class="text-xs text-gray-500">Milhas: <span class="text-primary font-semibold" x-text="getMilesDisplay(p.id)"></span></div>
-            <template x-if="getMaxPriceDisplay(p.id)">
-              <div class="text-xs text-gray-500">Teto: <span class="text-primary font-semibold" x-text="getMaxPriceDisplay(p.id)"></span></div>
-            </template>
-          </div>
-        </div>
-      </template>
-    </div>
-
-    <!-- Content Container (with swipe support on mobile) -->
-    <div id="mobileContent" x-show="!showOverview" @touchstart="onTouchStart($event)" @touchend="onTouchEnd($event)">
-
-      <!-- Section Tabs -->
-      <div class="section-tabs flex justify-center gap-0 mb-5 border-b-2 border-gray-100">
-        <button class="px-5 py-3 border-none bg-transparent cursor-pointer text-sm font-medium border-b-3 -mb-0.5 transition-all flex flex-col gap-1 hover:text-primary" :class="activeSection === 'prices' ? 'text-primary border-b-primary' : 'text-gray-500 border-transparent'" @click="activeSection = 'prices'">
-          <i class="fa-solid fa-chart-simple"></i> Preços
+      <!-- Price Type Tabs (only when has liminar) -->
+      <div class="price-type-tabs flex gap-0 mb-4 bg-gray-100 rounded-lg p-1 max-w-xs max-md:mx-3" x-show="hasLiminar()">
+        <button class="flex-1 px-4 py-2.5 border-none rounded-md text-sm font-medium cursor-pointer transition-all hover:text-primary" :class="priceTypeTab === 'normal' ? 'bg-white text-primary shadow-sm' : 'bg-transparent text-gray-500'"
+          @click="priceTypeTab = 'normal'">
+          Normal
         </button>
-        <button class="px-5 py-3 border-none bg-transparent cursor-pointer text-sm font-medium border-b-3 -mb-0.5 transition-all flex flex-col gap-1 hover:text-primary" :class="activeSection === 'maxPrices' ? 'text-primary border-b-primary' : 'text-gray-500 border-transparent'"
-          @click="activeSection = 'maxPrices'">
-          <i class="fa-solid fa-lock"></i> Teto
-        </button>
-        <button class="px-5 py-3 border-none bg-transparent cursor-pointer text-sm font-medium border-b-3 -mb-0.5 transition-all flex flex-col gap-1 hover:text-primary" :class="activeSection === 'miles' ? 'text-primary border-b-primary' : 'text-gray-500 border-transparent'" @click="activeSection = 'miles'">
-          <i class="fa-solid fa-box"></i> Estoque
-        </button>
-        <button class="px-5 py-3 border-none bg-transparent cursor-pointer text-sm font-medium border-b-3 -mb-0.5 transition-all flex flex-col gap-1 hover:text-primary" :class="activeSection === 'counterOffer' ? 'text-primary border-b-primary' : 'text-gray-500 border-transparent'" @click="activeSection = 'counterOffer'">
-          <i class="fa-solid fa-message"></i> Proposta
-        </button>
-        <button class="px-5 py-3 border-none bg-transparent cursor-pointer text-sm font-medium border-b-3 -mb-0.5 transition-all flex flex-col gap-1 hover:text-primary" :class="activeSection === 'groups' ? 'text-primary border-b-primary' : 'text-gray-500 border-transparent'" @click="activeSection = 'groups'; fetchGroupsIfNeeded()">
-          <i class="fa-solid fa-users"></i> Grupos
+        <button class="flex-1 px-4 py-2.5 border-none rounded-md text-sm font-medium cursor-pointer transition-all hover:text-primary" :class="priceTypeTab === 'liminar' ? 'bg-white text-primary shadow-sm' : 'bg-transparent text-gray-500'"
+          @click="priceTypeTab = 'liminar'">
+          Liminar
         </button>
       </div>
 
-      <!-- Price Tables Section -->
-      <div class="section mb-8 p-5 bg-gray-50 rounded-xl max-md:p-0 max-md:mb-6" x-show="activeSection === 'prices'">
-        <div class="section-header flex justify-between items-center mb-4 max-md:mx-3 max-md:py-3 max-md:border-b max-md:border-gray-200">
-          <h2 class="text-gray-800 text-lg font-semibold flex items-center gap-1 max-md:text-base"><i class="fa-solid fa-chart-simple"></i> Tabela de Preços</h2>
-        </div>
-        <p class="section-description text-gray-500 text-sm mb-4">
-          Configure os preços por quantidade (em milhares). Ex: 15 = 15k milhas
-        </p>
-
-        <!-- Price Type Tabs (only when has liminar - mobile only) -->
-        <div class="price-type-tabs flex gap-0 mb-4 bg-gray-100 rounded-lg p-1 max-w-xs" x-show="hasLiminar()">
-          <button class="flex-1 px-4 py-2.5 border-none rounded-md text-sm font-medium cursor-pointer transition-all hover:text-primary" :class="priceTypeTab === 'normal' ? 'bg-white text-primary shadow-sm' : 'bg-transparent text-gray-500'"
-            @click="priceTypeTab = 'normal'">
-            Normal
-          </button>
-          <button class="flex-1 px-4 py-2.5 border-none rounded-md text-sm font-medium cursor-pointer transition-all hover:text-primary" :class="priceTypeTab === 'liminar' ? 'bg-white text-primary shadow-sm' : 'bg-transparent text-gray-500'"
-            @click="priceTypeTab = 'liminar'">
-            Liminar
-          </button>
-        </div>
-
-        <template x-for="prog in programsToShow" :key="prog.id">
+      <template x-for="prog in programsToShow" :key="prog.id">
           <div class="price-carousel-wrapper relative flex flex-col gap-3 mb-4" x-show="shouldShowPriceProgram(prog)">
             <h4 class="text-sm mb-3 text-gray-800" x-show="!hasLiminar()">
               <span x-text="prog.name"></span>
@@ -216,123 +184,145 @@
           </div>
         </template>
 
+    </div>
+
+    <!-- Max Prices Section -->
+    <div class="section mb-8 p-5 bg-gray-50 rounded-xl max-md:p-0 max-md:mb-6" x-show="activeSection === 'maxPrices'">
+      <div class="section-header flex justify-between items-center mb-4 max-md:mx-3 max-md:py-3 max-md:border-b max-md:border-gray-200">
+        <h2 class="text-gray-800 text-lg font-semibold flex items-center gap-1 max-md:text-base"><i class="fa-solid fa-lock"></i> Preço Máximo (PREÇO TETO)</h2>
       </div>
+      <p class="section-description text-gray-500 text-sm mb-4">
+        Define o preço máximo que será cobrado para cada programa
+      </p>
 
-      <!-- Max Prices Section -->
-      <div class="section mb-8 p-5 bg-gray-50 rounded-xl max-md:p-0 max-md:mb-6" x-show="activeSection === 'maxPrices'">
-        <div class="section-header flex justify-between items-center mb-4 max-md:mx-3 max-md:py-3 max-md:border-b max-md:border-gray-200">
-          <h2 class="text-gray-800 text-lg font-semibold flex items-center gap-1 max-md:text-base"><i class="fa-solid fa-lock"></i> Preço Máximo (PREÇO TETO)</h2>
-        </div>
-        <p class="section-description text-gray-500 text-sm mb-4">
-          Define o preço máximo que será cobrado para cada programa
-        </p>
-
-        <div class="data-cards flex flex-col gap-3">
-          <template x-for="prog in programsToShow" :key="prog.id">
-            <div class="data-card maxprice-data-card bg-white border border-gray-200 rounded-xl p-4 relative transition-all hover:shadow-md hover:border-gray-300" :data-program-id="prog.id">
-              <div class="data-card-header flex justify-between items-center mb-3">
-                <span class="data-card-title font-semibold text-sm text-gray-800">
-                  <span x-text="prog.name"></span>
-                  <span x-show="prog.isLiminar" class="inline-block py-0.5 px-2 bg-amber-100 text-amber-700 rounded text-[11px] font-semibold ml-2">LIMINAR</span>
-                </span>
-              </div>
-              <div class="data-card-fields flex gap-3">
-                <div class="data-card-field flex-1">
-                  <label class="block text-xs text-gray-500 mb-1.5 font-medium">Preço Máximo (R$)</label>
-                  <input type="text" inputmode="decimal" :value="getMaxPrice(prog.id)?.maxPrice || ''"
-                    @input="formatInput($event, true); updateMaxPrice(prog.id, $event.target.value)" placeholder="Sem limite" class="w-full p-3 border border-gray-200 rounded-lg text-base text-center transition-all">
-                </div>
-              </div>
-            </div>
-          </template>
-        </div>
-
-        <div class="btn-group flex gap-2.5 justify-end mt-4 max-md:justify-center">
-          <button type="button" class="bg-linear-135 from-primary to-secondary px-6 py-3 text-sm font-semibold border-none rounded-lg cursor-pointer transition-all text-white disabled:opacity-60 disabled:cursor-not-allowed hover:not-disabled:-translate-y-0.5 hover:not-disabled:shadow-lg" @click="saveMaxPrices()" :disabled="saving">
-            <span x-show="saving" class="spinner mr-2"></span>
-            Salvar Preços Máximos
+      <!-- Program Tabs -->
+      <div class="flex gap-2 mb-4 flex-wrap max-md:mx-3">
+        <template x-for="p in normalPrograms" :key="p.id">
+          <button class="px-4 py-2 border-2 rounded-lg cursor-pointer text-sm font-medium transition-all" 
+            :class="selectedProgramId === p.id ? 'bg-linear-135 from-primary to-secondary text-white border-transparent' : 'border-gray-200 bg-white hover:border-primary hover:text-primary'" 
+            @click="selectProgram(p.id)"
+            x-text="p.name">
           </button>
-        </div>
+        </template>
       </div>
 
-      <!-- Available Miles Section -->
-      <div class="section mb-8 p-5 bg-gray-50 rounded-xl max-md:p-0 max-md:mb-6" x-show="activeSection === 'miles'">
-        <div class="section-header flex justify-between items-center mb-4 max-md:mx-3 max-md:py-3 max-md:border-b max-md:border-gray-200">
-          <h2 class="text-gray-800 text-lg font-semibold flex items-center gap-1 max-md:text-base"><i class="fa-solid fa-box"></i> Estoque de Milhas</h2>
-        </div>
-        <p class="section-description text-gray-500 text-sm mb-4">
-          Configure a quantidade de milhas disponíveis para cada programa
-        </p>
-
-        <div class="data-cards flex flex-col gap-3">
-          <template x-for="prog in programsToShow" :key="prog.id">
-            <div class="data-card miles-data-card bg-white border border-gray-200 rounded-xl p-4 relative transition-all hover:shadow-md hover:border-gray-300" :data-program-id="prog.id">
-              <div class="data-card-header flex justify-between items-center mb-3">
-                <span class="data-card-title font-semibold text-sm text-gray-800">
-                  <span x-text="prog.name"></span>
-                  <span x-show="prog.isLiminar" class="inline-block py-0.5 px-2 bg-amber-100 text-amber-700 rounded text-[11px] font-semibold ml-2">LIMINAR</span>
-                </span>
-              </div>
-              <div class="data-card-fields flex gap-3">
-                <div class="data-card-field flex-1">
-                  <label class="block text-xs text-gray-500 mb-1.5 font-medium">Milhas Disponíveis</label>
-                  <input type="text" inputmode="numeric" :value="getMiles(prog.id)?.availableMiles || ''"
-                    @input="formatInput($event, false); updateMiles(prog.id, $event.target.value)" placeholder="0" class="w-full p-3 border border-gray-200 rounded-lg text-base text-center transition-all">
-                </div>
+      <div class="data-cards flex flex-col gap-3">
+        <template x-for="prog in programsToShow" :key="prog.id">
+          <div class="data-card maxprice-data-card bg-white border border-gray-200 rounded-xl p-4 relative transition-all hover:shadow-md hover:border-gray-300" :data-program-id="prog.id">
+            <div class="data-card-header flex justify-between items-center mb-3">
+              <span class="data-card-title font-semibold text-sm text-gray-800">
+                <span x-text="prog.name"></span>
+                <span x-show="prog.isLiminar" class="inline-block py-0.5 px-2 bg-amber-100 text-amber-700 rounded text-[11px] font-semibold ml-2">LIMINAR</span>
+              </span>
+            </div>
+            <div class="data-card-fields flex gap-3">
+              <div class="data-card-field flex-1">
+                <label class="block text-xs text-gray-500 mb-1.5 font-medium">Preço Máximo (R$)</label>
+                <input type="text" inputmode="decimal" :value="getMaxPrice(prog.id)?.maxPrice || ''"
+                  @input="formatInput($event, true); updateMaxPrice(prog.id, $event.target.value)" placeholder="Sem limite" class="w-full p-3 border border-gray-200 rounded-lg text-base text-center transition-all">
               </div>
             </div>
-          </template>
-        </div>
-
-        <div class="btn-group flex gap-2.5 justify-end mt-4 max-md:justify-center">
-          <button type="button" class="bg-linear-135 from-primary to-secondary px-6 py-3 text-sm font-semibold border-none rounded-lg cursor-pointer transition-all text-white disabled:opacity-60 disabled:cursor-not-allowed hover:not-disabled:-translate-y-0.5 hover:not-disabled:shadow-lg" @click="saveMiles()" :disabled="saving">
-            <span x-show="saving" class="spinner mr-2"></span>
-            Salvar Estoque
-          </button>
-        </div>
-      </div>
-
-      <!-- Counter Offer Section -->
-      <div class="section mb-8 p-5 bg-gray-50 rounded-xl max-md:p-0 max-md:mb-6" x-show="activeSection === 'counterOffer'">
-        <div class="section-header flex justify-between items-center mb-4 max-md:mx-3 max-md:py-3 max-md:border-b max-md:border-gray-200">
-          <h2 class="text-gray-800 text-lg font-semibold flex items-center gap-1 max-md:text-base"><i class="fa-solid fa-message"></i> Proposta Privada</h2>
-        </div>
-        <p class="section-description text-gray-500 text-sm mb-4">
-          Configure as mensagens enviadas no privado do comprador para negociação e fechamento de negócios
-        </p>
-
-        <!-- Enable Toggle -->
-        <div class="data-card bg-white border border-gray-200 rounded-xl p-4 mb-4">
-          <div class="flex items-center justify-between">
-            <div>
-              <h4 class="font-semibold text-sm text-gray-800 mb-1">Habilitar Mensagens Privadas</h4>
-              <p class="text-xs text-gray-500">O bot enviará mensagens no privado para negociar e fechar negócios</p>
-            </div>
-            <label class="relative inline-flex items-center cursor-pointer">
-              <input type="checkbox" class="sr-only peer" x-model="counterOfferSettings.isEnabled" @change="markCounterOfferChanged()">
-              <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
-            </label>
           </div>
-        </div>
+        </template>
+      </div>
 
-        <!-- Sub-abas: Contra-proposta | Fechamento -->
-        <div class="flex gap-0 mb-4 bg-gray-100 rounded-lg p-1" :class="{ 'opacity-50': !counterOfferSettings.isEnabled }">
-          <button class="flex-1 px-4 py-2.5 border-none rounded-md text-sm font-medium cursor-pointer transition-all hover:text-primary"
-            :class="proposalSubTab === 'counterOffer' ? 'bg-white text-primary shadow-sm' : 'bg-transparent text-gray-500'"
-            @click="proposalSubTab = 'counterOffer'"
-            :disabled="!counterOfferSettings.isEnabled">
-            Contra-proposta
-          </button>
-          <button class="flex-1 px-4 py-2.5 border-none rounded-md text-sm font-medium cursor-pointer transition-all hover:text-primary"
-            :class="proposalSubTab === 'callToAction' ? 'bg-white text-primary shadow-sm' : 'bg-transparent text-gray-500'"
-            @click="proposalSubTab = 'callToAction'"
-            :disabled="!counterOfferSettings.isEnabled">
-            Fechamento
-          </button>
-        </div>
+      <div class="btn-group flex gap-2.5 justify-end mt-4 max-md:justify-center">
+        <button type="button" class="bg-linear-135 from-primary to-secondary px-6 py-3 text-sm font-semibold border-none rounded-lg cursor-pointer transition-all text-white disabled:opacity-60 disabled:cursor-not-allowed hover:not-disabled:-translate-y-0.5 hover:not-disabled:shadow-lg" @click="saveMaxPrices()" :disabled="saving">
+          <span x-show="saving" class="spinner mr-2"></span>
+          Salvar Preços Máximos
+        </button>
+      </div>
+    </div>
 
-        <!-- Conteúdo da sub-aba Contra-proposta -->
-        <div x-show="proposalSubTab === 'counterOffer'">
+    <!-- Available Miles Section -->
+    <div class="section mb-8 p-5 bg-gray-50 rounded-xl max-md:p-0 max-md:mb-6" x-show="activeSection === 'miles'">
+      <div class="section-header flex justify-between items-center mb-4 max-md:mx-3 max-md:py-3 max-md:border-b max-md:border-gray-200">
+        <h2 class="text-gray-800 text-lg font-semibold flex items-center gap-1 max-md:text-base"><i class="fa-solid fa-box"></i> Estoque de Milhas</h2>
+      </div>
+      <p class="section-description text-gray-500 text-sm mb-4">
+        Configure a quantidade de milhas disponíveis para cada programa
+      </p>
+
+      <!-- Program Tabs -->
+      <div class="flex gap-2 mb-4 flex-wrap max-md:mx-3">
+        <template x-for="p in normalPrograms" :key="p.id">
+          <button class="px-4 py-2 border-2 rounded-lg cursor-pointer text-sm font-medium transition-all" 
+            :class="selectedProgramId === p.id ? 'bg-linear-135 from-primary to-secondary text-white border-transparent' : 'border-gray-200 bg-white hover:border-primary hover:text-primary'" 
+            @click="selectProgram(p.id)"
+            x-text="p.name">
+          </button>
+        </template>
+      </div>
+
+      <div class="data-cards flex flex-col gap-3">
+        <template x-for="prog in programsToShow" :key="prog.id">
+          <div class="data-card miles-data-card bg-white border border-gray-200 rounded-xl p-4 relative transition-all hover:shadow-md hover:border-gray-300" :data-program-id="prog.id">
+            <div class="data-card-header flex justify-between items-center mb-3">
+              <span class="data-card-title font-semibold text-sm text-gray-800">
+                <span x-text="prog.name"></span>
+                <span x-show="prog.isLiminar" class="inline-block py-0.5 px-2 bg-amber-100 text-amber-700 rounded text-[11px] font-semibold ml-2">LIMINAR</span>
+              </span>
+            </div>
+            <div class="data-card-fields flex gap-3">
+              <div class="data-card-field flex-1">
+                <label class="block text-xs text-gray-500 mb-1.5 font-medium">Milhas Disponíveis</label>
+                <input type="text" inputmode="numeric" :value="getMiles(prog.id)?.availableMiles || ''"
+                  @input="formatInput($event, false); updateMiles(prog.id, $event.target.value)" placeholder="0" class="w-full p-3 border border-gray-200 rounded-lg text-base text-center transition-all">
+              </div>
+            </div>
+          </div>
+        </template>
+      </div>
+
+      <div class="btn-group flex gap-2.5 justify-end mt-4 max-md:justify-center">
+        <button type="button" class="bg-linear-135 from-primary to-secondary px-6 py-3 text-sm font-semibold border-none rounded-lg cursor-pointer transition-all text-white disabled:opacity-60 disabled:cursor-not-allowed hover:not-disabled:-translate-y-0.5 hover:not-disabled:shadow-lg" @click="saveMiles()" :disabled="saving">
+          <span x-show="saving" class="spinner mr-2"></span>
+          Salvar Estoque
+        </button>
+      </div>
+    </div>
+
+    <!-- Counter Offer Section -->
+    <div class="section mb-8 p-5 bg-gray-50 rounded-xl max-md:p-0 max-md:mb-6" x-show="activeSection === 'counterOffer'">
+      <div class="section-header flex justify-between items-center mb-4 max-md:mx-3 max-md:py-3 max-md:border-b max-md:border-gray-200">
+        <h2 class="text-gray-800 text-lg font-semibold flex items-center gap-1 max-md:text-base"><i class="fa-solid fa-message"></i> Proposta Privada</h2>
+      </div>
+      <p class="section-description text-gray-500 text-sm mb-4">
+        Configure as mensagens enviadas no privado do comprador para negociação e fechamento de negócios
+      </p>
+
+      <!-- Enable Toggle -->
+      <div class="data-card bg-white border border-gray-200 rounded-xl p-4 mb-4">
+        <div class="flex items-center justify-between">
+          <div>
+            <h4 class="font-semibold text-sm text-gray-800 mb-1">Habilitar Mensagens Privadas</h4>
+            <p class="text-xs text-gray-500">O bot enviará mensagens no privado para negociar e fechar negócios</p>
+          </div>
+          <label class="relative inline-flex items-center cursor-pointer">
+            <input type="checkbox" class="sr-only peer" x-model="counterOfferSettings.isEnabled" @change="markCounterOfferChanged()">
+            <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+          </label>
+        </div>
+      </div>
+
+      <!-- Sub-abas: Contra-proposta | Fechamento -->
+      <div class="flex gap-0 mb-4 bg-gray-100 rounded-lg p-1" :class="{ 'opacity-50': !counterOfferSettings.isEnabled }">
+        <button class="flex-1 px-4 py-2.5 border-none rounded-md text-sm font-medium cursor-pointer transition-all hover:text-primary"
+          :class="proposalSubTab === 'counterOffer' ? 'bg-white text-primary shadow-sm' : 'bg-transparent text-gray-500'"
+          @click="proposalSubTab = 'counterOffer'"
+          :disabled="!counterOfferSettings.isEnabled">
+          Contra-proposta
+        </button>
+        <button class="flex-1 px-4 py-2.5 border-none rounded-md text-sm font-medium cursor-pointer transition-all hover:text-primary"
+          :class="proposalSubTab === 'callToAction' ? 'bg-white text-primary shadow-sm' : 'bg-transparent text-gray-500'"
+          @click="proposalSubTab = 'callToAction'"
+          :disabled="!counterOfferSettings.isEnabled">
+          Fechamento
+        </button>
+      </div>
+
+      <!-- Conteúdo da sub-aba Contra-proposta -->
+      <div x-show="proposalSubTab === 'counterOffer'">
         <!-- Price Threshold -->
         <div class="data-card bg-white border border-gray-200 rounded-xl p-4 mb-4" :class="{ 'opacity-50': !counterOfferSettings.isEnabled }">
           <div class="data-card-header mb-3">
@@ -376,10 +366,10 @@
             </template>
           </div>
         </div>
-        </div>
+      </div>
 
-        <!-- Conteúdo da sub-aba Fechamento -->
-        <div x-show="proposalSubTab === 'callToAction'">
+      <!-- Conteúdo da sub-aba Fechamento -->
+      <div x-show="proposalSubTab === 'callToAction'">
         <!-- Call to Action Message Template -->
         <div class="data-card bg-white border border-gray-200 rounded-xl p-4 mb-4" :class="{ 'opacity-50': !counterOfferSettings.isEnabled }">
           <div class="data-card-header mb-3">
@@ -404,140 +394,139 @@
             </template>
           </div>
         </div>
-        </div>
-
-        <div class="btn-group flex gap-2.5 justify-end mt-4 max-md:justify-center">
-          <button type="button" class="bg-linear-135 from-primary to-secondary px-6 py-3 text-sm font-semibold border-none rounded-lg cursor-pointer transition-all text-white disabled:opacity-60 disabled:cursor-not-allowed hover:not-disabled:-translate-y-0.5 hover:not-disabled:shadow-lg" 
-            @click="saveCounterOfferSettings()" 
-            :disabled="savingCounterOffer || !counterOfferChanged">
-            <span x-show="savingCounterOffer" class="spinner mr-2"></span>
-            Salvar Configurações
-          </button>
-        </div>
       </div>
 
-      <!-- Groups Section -->
-      <div class="section mb-8 p-5 bg-gray-50 rounded-xl max-md:p-0 max-md:mb-6" x-show="activeSection === 'groups'">
-        <div class="section-header flex justify-between items-center mb-4 max-md:mx-3 max-md:py-3 max-md:border-b max-md:border-gray-200">
-          <h2 class="text-gray-800 text-lg font-semibold flex items-center gap-1 max-md:text-base"><i class="fa-solid fa-users"></i> Grupos Ativos</h2>
-          <button type="button" 
-            class="px-4 py-2 text-sm font-medium rounded-lg border-2 border-primary text-primary bg-white hover:bg-primary/5 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-            @click="fetchAvailableGroups()"
-            :disabled="loadingAvailableGroups">
-            <span x-show="loadingAvailableGroups" class="spinner mr-2" style="width: 14px; height: 14px;"></span>
-            <i x-show="!loadingAvailableGroups" class="fa-solid fa-sync-alt mr-1"></i>
-            Atualizar
-          </button>
-        </div>
-        <p class="section-description text-gray-500 text-sm mb-4">
-          Selecione os grupos do Telegram onde o bot deve responder às mensagens de compra
-        </p>
+      <div class="btn-group flex gap-2.5 justify-end mt-4 max-md:justify-center">
+        <button type="button" class="bg-linear-135 from-primary to-secondary px-6 py-3 text-sm font-semibold border-none rounded-lg cursor-pointer transition-all text-white disabled:opacity-60 disabled:cursor-not-allowed hover:not-disabled:-translate-y-0.5 hover:not-disabled:shadow-lg" 
+          @click="saveCounterOfferSettings()" 
+          :disabled="savingCounterOffer || !counterOfferChanged">
+          <span x-show="savingCounterOffer" class="spinner mr-2"></span>
+          Salvar Configurações
+        </button>
+      </div>
+    </div>
 
-        <!-- Loading State -->
-        <div x-show="loadingGroups" class="text-center p-8">
-          <div class="spinner mx-auto mb-4" style="width: 32px; height: 32px; border-width: 3px;"></div>
-          <p class="text-gray-500">Carregando grupos...</p>
-        </div>
+    <!-- Groups Section -->
+    <div class="section mb-8 p-5 bg-gray-50 rounded-xl max-md:p-0 max-md:mb-6" x-show="activeSection === 'groups'">
+      <div class="section-header flex justify-between items-center mb-4 max-md:mx-3 max-md:py-3 max-md:border-b max-md:border-gray-200">
+        <h2 class="text-gray-800 text-lg font-semibold flex items-center gap-1 max-md:text-base"><i class="fa-solid fa-users"></i> Grupos Ativos</h2>
+        <button type="button" 
+          class="px-4 py-2 text-sm font-medium rounded-lg border-2 border-primary text-primary bg-white hover:bg-primary/5 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+          @click="fetchAvailableGroups()"
+          :disabled="loadingAvailableGroups">
+          <span x-show="loadingAvailableGroups" class="spinner mr-2" style="width: 14px; height: 14px;"></span>
+          <i x-show="!loadingAvailableGroups" class="fa-solid fa-sync-alt mr-1"></i>
+          Atualizar
+        </button>
+      </div>
+      <p class="section-description text-gray-500 text-sm mb-4">
+        Selecione os grupos do Telegram onde o bot deve responder às mensagens de compra
+      </p>
 
-        <!-- Error State -->
-        <div x-show="groupsError && !loadingGroups" class="text-center p-8 bg-red-50 rounded-xl">
-          <i class="fa-solid fa-triangle-exclamation text-red-500 text-2xl mb-3"></i>
-          <p class="text-red-600 font-medium mb-2">Erro ao carregar grupos</p>
-          <p class="text-red-500 text-sm" x-text="groupsErrorMessage"></p>
-          <button type="button" 
-            class="mt-4 px-4 py-2 text-sm font-medium rounded-lg bg-red-100 text-red-600 hover:bg-red-200 transition-all"
-            @click="fetchAvailableGroups()">
-            <i class="fa-solid fa-redo mr-1"></i> Tentar novamente
-          </button>
-        </div>
+      <!-- Loading State -->
+      <div x-show="loadingGroups" class="text-center p-8">
+        <div class="spinner mx-auto mb-4" style="width: 32px; height: 32px; border-width: 3px;"></div>
+        <p class="text-gray-500">Carregando grupos...</p>
+      </div>
 
-        <!-- Groups List -->
-        <div x-show="!loadingGroups && !groupsError" class="flex flex-col gap-3">
-          <!-- Active Groups -->
-          <template x-if="activeGroups.length > 0">
-            <div class="mb-4">
-              <h4 class="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
-                <span class="w-2 h-2 bg-emerald-500 rounded-full"></span>
-                Grupos Ativos (<span x-text="activeGroups.length"></span>)
-              </h4>
-              <div class="flex flex-col gap-2">
-                <template x-for="group in activeGroups" :key="group.id">
-                  <div class="data-card bg-white border-2 border-emerald-200 rounded-xl p-4 relative transition-all hover:shadow-md">
-                    <div class="flex items-center justify-between">
-                      <div class="flex items-center gap-3">
-                        <div class="w-10 h-10 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center">
-                          <i class="fa-solid fa-users"></i>
-                        </div>
-                        <div>
-                          <div class="font-medium text-gray-800" x-text="group.title"></div>
-                          <div class="text-xs text-gray-400" x-text="group.id"></div>
-                        </div>
+      <!-- Error State -->
+      <div x-show="groupsError && !loadingGroups" class="text-center p-8 bg-red-50 rounded-xl">
+        <i class="fa-solid fa-triangle-exclamation text-red-500 text-2xl mb-3"></i>
+        <p class="text-red-600 font-medium mb-2">Erro ao carregar grupos</p>
+        <p class="text-red-500 text-sm" x-text="groupsErrorMessage"></p>
+        <button type="button" 
+          class="mt-4 px-4 py-2 text-sm font-medium rounded-lg bg-red-100 text-red-600 hover:bg-red-200 transition-all"
+          @click="fetchAvailableGroups()">
+          <i class="fa-solid fa-redo mr-1"></i> Tentar novamente
+        </button>
+      </div>
+
+      <!-- Groups List -->
+      <div x-show="!loadingGroups && !groupsError" class="flex flex-col gap-3">
+        <!-- Active Groups -->
+        <template x-if="activeGroups.length > 0">
+          <div class="mb-4">
+            <h4 class="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+              <span class="w-2 h-2 bg-emerald-500 rounded-full"></span>
+              Grupos Ativos (<span x-text="activeGroups.length"></span>)
+            </h4>
+            <div class="flex flex-col gap-2">
+              <template x-for="group in activeGroups" :key="group.id">
+                <div class="data-card bg-white border-2 border-emerald-200 rounded-xl p-4 relative transition-all hover:shadow-md">
+                  <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-3">
+                      <div class="w-10 h-10 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center">
+                        <i class="fa-solid fa-users"></i>
                       </div>
-                      <button type="button"
-                        class="px-3 py-2 text-sm font-medium rounded-lg bg-red-100 text-red-600 hover:bg-red-200 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                        @click="deactivateGroup(group.id)"
-                        :disabled="deactivatingGroupId === group.id">
-                        <span x-show="deactivatingGroupId === group.id" class="spinner" style="width: 14px; height: 14px;"></span>
-                        <span x-show="deactivatingGroupId !== group.id"><i class="fa-solid fa-times mr-1"></i> Desativar</span>
-                      </button>
-                    </div>
-                  </div>
-                </template>
-              </div>
-            </div>
-          </template>
-
-          <!-- Empty Active Groups -->
-          <template x-if="activeGroups.length === 0 && availableGroups.length > 0">
-            <div class="text-center p-6 bg-amber-50 rounded-xl mb-4">
-              <i class="fa-solid fa-info-circle text-amber-500 text-xl mb-2"></i>
-              <p class="text-amber-700 text-sm">Nenhum grupo ativo. Selecione grupos abaixo para ativar.</p>
-            </div>
-          </template>
-
-          <!-- Available Groups -->
-          <template x-if="inactiveGroups.length > 0">
-            <div>
-              <h4 class="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
-                <span class="w-2 h-2 bg-gray-300 rounded-full"></span>
-                Grupos Disponíveis (<span x-text="inactiveGroups.length"></span>)
-              </h4>
-              <div class="flex flex-col gap-2">
-                <template x-for="group in inactiveGroups" :key="group.id">
-                  <div class="data-card bg-white border border-gray-200 rounded-xl p-4 relative transition-all hover:shadow-md hover:border-gray-300">
-                    <div class="flex items-center justify-between">
-                      <div class="flex items-center gap-3">
-                        <div class="w-10 h-10 rounded-full bg-gray-100 text-gray-500 flex items-center justify-center">
-                          <i class="fa-solid fa-users"></i>
-                        </div>
-                        <div>
-                          <div class="font-medium text-gray-800" x-text="group.title"></div>
-                          <div class="text-xs text-gray-400" x-text="group.id"></div>
-                        </div>
+                      <div>
+                        <div class="font-medium text-gray-800" x-text="group.title"></div>
+                        <div class="text-xs text-gray-400" x-text="group.id"></div>
                       </div>
-                      <button type="button"
-                        class="px-3 py-2 text-sm font-medium rounded-lg bg-emerald-100 text-emerald-600 hover:bg-emerald-200 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                        @click="activateGroup(group.id)"
-                        :disabled="activatingGroupId === group.id">
-                        <span x-show="activatingGroupId === group.id" class="spinner" style="width: 14px; height: 14px;"></span>
-                        <span x-show="activatingGroupId !== group.id"><i class="fa-solid fa-plus mr-1"></i> Ativar</span>
-                      </button>
                     </div>
+                    <button type="button"
+                      class="px-3 py-2 text-sm font-medium rounded-lg bg-red-100 text-red-600 hover:bg-red-200 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                      @click="deactivateGroup(group.id)"
+                      :disabled="deactivatingGroupId === group.id">
+                      <span x-show="deactivatingGroupId === group.id" class="spinner" style="width: 14px; height: 14px;"></span>
+                      <span x-show="deactivatingGroupId !== group.id"><i class="fa-solid fa-times mr-1"></i> <span class="hidden md:inline">Desativar</span></span>
+                    </button>
                   </div>
-                </template>
-              </div>
+                </div>
+              </template>
             </div>
-          </template>
+          </div>
+        </template>
 
-          <!-- Empty State - No Groups at All -->
-          <template x-if="availableGroups.length === 0 && activeGroups.length === 0 && !loadingGroups && !groupsError">
-            <div class="text-center p-8 bg-gray-100 rounded-xl">
-              <i class="fa-solid fa-users-slash text-gray-400 text-3xl mb-3"></i>
-              <p class="text-gray-600 font-medium mb-2">Nenhum grupo encontrado</p>
-              <p class="text-gray-500 text-sm">Entre em grupos no Telegram para que eles apareçam aqui.</p>
+        <!-- Empty Active Groups -->
+        <template x-if="activeGroups.length === 0 && availableGroups.length > 0">
+          <div class="text-center p-6 bg-amber-50 rounded-xl mb-4">
+            <i class="fa-solid fa-info-circle text-amber-500 text-xl mb-2"></i>
+            <p class="text-amber-700 text-sm">Nenhum grupo ativo. Selecione grupos abaixo para ativar.</p>
+          </div>
+        </template>
+
+        <!-- Available Groups -->
+        <template x-if="inactiveGroups.length > 0">
+          <div>
+            <h4 class="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+              <span class="w-2 h-2 bg-gray-300 rounded-full"></span>
+              Grupos Disponíveis (<span x-text="inactiveGroups.length"></span>)
+            </h4>
+            <div class="flex flex-col gap-2">
+              <template x-for="group in inactiveGroups" :key="group.id">
+                <div class="data-card bg-white border border-gray-200 rounded-xl p-4 relative transition-all hover:shadow-md hover:border-gray-300">
+                  <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-3">
+                      <div class="w-10 h-10 rounded-full bg-gray-100 text-gray-500 flex items-center justify-center">
+                        <i class="fa-solid fa-users"></i>
+                      </div>
+                      <div>
+                        <div class="font-medium text-gray-800" x-text="group.title"></div>
+                        <div class="text-xs text-gray-400" x-text="group.id"></div>
+                      </div>
+                    </div>
+                    <button type="button"
+                      class="px-3 py-2 text-sm font-medium rounded-lg bg-emerald-100 text-emerald-600 hover:bg-emerald-200 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                      @click="activateGroup(group.id)"
+                      :disabled="activatingGroupId === group.id">
+                      <span x-show="activatingGroupId === group.id" class="spinner" style="width: 14px; height: 14px;"></span>
+                      <span x-show="activatingGroupId !== group.id"><i class="fa-solid fa-plus mr-1"></i> <span class="hidden md:inline">Ativar</span></span>
+                    </button>
+                  </div>
+                </div>
+              </template>
             </div>
-          </template>
-        </div>
+          </div>
+        </template>
+
+        <!-- Empty State - No Groups at All -->
+        <template x-if="availableGroups.length === 0 && activeGroups.length === 0 && !loadingGroups && !groupsError">
+          <div class="text-center p-8 bg-gray-100 rounded-xl">
+            <i class="fa-solid fa-users-slash text-gray-400 text-3xl mb-3"></i>
+            <p class="text-gray-600 font-medium mb-2">Nenhum grupo encontrado</p>
+            <p class="text-gray-500 text-sm">Entre em grupos no Telegram para que eles apareçam aqui.</p>
+          </div>
+        </template>
       </div>
     </div>
 
@@ -664,6 +653,10 @@
         activatingGroupId: null,
         deactivatingGroupId: null,
 
+        // Bot status state
+        botStatus: { isEnabled: true },
+        savingBotStatus: false,
+
         // ============================================================================
         // Computed Properties (as getters)
         // ============================================================================
@@ -743,6 +736,7 @@
               this.fetchCounterOfferSettings(),
               this.fetchCounterOfferTemplates(),
               this.fetchCallToActionTemplates(),
+              this.fetchBotStatus(),
             ]);
 
             if (this.normalPrograms.length > 0) {
@@ -807,6 +801,42 @@
             this.callToActionTemplates = data.data.templates;
           } else {
             console.warn('Failed to fetch call to action templates:', data.error);
+          }
+        },
+
+        async fetchBotStatus() {
+          const res = await fetch(`/dashboard/${this.token}/bot-status`);
+          const data = await res.json();
+          if (data.success) {
+            this.botStatus = data.data;
+          } else {
+            console.warn('Failed to fetch bot status:', data.error);
+          }
+        },
+
+        async saveBotStatus() {
+          this.savingBotStatus = true;
+          try {
+            const res = await fetch(`/dashboard/${this.token}/bot-status`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ isEnabled: this.botStatus.isEnabled }),
+            });
+            const data = await res.json();
+            if (data.success) {
+              this.showToast(this.botStatus.isEnabled ? 'Bot ativado!' : 'Bot desativado!', 'success');
+            } else {
+              // Revert on error
+              this.botStatus.isEnabled = !this.botStatus.isEnabled;
+              this.showToast('Erro ao salvar status do bot', 'error');
+            }
+          } catch (error) {
+            console.error('Error saving bot status:', error);
+            // Revert on error
+            this.botStatus.isEnabled = !this.botStatus.isEnabled;
+            this.showToast('Erro ao salvar status do bot', 'error');
+          } finally {
+            this.savingBotStatus = false;
           }
         },
 

@@ -17,6 +17,7 @@ import { UserDataRepository, PriceEntryInput, MaxPriceInput, AvailableMilesInput
 import { MilesProgramRepository } from '@/infrastructure/persistence/miles-program.repository';
 import { CounterOfferSettingsRepository, type CounterOfferSettingsInput } from '@/infrastructure/persistence/counter-offer-settings.repository';
 import { ActiveGroupsRepository } from '@/infrastructure/persistence/active-groups.repository';
+import { BotStatusRepository } from '@/infrastructure/persistence/bot-status.repository';
 import { TelegramBotService } from '@/infrastructure/telegram/telegram-bot-service';
 import { TelegramUserClientProxyService } from '@/infrastructure/tdlib/telegram-user-client-proxy.service';
 import { ConversationRepository } from '@/infrastructure/persistence/conversation.repository';
@@ -137,6 +138,14 @@ interface AvailableGroupsResponse {
   groups: GroupResponse[];
 }
 
+interface BotStatusResponse {
+  isEnabled: boolean;
+}
+
+interface UpdateBotStatusDto {
+  isEnabled: boolean;
+}
+
 /**
  * HTTP Controller for web-based dashboard
  * Handles token validation and user data management
@@ -151,6 +160,7 @@ export class DashboardController {
     private readonly milesProgramRepository: MilesProgramRepository,
     private readonly counterOfferSettingsRepository: CounterOfferSettingsRepository,
     private readonly activeGroupsRepository: ActiveGroupsRepository,
+    private readonly botStatusRepository: BotStatusRepository,
     private readonly telegramBotService: TelegramBotService,
     private readonly telegramUserClient: TelegramUserClientProxyService,
     private readonly conversationRepository: ConversationRepository,
@@ -987,6 +997,58 @@ export class DashboardController {
     await this.activeGroupsRepository.removeActiveGroup(userId, groupIdNum);
 
     this.logger.log(`Deactivated group ${groupIdNum} for user ${userId}`);
+
+    res.status(HttpStatus.OK).json({
+      success: true,
+    } satisfies ApiResponse);
+  }
+
+  // ============================================================================
+  // Bot Status Management
+  // ============================================================================
+
+  /**
+   * GET /dashboard/:token/bot-status - Get bot enabled/disabled status
+   */
+  @Get(':token/bot-status')
+  async getBotStatus(
+    @Param('token') token: string,
+    @Res() res: Response,
+  ): Promise<void> {
+    const userId = await this.validateAndGetUserId(token, res);
+    if (!userId) return;
+
+    const isEnabled = await this.botStatusRepository.getBotStatus(userId);
+
+    res.status(HttpStatus.OK).json({
+      success: true,
+      data: { isEnabled },
+    } satisfies ApiResponse<BotStatusResponse>);
+  }
+
+  /**
+   * PUT /dashboard/:token/bot-status - Update bot enabled/disabled status
+   */
+  @Put(':token/bot-status')
+  async updateBotStatus(
+    @Param('token') token: string,
+    @Body() body: UpdateBotStatusDto,
+    @Res() res: Response,
+  ): Promise<void> {
+    const userId = await this.validateAndGetUserId(token, res);
+    if (!userId) return;
+
+    if (typeof body.isEnabled !== 'boolean') {
+      res.status(HttpStatus.BAD_REQUEST).json({
+        success: false,
+        error: 'isEnabled must be a boolean',
+      } satisfies ApiResponse);
+      return;
+    }
+
+    await this.botStatusRepository.setBotStatus(userId, body.isEnabled);
+
+    this.logger.log(`Updated bot status for user ${userId}: enabled=${body.isEnabled}`);
 
     res.status(HttpStatus.OK).json({
       success: true,
