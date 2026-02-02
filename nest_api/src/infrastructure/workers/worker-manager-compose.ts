@@ -189,7 +189,7 @@ export class WorkerManagerCompose extends WorkerManager {
   }
 
   private getImageName(): string {
-    return 'isaacbatst/tdlib-worker:latest';
+    return 'isaacbatst/tdlib-worker:dev';
   }
 
   private async getEnvFromPath(path: string): Promise<string[]> {

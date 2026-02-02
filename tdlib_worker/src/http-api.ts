@@ -7,6 +7,7 @@ export interface TdlibCommandRequest {
     | 'login'
     | 'getChats'
     | 'getChat'
+    | 'getGroups'
     | 'getMessage'
     | 'getAuthorizationState'
     | 'logOut'
@@ -94,6 +95,10 @@ export class HttpApi {
       case 'getChat': {
         const { chatId } = payload as { chatId: number };
         return await this.client.getChat(chatId);
+      }
+      case 'getGroups': {
+        const { limit } = (payload as { limit?: number }) || {};
+        return await this.client.getGroups(limit);
       }
       case 'getMessage': {
         const { chatId, messageId } = payload as { chatId: number; messageId: number };

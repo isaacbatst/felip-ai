@@ -16,7 +16,9 @@ import { DashboardTokenRepository } from '@/infrastructure/persistence/dashboard
 import { UserDataRepository, PriceEntryInput, MaxPriceInput, AvailableMilesInput } from '@/infrastructure/persistence/user-data.repository';
 import { MilesProgramRepository } from '@/infrastructure/persistence/miles-program.repository';
 import { CounterOfferSettingsRepository, type CounterOfferSettingsInput } from '@/infrastructure/persistence/counter-offer-settings.repository';
+import { ActiveGroupsRepository } from '@/infrastructure/persistence/active-groups.repository';
 import { TelegramBotService } from '@/infrastructure/telegram/telegram-bot-service';
+import { TelegramUserClientProxyService } from '@/infrastructure/tdlib/telegram-user-client-proxy.service';
 import { ConversationRepository } from '@/infrastructure/persistence/conversation.repository';
 import { AppConfigService } from '@/config/app.config';
 import { 
@@ -121,6 +123,20 @@ interface UpdateCounterOfferSettingsDto {
   callToActionTemplateId: number;
 }
 
+interface GroupResponse {
+  id: number;
+  title: string;
+  isActive: boolean;
+}
+
+interface ActiveGroupsResponse {
+  groups: GroupResponse[];
+}
+
+interface AvailableGroupsResponse {
+  groups: GroupResponse[];
+}
+
 /**
  * HTTP Controller for web-based dashboard
  * Handles token validation and user data management
@@ -134,7 +150,9 @@ export class DashboardController {
     private readonly userDataRepository: UserDataRepository,
     private readonly milesProgramRepository: MilesProgramRepository,
     private readonly counterOfferSettingsRepository: CounterOfferSettingsRepository,
+    private readonly activeGroupsRepository: ActiveGroupsRepository,
     private readonly telegramBotService: TelegramBotService,
+    private readonly telegramUserClient: TelegramUserClientProxyService,
     private readonly conversationRepository: ConversationRepository,
     private readonly appConfig: AppConfigService,
   ) {}
@@ -734,8 +752,261 @@ export class DashboardController {
   }
 
   // ============================================================================
+  // Active Groups Management
+  // ============================================================================
+
+  /**
+   * GET /dashboard/:token/groups - Get user's active groups with titles
+   */
+  @Get(':token/groups')
+  async getActiveGroups(
+    @Param('token') token: string,
+    @Res() res: Response,
+  ): Promise<void> {
+    const userId = await this.validateAndGetUserId(token, res);
+    if (!userId) return;
+
+    // Get telegramUserId for making Telegram API calls
+    const telegramUserId = await this.getTelegramUserIdFromLoggedInUser(userId);
+    if (!telegramUserId) {
+      res.status(HttpStatus.BAD_REQUEST).json({
+        success: false,
+        error: 'user_not_logged_in',
+      } satisfies ApiResponse);
+      return;
+    }
+
+    // Get active group IDs from repository
+    const activeGroupIds = await this.activeGroupsRepository.getActiveGroups(userId);
+    
+    if (!activeGroupIds || activeGroupIds.length === 0) {
+      res.status(HttpStatus.OK).json({
+        success: true,
+        data: { groups: [] },
+      } satisfies ApiResponse<ActiveGroupsResponse>);
+      return;
+    }
+
+    // Fetch group titles from Telegram in parallel for better performance
+    const groupPromises = activeGroupIds.map(async (groupId) => {
+      try {
+        const chatResult = await this.telegramUserClient.getChat(
+          telegramUserId.toString(),
+          groupId,
+        ) as { title?: string } | null;
+
+        const title = chatResult?.title ?? `Grupo ${groupId}`;
+        return {
+          id: groupId,
+          title,
+          isActive: true,
+        } as GroupResponse;
+      } catch (error) {
+        this.logger.warn(`Error fetching chat ${groupId}`, { error });
+        // Include the group even if we can't fetch the title
+        return {
+          id: groupId,
+          title: `Grupo ${groupId}`,
+          isActive: true,
+        } as GroupResponse;
+      }
+    });
+
+    const groups = await Promise.all(groupPromises);
+
+    res.status(HttpStatus.OK).json({
+      success: true,
+      data: { groups },
+    } satisfies ApiResponse<ActiveGroupsResponse>);
+  }
+
+  /**
+   * GET /dashboard/:token/available-groups - Get all groups the user can activate
+   * Returns all groups/supergroups from Telegram with isActive status
+   * Uses single HTTP call to TDLib worker for better performance
+   */
+  @Get(':token/available-groups')
+  async getAvailableGroups(
+    @Param('token') token: string,
+    @Res() res: Response,
+  ): Promise<void> {
+    const userId = await this.validateAndGetUserId(token, res);
+    if (!userId) return;
+
+    // Get telegramUserId for making Telegram API calls
+    const telegramUserId = await this.getTelegramUserIdFromLoggedInUser(userId);
+    if (!telegramUserId) {
+      res.status(HttpStatus.BAD_REQUEST).json({
+        success: false,
+        error: 'user_not_logged_in',
+      } satisfies ApiResponse);
+      return;
+    }
+
+    try {
+      // Single HTTP call to get all groups (filtering done inside TDLib worker)
+      const telegramGroups = await this.telegramUserClient.getGroups(
+        telegramUserId.toString(),
+        100,
+      );
+
+      // Get current active groups
+      const activeGroupIds = await this.activeGroupsRepository.getActiveGroups(userId);
+      const activeGroupsSet = new Set(activeGroupIds || []);
+
+      // Map groups to include isActive status
+      const groups: GroupResponse[] = telegramGroups.map((group) => ({
+        id: group.id,
+        title: group.title,
+        isActive: activeGroupsSet.has(group.id),
+      }));
+
+      res.status(HttpStatus.OK).json({
+        success: true,
+        data: { groups },
+      } satisfies ApiResponse<AvailableGroupsResponse>);
+    } catch (error) {
+      this.logger.error('Error fetching available groups', { error, userId });
+      res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
+        success: false,
+        error: 'worker_unavailable',
+      } satisfies ApiResponse);
+    }
+  }
+
+  /**
+   * POST /dashboard/:token/groups/:groupId - Activate a group
+   * Validates that the group exists and is a group/supergroup before activating
+   */
+  @Post(':token/groups/:groupId')
+  async activateGroup(
+    @Param('token') token: string,
+    @Param('groupId') groupId: string,
+    @Res() res: Response,
+  ): Promise<void> {
+    const userId = await this.validateAndGetUserId(token, res);
+    if (!userId) return;
+
+    const groupIdNum = parseInt(groupId, 10);
+    if (Number.isNaN(groupIdNum)) {
+      res.status(HttpStatus.BAD_REQUEST).json({
+        success: false,
+        error: 'invalid_group_id',
+      } satisfies ApiResponse);
+      return;
+    }
+
+    // Get telegramUserId for making Telegram API calls
+    const telegramUserId = await this.getTelegramUserIdFromLoggedInUser(userId);
+    if (!telegramUserId) {
+      res.status(HttpStatus.BAD_REQUEST).json({
+        success: false,
+        error: 'user_not_logged_in',
+      } satisfies ApiResponse);
+      return;
+    }
+
+    try {
+      // Validate that the group exists and is a group/supergroup
+      const chatResult = await this.telegramUserClient.getChat(
+        telegramUserId.toString(),
+        groupIdNum,
+      ) as {
+        type?: { _?: string };
+        title?: string;
+      } | null;
+
+      if (
+        !chatResult ||
+        typeof chatResult !== 'object' ||
+        !chatResult.type ||
+        typeof chatResult.type !== 'object' ||
+        !('_' in chatResult.type)
+      ) {
+        res.status(HttpStatus.NOT_FOUND).json({
+          success: false,
+          error: 'group_not_found',
+        } satisfies ApiResponse);
+        return;
+      }
+
+      const chatType = chatResult.type._;
+      if (chatType !== 'chatTypeBasicGroup' && chatType !== 'chatTypeSupergroup') {
+        res.status(HttpStatus.BAD_REQUEST).json({
+          success: false,
+          error: 'not_a_group',
+        } satisfies ApiResponse);
+        return;
+      }
+
+      // Add to active groups
+      await this.activeGroupsRepository.addActiveGroup(userId, groupIdNum);
+
+      const title = typeof chatResult.title === 'string' ? chatResult.title : 'Sem título';
+      this.logger.log(`Activated group ${groupIdNum} (${title}) for user ${userId}`);
+
+      res.status(HttpStatus.OK).json({
+        success: true,
+        data: {
+          id: groupIdNum,
+          title,
+          isActive: true,
+        },
+      } satisfies ApiResponse<GroupResponse>);
+    } catch (error) {
+      this.logger.error('Error activating group', { error, userId, groupId: groupIdNum });
+      res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
+        success: false,
+        error: 'worker_unavailable',
+      } satisfies ApiResponse);
+    }
+  }
+
+  /**
+   * DELETE /dashboard/:token/groups/:groupId - Deactivate a group
+   */
+  @Delete(':token/groups/:groupId')
+  async deactivateGroup(
+    @Param('token') token: string,
+    @Param('groupId') groupId: string,
+    @Res() res: Response,
+  ): Promise<void> {
+    const userId = await this.validateAndGetUserId(token, res);
+    if (!userId) return;
+
+    const groupIdNum = parseInt(groupId, 10);
+    if (Number.isNaN(groupIdNum)) {
+      res.status(HttpStatus.BAD_REQUEST).json({
+        success: false,
+        error: 'invalid_group_id',
+      } satisfies ApiResponse);
+      return;
+    }
+
+    // Remove from active groups
+    await this.activeGroupsRepository.removeActiveGroup(userId, groupIdNum);
+
+    this.logger.log(`Deactivated group ${groupIdNum} for user ${userId}`);
+
+    res.status(HttpStatus.OK).json({
+      success: true,
+    } satisfies ApiResponse);
+  }
+
+  // ============================================================================
   // Helper methods
   // ============================================================================
+
+  /**
+   * Get the telegramUserId from loggedInUserId
+   * The token stores loggedInUserId, but the worker is identified by telegramUserId
+   */
+  private async getTelegramUserIdFromLoggedInUser(loggedInUserId: string): Promise<number | null> {
+    const conversation = await this.conversationRepository.getCompletedConversationByLoggedInUserId(
+      parseInt(loggedInUserId, 10),
+    );
+    return conversation?.telegramUserId ?? null;
+  }
 
   /**
    * Validate token and get user ID, or send error response

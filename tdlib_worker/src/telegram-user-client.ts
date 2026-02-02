@@ -259,6 +259,61 @@ export class TelegramUserClient {
   }
 
   /**
+   * Obtém todos os grupos/supergrupos do usuário
+   * Combina getChats + getChat + filtragem em uma única operação
+   * Retorna array de { id, title } para grupos e supergrupos
+   */
+  async getGroups(limit: number = 100): Promise<Array<{ id: number; title: string }>> {
+    const client = this.ensureClient();
+    
+    // Get list of chat IDs
+    const chatsResult = await client.invoke({
+      _: 'getChats',
+      chat_list: { _: 'chatListMain' },
+      limit,
+    }) as { chat_ids?: number[] };
+
+    if (!chatsResult?.chat_ids || !Array.isArray(chatsResult.chat_ids)) {
+      return [];
+    }
+
+    const groups: Array<{ id: number; title: string }> = [];
+
+    // Fetch each chat and filter for groups
+    for (const chatId of chatsResult.chat_ids) {
+      try {
+        const chat = await client.invoke({
+          _: 'getChat',
+          chat_id: chatId,
+        }) as {
+          type?: { _?: string };
+          title?: string;
+        } | null;
+
+        if (
+          chat &&
+          typeof chat === 'object' &&
+          chat.type &&
+          typeof chat.type === 'object' &&
+          '_' in chat.type
+        ) {
+          const chatType = chat.type._;
+          // Only include groups and supergroups
+          if (chatType === 'chatTypeBasicGroup' || chatType === 'chatTypeSupergroup') {
+            const title = typeof chat.title === 'string' ? chat.title : 'Sem título';
+            groups.push({ id: chatId, title });
+          }
+        }
+      } catch (error) {
+        console.warn(`[WARN] Error fetching chat ${chatId}:`, error);
+        // Skip chats that we can't fetch
+      }
+    }
+
+    return groups;
+  }
+
+  /**
    * Obtém uma mensagem específica por ID
    */
   async getMessage(chatId: number, messageId: number): Promise<unknown> {

@@ -12,7 +12,7 @@ import { randomUUID } from 'node:crypto';
 export type { CommandContext, TdlibCommand, TdlibCommandType };
 
 interface TdlibHttpCommandRequest {
-  type: 'sendMessage' | 'getChats' | 'getChat' | 'getMessage' | 'getAuthorizationState' | 'logOut' | 'getMe' | 'getUserId' | 'resendAuthenticationCode';
+  type: 'sendMessage' | 'getChats' | 'getChat' | 'getGroups' | 'getMessage' | 'getAuthorizationState' | 'logOut' | 'getMe' | 'getUserId' | 'resendAuthenticationCode';
   payload: unknown;
 }
 
@@ -220,6 +220,18 @@ export class TelegramUserClientProxyService implements OnModuleDestroy {
       type: 'getChat',
       payload: { chatId },
     });
+  }
+
+  /**
+   * Sends a getGroups command via HTTP (synchronous)
+   * Returns all groups/supergroups the user participates in
+   */
+  async getGroups(userId: string, limit?: number): Promise<Array<{ id: number; title: string }>> {
+    const result = await this.sendHttpCommand(userId, {
+      type: 'getGroups',
+      payload: { limit },
+    });
+    return result as Array<{ id: number; title: string }>;
   }
 
   /**
