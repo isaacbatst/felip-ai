@@ -167,8 +167,7 @@
                         <label class="block text-xs text-gray-500 mb-1.5 font-medium">Quantidade (k)</label>
                         <input type="text" inputmode="numeric" :value="entry.quantity || ''"
                           @input="formatInput($event, false); entry.quantity = parseNumber($event.target.value, false) || 0; markAsChanged()"
-                          @focus="editingQuantityProgramId = prog.id"
-                          @blur="editingQuantityProgramId = null"
+                          @focus="editingEntry = entry; editingEntryIndex = i"
                           placeholder="15" class="w-full p-2 md:p-3 border rounded-lg text-base text-center transition-all"
                           :class="entry.quantity > 0 ? 'border-gray-200' : 'border-red-400'">
                       </div>
@@ -355,8 +354,9 @@
         // Individual delete state
         deletingEntryIndex: null,
 
-        // Editing quantity state (prevents reordering while typing)
-        editingQuantityProgramId: null,
+        // Editing quantity state (keeps edited entry in place while typing)
+        editingEntry: null,        // Reference to the entry being edited
+        editingEntryIndex: null,   // Visual position to keep the entry at (-1 = end)
 
         // Timer state
         expiresAt: null,
@@ -597,6 +597,9 @@
             this.showToast('Erro ao salvar: ' + error.message, 'error');
           } finally {
             this.savingEntryIndex = null;
+            // Clear editing state to allow reordering after save
+            this.editingEntry = null;
+            this.editingEntryIndex = null;
           }
         },
 
@@ -658,12 +661,33 @@
           const entries = this.userData.priceEntries
             .filter(e => e.programId === programId);
           
-          // Don't reorder while user is editing quantity to prevent losing focus
-          if (this.editingQuantityProgramId === programId) {
-            return entries;
+          // Check if we're editing an entry in this program
+          const isEditingInThisProgram = this.editingEntry && 
+            entries.includes(this.editingEntry);
+          
+          if (!isEditingInThisProgram) {
+            // Normal sorting when not editing
+            return entries.sort((a, b) => a.quantity - b.quantity);
           }
           
-          return entries.sort((a, b) => a.quantity - b.quantity);
+          // Sort all entries except the one being edited
+          const editingEntry = this.editingEntry;
+          const targetIndex = this.editingEntryIndex;
+          
+          // Get entries without the editing one and sort them
+          const otherEntries = entries.filter(e => e !== editingEntry);
+          otherEntries.sort((a, b) => a.quantity - b.quantity);
+          
+          // Insert the editing entry at its target position
+          if (targetIndex === -1 || targetIndex >= otherEntries.length) {
+            // Put at the end
+            otherEntries.push(editingEntry);
+          } else {
+            // Insert at the stored position
+            otherEntries.splice(targetIndex, 0, editingEntry);
+          }
+          
+          return otherEntries;
         },
 
         isValidPriceEntry(entry) {
@@ -714,6 +738,9 @@
           this.selectedProgramId = programId;
           // Reset price type tab to normal when changing programs
           this.priceTypeTab = 'normal';
+          // Clear editing state to allow reordering
+          this.editingEntry = null;
+          this.editingEntryIndex = null;
           // Scroll active pill into view
           this.$nextTick(() => {
             const activePill = document.querySelector('.pill.active');
@@ -727,13 +754,18 @@
         // Price Entry Management
         // ============================================================================
         addPriceEntry(programId) {
-          this.userData.priceEntries.push({
+          const newEntry = {
             programId,
             programName: this.programs.find(p => p.id === programId)?.name ?? '',
             quantity: 0,
             price: 0,
-          });
+          };
+          this.userData.priceEntries.push(newEntry);
           this.hasUnsavedChanges = true;
+
+          // Keep the new entry at the end while editing
+          this.editingEntry = newEntry;
+          this.editingEntryIndex = -1; // -1 means "at the end"
 
           // Update carousel to show the new card
           const entries = this.getPriceEntries(programId);
