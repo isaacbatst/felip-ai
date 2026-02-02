@@ -6,7 +6,7 @@ import { MessageParser } from '../../../domain/interfaces/message-parser.interfa
 import { PriceTableProvider } from '../../../domain/interfaces/price-table-provider.interface';
 import { PriceCalculatorService } from '../../../domain/services/price-calculator.service';
 import { PurchaseValidatorService } from '../../../domain/services/purchase-validator.service';
-import { buildCounterOfferMessage } from '../../../domain/constants/counter-offer-templates';
+import { buildCounterOfferMessage, buildCallToActionMessage } from '../../../domain/constants/counter-offer-templates';
 import type { Provider } from '../../../domain/types/provider.types';
 
 /**
@@ -140,24 +140,59 @@ export class TelegramPurchaseHandler {
 
     // Caso 1: Sem accepted prices -> mensagem padrão
     if (validatedRequest.acceptedPrices.length === 0) {
-      await this.sendGroupAnswer(botUserId, chatId, priceResult.price, effectiveProvider, messageId);
+      await this.sendGroupAnswer(
+        botUserId,
+        chatId,
+        priceResult.price,
+        effectiveProvider,
+        messageId,
+      );
       return;
     }
 
     const maxAcceptedPrice = Math.max(...validatedRequest.acceptedPrices);
 
-    // Caso 2: Preço aceito >= calculado -> "Vamos!"
+    // Caso 2: Preço aceito >= calculado -> "Vamos!" + call to action no privado
     if (maxAcceptedPrice >= priceResult.price) {
       this.logger.log('User max accepted price is higher than calculated price', {
         maxAcceptedPrice,
         priceResultPrice: priceResult.price,
       });
       await this.tdlibUserClient.sendMessage(botUserId, chatId, 'Vamos!', messageId);
+
+      if (!senderId) {
+        this.logger.warn('No senderId, ignoring call to action');
+        return;
+      }
+      const counterOfferSettings = await this.counterOfferSettingsRepository.getSettings(botUserId);
+      if(!counterOfferSettings?.isEnabled) {
+        this.logger.warn('Counter offer is disabled, ignoring call to action');
+        return;
+      }
+
+      // Envia template de call to action no privado do usuário
+      const templateId = counterOfferSettings?.callToActionTemplateId ?? 1;
+
+      const message = buildCallToActionMessage(
+        templateId,
+        effectiveProvider,
+        validatedRequest.quantity,
+        validatedRequest.cpfCount,
+        priceResult.price, // nosso preço calculado
+      );
+
+      this.logger.log('Sending call to action to buyer in private', {
+        senderId,
+        templateId,
+        offeredPrice: priceResult.price,
+      });
+
+      await this.tdlibUserClient.sendMessage(botUserId, senderId, message);
+
       return;
     }
 
-    const counterOfferSettings =
-      await this.counterOfferSettingsRepository.getSettings(botUserId);
+    const counterOfferSettings = await this.counterOfferSettingsRepository.getSettings(botUserId);
 
     // Counter offer desabilitado -> ignorar
     if (!counterOfferSettings?.isEnabled) {
@@ -176,10 +211,13 @@ export class TelegramPurchaseHandler {
       return;
     }
 
-    if(!senderId) {
+    if (!senderId) {
       this.logger.warn('No senderId, ignoring counter offer');
-      return
+      return;
     }
+
+    // Envia nossa oferta no grupo
+    await this.sendGroupAnswer(botUserId, chatId, priceResult.price, effectiveProvider, messageId);
 
     // Envia counter offer no privado
     const message = buildCounterOfferMessage(

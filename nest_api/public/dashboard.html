@@ -295,15 +295,15 @@
           <h2 class="text-gray-800 text-lg font-semibold flex items-center gap-1 max-md:text-base"><i class="fa-solid fa-message"></i> Proposta Privada</h2>
         </div>
         <p class="section-description text-gray-500 text-sm mb-4">
-          Quando o comprador pedir um valor abaixo do seu preço, o bot pode enviar uma proposta no privado dele
+          Configure as mensagens enviadas no privado do comprador para negociação e fechamento de negócios
         </p>
 
         <!-- Enable Toggle -->
         <div class="data-card bg-white border border-gray-200 rounded-xl p-4 mb-4">
           <div class="flex items-center justify-between">
             <div>
-              <h4 class="font-semibold text-sm text-gray-800 mb-1">Habilitar Proposta Privada</h4>
-              <p class="text-xs text-gray-500">O bot enviará uma proposta no privado quando o preço oferecido estiver dentro do range aceitável</p>
+              <h4 class="font-semibold text-sm text-gray-800 mb-1">Habilitar Mensagens Privadas</h4>
+              <p class="text-xs text-gray-500">O bot enviará mensagens no privado para negociar e fechar negócios</p>
             </div>
             <label class="relative inline-flex items-center cursor-pointer">
               <input type="checkbox" class="sr-only peer" x-model="counterOfferSettings.isEnabled" @change="markCounterOfferChanged()">
@@ -312,6 +312,24 @@
           </div>
         </div>
 
+        <!-- Sub-abas: Contra-proposta | Fechamento -->
+        <div class="flex gap-0 mb-4 bg-gray-100 rounded-lg p-1" :class="{ 'opacity-50': !counterOfferSettings.isEnabled }">
+          <button class="flex-1 px-4 py-2.5 border-none rounded-md text-sm font-medium cursor-pointer transition-all hover:text-primary"
+            :class="proposalSubTab === 'counterOffer' ? 'bg-white text-primary shadow-sm' : 'bg-transparent text-gray-500'"
+            @click="proposalSubTab = 'counterOffer'"
+            :disabled="!counterOfferSettings.isEnabled">
+            Contra-proposta
+          </button>
+          <button class="flex-1 px-4 py-2.5 border-none rounded-md text-sm font-medium cursor-pointer transition-all hover:text-primary"
+            :class="proposalSubTab === 'callToAction' ? 'bg-white text-primary shadow-sm' : 'bg-transparent text-gray-500'"
+            @click="proposalSubTab = 'callToAction'"
+            :disabled="!counterOfferSettings.isEnabled">
+            Fechamento
+          </button>
+        </div>
+
+        <!-- Conteúdo da sub-aba Contra-proposta -->
+        <div x-show="proposalSubTab === 'counterOffer'">
         <!-- Price Threshold -->
         <div class="data-card bg-white border border-gray-200 rounded-xl p-4 mb-4" :class="{ 'opacity-50': !counterOfferSettings.isEnabled }">
           <div class="data-card-header mb-3">
@@ -331,11 +349,11 @@
           <p class="text-xs text-gray-400 mt-2">Ex: se seu preço é R$ 16,50 e o range é R$ 0,50, propostas serão enviadas para pedidos de R$ 16,00 ou mais</p>
         </div>
 
-        <!-- Message Template -->
+        <!-- Counter Offer Message Template -->
         <div class="data-card bg-white border border-gray-200 rounded-xl p-4 mb-4" :class="{ 'opacity-50': !counterOfferSettings.isEnabled }">
           <div class="data-card-header mb-3">
             <h4 class="font-semibold text-sm text-gray-800">Modelo de Mensagem</h4>
-            <p class="text-xs text-gray-500 mt-1">Escolha o estilo da mensagem que será enviada ao comprador</p>
+            <p class="text-xs text-gray-500 mt-1">Escolha o estilo da mensagem de contra-proposta</p>
           </div>
           <div class="flex flex-col gap-3">
             <template x-for="template in counterOfferTemplates" :key="template.id">
@@ -354,6 +372,35 @@
               </label>
             </template>
           </div>
+        </div>
+        </div>
+
+        <!-- Conteúdo da sub-aba Fechamento -->
+        <div x-show="proposalSubTab === 'callToAction'">
+        <!-- Call to Action Message Template -->
+        <div class="data-card bg-white border border-gray-200 rounded-xl p-4 mb-4" :class="{ 'opacity-50': !counterOfferSettings.isEnabled }">
+          <div class="data-card-header mb-3">
+            <h4 class="font-semibold text-sm text-gray-800">Modelo de Mensagem</h4>
+            <p class="text-xs text-gray-500 mt-1">Escolha o estilo da mensagem de fechamento</p>
+          </div>
+          <div class="flex flex-col gap-3">
+            <template x-for="template in callToActionTemplates" :key="template.id">
+              <label class="flex items-start gap-3 p-3 border rounded-lg cursor-pointer transition-all" 
+                :class="counterOfferSettings.callToActionTemplateId === template.id ? 'border-primary bg-primary/5' : 'border-gray-200 hover:border-gray-300'"
+                @click="counterOfferSettings.callToActionTemplateId = template.id; markCounterOfferChanged()">
+                <input type="radio" name="callToActionTemplate" 
+                  :value="template.id" 
+                  :checked="counterOfferSettings.callToActionTemplateId === template.id"
+                  :disabled="!counterOfferSettings.isEnabled"
+                  class="mt-1">
+                <div class="flex-1">
+                  <div class="font-medium text-sm text-gray-800" x-text="template.description"></div>
+                  <pre class="text-xs text-gray-500 mt-2 whitespace-pre-wrap bg-gray-50 p-2 rounded" x-text="template.preview"></pre>
+                </div>
+              </label>
+            </template>
+          </div>
+        </div>
         </div>
 
         <div class="btn-group flex gap-2.5 justify-end mt-4 max-md:justify-center">
@@ -472,10 +519,13 @@
           isEnabled: false,
           priceThreshold: 0.5,
           messageTemplateId: 1,
+          callToActionTemplateId: 1,
         },
         counterOfferTemplates: [],
+        callToActionTemplates: [],
         savingCounterOffer: false,
         counterOfferChanged: false,
+        proposalSubTab: 'counterOffer', // 'counterOffer' | 'callToAction'
 
         // ============================================================================
         // Computed Properties (as getters)
@@ -547,6 +597,7 @@
               this.fetchUserData(),
               this.fetchCounterOfferSettings(),
               this.fetchCounterOfferTemplates(),
+              this.fetchCallToActionTemplates(),
             ]);
 
             if (this.normalPrograms.length > 0) {
@@ -601,6 +652,16 @@
             this.counterOfferTemplates = data.data.templates;
           } else {
             console.warn('Failed to fetch counter offer templates:', data.error);
+          }
+        },
+
+        async fetchCallToActionTemplates() {
+          const res = await fetch(`/dashboard/${this.token}/call-to-action/templates`);
+          const data = await res.json();
+          if (data.success) {
+            this.callToActionTemplates = data.data.templates;
+          } else {
+            console.warn('Failed to fetch call to action templates:', data.error);
           }
         },
 

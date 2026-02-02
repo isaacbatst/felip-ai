@@ -6,6 +6,7 @@ export interface CounterOfferSettings {
   isEnabled: boolean;
   priceThreshold: number;
   messageTemplateId: number;
+  callToActionTemplateId: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -17,6 +18,7 @@ export interface CounterOfferSettingsInput {
   isEnabled: boolean;
   priceThreshold: number;
   messageTemplateId: number;
+  callToActionTemplateId: number;
 }
 
 /**

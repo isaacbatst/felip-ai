@@ -19,7 +19,14 @@ import { CounterOfferSettingsRepository, type CounterOfferSettingsInput } from '
 import { TelegramBotService } from '@/infrastructure/telegram/telegram-bot-service';
 import { ConversationRepository } from '@/infrastructure/persistence/conversation.repository';
 import { AppConfigService } from '@/config/app.config';
-import { COUNTER_OFFER_TEMPLATES, COUNTER_OFFER_TEMPLATE_DESCRIPTIONS, COUNTER_OFFER_TEMPLATE_IDS } from '@/domain/constants/counter-offer-templates';
+import { 
+  COUNTER_OFFER_TEMPLATES, 
+  COUNTER_OFFER_TEMPLATE_DESCRIPTIONS, 
+  COUNTER_OFFER_TEMPLATE_IDS,
+  CALL_TO_ACTION_TEMPLATES,
+  CALL_TO_ACTION_TEMPLATE_DESCRIPTIONS,
+  CALL_TO_ACTION_TEMPLATE_IDS,
+} from '@/domain/constants/counter-offer-templates';
 
 // ============================================================================
 // DTOs for request/response
@@ -88,9 +95,18 @@ interface CounterOfferSettingsResponse {
   isEnabled: boolean;
   priceThreshold: number;
   messageTemplateId: number;
+  callToActionTemplateId: number;
 }
 
 interface CounterOfferTemplatesResponse {
+  templates: Array<{
+    id: number;
+    description: string;
+    preview: string;
+  }>;
+}
+
+interface CallToActionTemplatesResponse {
   templates: Array<{
     id: number;
     description: string;
@@ -102,6 +118,7 @@ interface UpdateCounterOfferSettingsDto {
   isEnabled: boolean;
   priceThreshold: number;
   messageTemplateId: number;
+  callToActionTemplateId: number;
 }
 
 /**
@@ -576,7 +593,7 @@ export class DashboardController {
   // ============================================================================
 
   /**
-   * GET /dashboard/:token/counter-offer/templates - Get available message templates
+   * GET /dashboard/:token/counter-offer/templates - Get available counter offer message templates
    */
   @Get(':token/counter-offer/templates')
   async getCounterOfferTemplates(
@@ -599,6 +616,29 @@ export class DashboardController {
   }
 
   /**
+   * GET /dashboard/:token/call-to-action/templates - Get available call to action message templates
+   */
+  @Get(':token/call-to-action/templates')
+  async getCallToActionTemplates(
+    @Param('token') token: string,
+    @Res() res: Response,
+  ): Promise<void> {
+    const userId = await this.validateAndGetUserId(token, res);
+    if (!userId) return;
+
+    const templates = CALL_TO_ACTION_TEMPLATE_IDS.map((id) => ({
+      id,
+      description: CALL_TO_ACTION_TEMPLATE_DESCRIPTIONS[id],
+      preview: CALL_TO_ACTION_TEMPLATES[id],
+    }));
+
+    res.status(HttpStatus.OK).json({
+      success: true,
+      data: { templates },
+    } satisfies ApiResponse<CallToActionTemplatesResponse>);
+  }
+
+  /**
    * GET /dashboard/:token/counter-offer - Get counter offer settings
    */
   @Get(':token/counter-offer')
@@ -617,11 +657,13 @@ export class DashboardController {
           isEnabled: settings.isEnabled,
           priceThreshold: settings.priceThreshold,
           messageTemplateId: settings.messageTemplateId,
+          callToActionTemplateId: settings.callToActionTemplateId,
         }
       : {
           isEnabled: false,
           priceThreshold: 0.5,
           messageTemplateId: 1,
+          callToActionTemplateId: 1,
         };
 
     res.status(HttpStatus.OK).json({
@@ -667,15 +709,24 @@ export class DashboardController {
       return;
     }
 
+    if (typeof body.callToActionTemplateId !== 'number' || !CALL_TO_ACTION_TEMPLATE_IDS.includes(body.callToActionTemplateId as 1 | 2)) {
+      res.status(HttpStatus.BAD_REQUEST).json({
+        success: false,
+        error: `callToActionTemplateId must be one of: ${CALL_TO_ACTION_TEMPLATE_IDS.join(', ')}`,
+      } satisfies ApiResponse);
+      return;
+    }
+
     const settings: CounterOfferSettingsInput = {
       isEnabled: body.isEnabled,
       priceThreshold: body.priceThreshold,
       messageTemplateId: body.messageTemplateId,
+      callToActionTemplateId: body.callToActionTemplateId,
     };
 
     await this.counterOfferSettingsRepository.upsertSettings(userId, settings);
 
-    this.logger.log(`Updated counter offer settings for user ${userId}: enabled=${body.isEnabled}, threshold=${body.priceThreshold}, template=${body.messageTemplateId}`);
+    this.logger.log(`Updated counter offer settings for user ${userId}: enabled=${body.isEnabled}, threshold=${body.priceThreshold}, counterOfferTemplate=${body.messageTemplateId}, callToActionTemplate=${body.callToActionTemplateId}`);
 
     res.status(HttpStatus.OK).json({
       success: true,
