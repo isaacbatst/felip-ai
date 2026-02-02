@@ -38,6 +38,28 @@ export class TelegramPurchaseHandler {
     messageId: number | undefined,
     text: string,
   ): Promise<void> {
+    const trimmedText = text.trim();
+
+    // Validação 1: mensagem muito curta
+    if (trimmedText.length < 10) {
+      this.logger.log('Skipping: message too short', { length: trimmedText.length, text: trimmedText });
+      return;
+    }
+
+    // Validação 2: mensagem é só números (com vírgulas/pontos decimais)
+    const onlyNumbersPattern = /^[\d.,\s]+$/;
+    if (onlyNumbersPattern.test(trimmedText)) {
+      this.logger.log('Skipping: message contains only numbers', { text: trimmedText });
+      return;
+    }
+
+    // Validação 3: mensagem não contém números
+    const hasNumbersPattern = /\d/;
+    if (!hasNumbersPattern.test(trimmedText)) {
+      this.logger.log('Skipping: message has no numbers', { text: trimmedText });
+      return;
+    }
+
     // Busca providers disponíveis primeiro para passar ao parser
     const priceTableResult = await this.priceTableProvider.getPriceTable(botUserId);
     const { priceTables, customMaxPrice } = priceTableResult;
