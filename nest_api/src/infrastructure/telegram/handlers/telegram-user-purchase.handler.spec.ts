@@ -5,6 +5,8 @@ import { PriceTableProvider } from '@/domain/interfaces/price-table-provider.int
 import { PurchaseValidatorService } from '@/domain/services/purchase-validator.service';
 import { PriceCalculatorService } from '@/domain/services/price-calculator.service';
 import { TelegramUserClientProxyService } from '@/infrastructure/tdlib/telegram-user-client-proxy.service';
+import { CounterOfferSettingsRepository } from '@/infrastructure/persistence/counter-offer-settings.repository';
+import { MilesProgramRepository } from '@/infrastructure/persistence/miles-program.repository';
 import type { PriceTableResultV2 } from '@/domain/types/google-sheets.types';
 import type { PurchaseRequest } from '@/domain/types/purchase.types';
 
@@ -13,6 +15,8 @@ describe('TelegramPurchaseHandler', () => {
   let mockMessageParser: jest.Mocked<MessageParser>;
   let mockPriceTableProvider: jest.Mocked<PriceTableProvider>;
   let mockTdlibUserClient: jest.Mocked<TelegramUserClientProxyService>;
+  let mockCounterOfferSettingsRepository: jest.Mocked<CounterOfferSettingsRepository>;
+  let mockMilesProgramRepository: jest.Mocked<MilesProgramRepository>;
 
   // Test constants
   const botUserId = 'test-bot-user-123';
@@ -72,6 +76,22 @@ describe('TelegramPurchaseHandler', () => {
       sendMessage: jest.fn().mockResolvedValue(undefined),
     } as unknown as jest.Mocked<TelegramUserClientProxyService>;
 
+    mockCounterOfferSettingsRepository = {
+      getSettings: jest.fn().mockResolvedValue(null),
+      upsertSettings: jest.fn(),
+    } as unknown as jest.Mocked<CounterOfferSettingsRepository>;
+
+    mockMilesProgramRepository = {
+      getProgramByName: jest.fn().mockResolvedValue(null),
+      findLiminarFor: jest.fn().mockResolvedValue(null),
+      getAllPrograms: jest.fn().mockResolvedValue([]),
+      getAllProgramsWithLiminar: jest.fn().mockResolvedValue([]),
+      getProgramById: jest.fn().mockResolvedValue(null),
+      createProgram: jest.fn(),
+      updateProgram: jest.fn(),
+      deleteProgram: jest.fn(),
+    } as unknown as jest.Mocked<MilesProgramRepository>;
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         TelegramPurchaseHandler,
@@ -88,6 +108,14 @@ describe('TelegramPurchaseHandler', () => {
         {
           provide: TelegramUserClientProxyService,
           useValue: mockTdlibUserClient,
+        },
+        {
+          provide: CounterOfferSettingsRepository,
+          useValue: mockCounterOfferSettingsRepository,
+        },
+        {
+          provide: MilesProgramRepository,
+          useValue: mockMilesProgramRepository,
         },
       ],
     }).compile();
@@ -383,7 +411,7 @@ describe('TelegramPurchaseHandler', () => {
         );
       });
 
-      it('should send calculated price when user accepts price lower than calculated', async () => {
+      it('should send calculated price when user accepts price lower than calculated (counter offer enabled)', async () => {
         const priceTableResult = createFakePriceTableResult();
         mockPriceTableProvider.getPriceTable.mockResolvedValue(priceTableResult);
         mockMessageParser.parse.mockResolvedValue(createPurchaseRequest({
@@ -393,11 +421,40 @@ describe('TelegramPurchaseHandler', () => {
           acceptedPrices: [15], // User accepts 15, calculated is 20
         }));
 
+        // Counter offer must be enabled and threshold >= 5 (price diff is 20-15=5)
+        mockCounterOfferSettingsRepository.getSettings.mockResolvedValueOnce({
+          userId: botUserId,
+          isEnabled: true,
+          priceThreshold: 5,
+          messageTemplateId: 1,
+          callToActionTemplateId: 1,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+
+        const senderId = 999;
+        await handler.handlePurchase(botUserId, chatId, messageId, 'SMILES 30k 1CPF aceito 15', senderId);
+
+        // Should send calculated price in group AND counter offer in private
+        expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledTimes(2);
+        const groupMessage = mockTdlibUserClient.sendMessage.mock.calls[0][2];
+        expect(groupMessage).toBe('20');
+      });
+
+      it('should not send message when user accepts price lower than calculated and counter offer is disabled', async () => {
+        const priceTableResult = createFakePriceTableResult();
+        mockPriceTableProvider.getPriceTable.mockResolvedValue(priceTableResult);
+        mockMessageParser.parse.mockResolvedValue(createPurchaseRequest({
+          quantity: 30,
+          cpfCount: 1,
+          airline: 'SMILES',
+          acceptedPrices: [15], // User accepts 15, calculated is 20
+        }));
+
+        // Counter offer disabled (default mock returns null)
         await handler.handlePurchase(botUserId, chatId, messageId, 'SMILES 30k 1CPF aceito 15');
 
-        expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledTimes(1);
-        const sentMessage = mockTdlibUserClient.sendMessage.mock.calls[0][2];
-        expect(sentMessage).toBe('20');
+        expect(mockTdlibUserClient.sendMessage).not.toHaveBeenCalled();
       });
 
       it('should use minimum of multiple accepted prices for comparison', async () => {
