@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Put,
+  Post,
   Delete,
   Param,
   Body,
@@ -14,6 +15,9 @@ import { join } from 'node:path';
 import { DashboardTokenRepository } from '@/infrastructure/persistence/dashboard-token.repository';
 import { UserDataRepository, PriceEntryInput, MaxPriceInput, AvailableMilesInput } from '@/infrastructure/persistence/user-data.repository';
 import { MilesProgramRepository } from '@/infrastructure/persistence/miles-program.repository';
+import { TelegramBotService } from '@/infrastructure/telegram/telegram-bot-service';
+import { ConversationRepository } from '@/infrastructure/persistence/conversation.repository';
+import { AppConfigService } from '@/config/app.config';
 
 // ============================================================================
 // DTOs for request/response
@@ -90,6 +94,9 @@ export class DashboardController {
     private readonly dashboardTokenRepository: DashboardTokenRepository,
     private readonly userDataRepository: UserDataRepository,
     private readonly milesProgramRepository: MilesProgramRepository,
+    private readonly telegramBotService: TelegramBotService,
+    private readonly conversationRepository: ConversationRepository,
+    private readonly appConfig: AppConfigService,
   ) {}
 
   /**
@@ -465,6 +472,80 @@ export class DashboardController {
     res.status(HttpStatus.OK).json({
       success: true,
     } satisfies ApiResponse);
+  }
+
+  /**
+   * POST /dashboard/:token/renew - Request a new dashboard link
+   * Works even for expired tokens, sends new link via Telegram
+   */
+  @Post(':token/renew')
+  async renewToken(
+    @Param('token') token: string,
+    @Res() res: Response,
+  ): Promise<void> {
+    this.logger.log(`Token renewal requested for token: ${token.substring(0, 8)}...`);
+
+    // Get the token data (even if expired) to retrieve the userId
+    const tokenData = await this.dashboardTokenRepository.getToken(token);
+
+    if (!tokenData) {
+      res.status(HttpStatus.NOT_FOUND).json({
+        success: false,
+        error: 'Token não encontrado.',
+      } satisfies ApiResponse);
+      return;
+    }
+
+    const userId = tokenData.userId;
+
+    // Get the conversation to find the chatId for sending the message
+    const conversation = await this.conversationRepository.getCompletedConversationByLoggedInUserId(
+      parseInt(userId, 10),
+    );
+
+    if (!conversation) {
+      res.status(HttpStatus.BAD_REQUEST).json({
+        success: false,
+        error: 'Sessão não encontrada. Faça login novamente no bot.',
+      } satisfies ApiResponse);
+      return;
+    }
+
+    // Generate new token
+    const ttlMinutes = this.appConfig.getDashboardTokenTtlMinutes();
+    const { token: newToken, expiresAt } = await this.dashboardTokenRepository.createToken(userId, ttlMinutes);
+
+    // Build dashboard URL
+    const baseUrl = this.appConfig.getAppBaseUrl();
+    const dashboardUrl = `${baseUrl}/dashboard/${newToken}`;
+
+    // Format expiration time
+    const expiresInMinutes = Math.round((expiresAt.getTime() - Date.now()) / 60000);
+
+    // Send summarized message via Telegram
+    const message = 
+      `🔄 *Novo Link do Dashboard*\n\n` +
+      `🔗 [Abrir Dashboard](${dashboardUrl})\n\n` +
+      `⏱️ Expira em ${expiresInMinutes} minutos.`;
+
+    try {
+      await this.telegramBotService.bot.api.sendMessage(conversation.chatId, message, {
+        parse_mode: 'Markdown',
+        link_preview_options: { is_disabled: true },
+      });
+
+      this.logger.log(`New dashboard token sent to chatId ${conversation.chatId} for user ${userId}`);
+
+      res.status(HttpStatus.OK).json({
+        success: true,
+      } satisfies ApiResponse);
+    } catch (error) {
+      this.logger.error('Failed to send Telegram message', { error, chatId: conversation.chatId });
+      res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
+        success: false,
+        error: 'Erro ao enviar mensagem no Telegram.',
+      } satisfies ApiResponse);
+    }
   }
 
   // ============================================================================

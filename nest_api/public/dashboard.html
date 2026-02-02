@@ -30,9 +30,24 @@
   <div class="bg-white p-8 rounded-2xl shadow-2xl max-w-4xl mx-auto max-md:p-4 max-md:rounded-none max-md:shadow-none" x-show="!loading && !errorMessage">
     <div class="flex justify-between items-center mb-4 pb-5 border-b-2 border-gray-100 max-md:pb-4 max-md:mb-0">
       <h1 class="text-gray-800 text-2xl font-semibold max-md:text-xl">Dashboard</h1>
-      <div class="px-4 py-2 rounded-lg text-sm whitespace-nowrap" x-show="expiresAt" :class="timerExpired ? 'bg-red-100 text-red-800' : timerWarning ? 'bg-amber-100 text-amber-700' : 'bg-gray-50 text-gray-500'">
-        <span x-text="timerExpired ? 'Link expirado' : `Expira em: ${countdownDisplay}`"></span>
-      </div>
+      <!-- Expired: Show renew button -->
+      <template x-if="timerExpired && expiresAt">
+        <button @click="requestNewLink()" 
+          :disabled="renewingLink || linkRenewed"
+          class="px-4 py-2 rounded-lg text-sm whitespace-nowrap transition-all"
+          :class="linkRenewed ? 'bg-emerald-100 text-emerald-800 cursor-default' : renewingLink ? 'bg-gray-200 text-gray-500 cursor-wait' : 'bg-primary text-white hover:bg-primary/90 cursor-pointer'">
+          <span x-show="linkRenewed">Link enviado!</span>
+          <span x-show="renewingLink && !linkRenewed">Enviando...</span>
+          <span x-show="!renewingLink && !linkRenewed">Solicitar novo link</span>
+        </button>
+      </template>
+      <!-- Not expired: Show countdown -->
+      <template x-if="!timerExpired && expiresAt">
+        <div class="px-4 py-2 rounded-lg text-sm whitespace-nowrap"
+          :class="timerWarning ? 'bg-amber-100 text-amber-700' : 'bg-gray-50 text-gray-500'">
+          <span x-text="`Expira em: ${countdownDisplay}`"></span>
+        </div>
+      </template>
     </div>
     
     <!-- Programs Tabs (Desktop) -->
@@ -367,6 +382,10 @@
         timerWarning: false,
         timerExpired: false,
         countdownInterval: null,
+
+        // Link renewal state
+        renewingLink: false,
+        linkRenewed: false,
 
         // ============================================================================
         // Computed Properties (as getters)
@@ -1001,6 +1020,30 @@
         startCountdown() {
           this.updateCountdown();
           this.countdownInterval = setInterval(() => this.updateCountdown(), 1000);
+        },
+
+        // ============================================================================
+        // Link Renewal
+        // ============================================================================
+        async requestNewLink() {
+          if (this.renewingLink || this.linkRenewed) return;
+          
+          this.renewingLink = true;
+          try {
+            const res = await fetch(`/dashboard/${this.token}/renew`, { method: 'POST' });
+            const data = await res.json();
+            if (data.success) {
+              this.linkRenewed = true;
+              this.showToast('Novo link enviado para seu Telegram!', 'success');
+            } else {
+              this.showToast(data.error || 'Erro ao solicitar novo link', 'error');
+            }
+          } catch (error) {
+            console.error('Error requesting new link:', error);
+            this.showToast('Erro ao solicitar novo link', 'error');
+          } finally {
+            this.renewingLink = false;
+          }
         },
 
         // ============================================================================
