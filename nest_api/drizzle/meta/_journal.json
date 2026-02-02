@@ -43,6 +43,13 @@
       "when": 1738275600000,
       "tag": "0005_user_data_migration",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1770051635905,
+      "tag": "0006_military_doctor_faustus",
+      "breakpoints": true
     }
   ]
 }

@@ -15,9 +15,11 @@ import { join } from 'node:path';
 import { DashboardTokenRepository } from '@/infrastructure/persistence/dashboard-token.repository';
 import { UserDataRepository, PriceEntryInput, MaxPriceInput, AvailableMilesInput } from '@/infrastructure/persistence/user-data.repository';
 import { MilesProgramRepository } from '@/infrastructure/persistence/miles-program.repository';
+import { CounterOfferSettingsRepository, type CounterOfferSettingsInput } from '@/infrastructure/persistence/counter-offer-settings.repository';
 import { TelegramBotService } from '@/infrastructure/telegram/telegram-bot-service';
 import { ConversationRepository } from '@/infrastructure/persistence/conversation.repository';
 import { AppConfigService } from '@/config/app.config';
+import { COUNTER_OFFER_TEMPLATES, COUNTER_OFFER_TEMPLATE_DESCRIPTIONS, COUNTER_OFFER_TEMPLATE_IDS } from '@/domain/constants/counter-offer-templates';
 
 // ============================================================================
 // DTOs for request/response
@@ -82,6 +84,26 @@ interface ApiResponse<T = unknown> {
   error?: string;
 }
 
+interface CounterOfferSettingsResponse {
+  isEnabled: boolean;
+  priceThreshold: number;
+  messageTemplateId: number;
+}
+
+interface CounterOfferTemplatesResponse {
+  templates: Array<{
+    id: number;
+    description: string;
+    preview: string;
+  }>;
+}
+
+interface UpdateCounterOfferSettingsDto {
+  isEnabled: boolean;
+  priceThreshold: number;
+  messageTemplateId: number;
+}
+
 /**
  * HTTP Controller for web-based dashboard
  * Handles token validation and user data management
@@ -94,6 +116,7 @@ export class DashboardController {
     private readonly dashboardTokenRepository: DashboardTokenRepository,
     private readonly userDataRepository: UserDataRepository,
     private readonly milesProgramRepository: MilesProgramRepository,
+    private readonly counterOfferSettingsRepository: CounterOfferSettingsRepository,
     private readonly telegramBotService: TelegramBotService,
     private readonly conversationRepository: ConversationRepository,
     private readonly appConfig: AppConfigService,
@@ -546,6 +569,117 @@ export class DashboardController {
         error: 'Erro ao enviar mensagem no Telegram.',
       } satisfies ApiResponse);
     }
+  }
+
+  // ============================================================================
+  // Counter Offer Settings
+  // ============================================================================
+
+  /**
+   * GET /dashboard/:token/counter-offer/templates - Get available message templates
+   */
+  @Get(':token/counter-offer/templates')
+  async getCounterOfferTemplates(
+    @Param('token') token: string,
+    @Res() res: Response,
+  ): Promise<void> {
+    const userId = await this.validateAndGetUserId(token, res);
+    if (!userId) return;
+
+    const templates = COUNTER_OFFER_TEMPLATE_IDS.map((id) => ({
+      id,
+      description: COUNTER_OFFER_TEMPLATE_DESCRIPTIONS[id],
+      preview: COUNTER_OFFER_TEMPLATES[id],
+    }));
+
+    res.status(HttpStatus.OK).json({
+      success: true,
+      data: { templates },
+    } satisfies ApiResponse<CounterOfferTemplatesResponse>);
+  }
+
+  /**
+   * GET /dashboard/:token/counter-offer - Get counter offer settings
+   */
+  @Get(':token/counter-offer')
+  async getCounterOfferSettings(
+    @Param('token') token: string,
+    @Res() res: Response,
+  ): Promise<void> {
+    const userId = await this.validateAndGetUserId(token, res);
+    if (!userId) return;
+
+    const settings = await this.counterOfferSettingsRepository.getSettings(userId);
+
+    // Return default values if no settings exist
+    const response: CounterOfferSettingsResponse = settings
+      ? {
+          isEnabled: settings.isEnabled,
+          priceThreshold: settings.priceThreshold,
+          messageTemplateId: settings.messageTemplateId,
+        }
+      : {
+          isEnabled: false,
+          priceThreshold: 0.5,
+          messageTemplateId: 1,
+        };
+
+    res.status(HttpStatus.OK).json({
+      success: true,
+      data: response,
+    } satisfies ApiResponse<CounterOfferSettingsResponse>);
+  }
+
+  /**
+   * PUT /dashboard/:token/counter-offer - Update counter offer settings
+   */
+  @Put(':token/counter-offer')
+  async updateCounterOfferSettings(
+    @Param('token') token: string,
+    @Body() body: UpdateCounterOfferSettingsDto,
+    @Res() res: Response,
+  ): Promise<void> {
+    const userId = await this.validateAndGetUserId(token, res);
+    if (!userId) return;
+
+    // Validate required fields
+    if (typeof body.isEnabled !== 'boolean') {
+      res.status(HttpStatus.BAD_REQUEST).json({
+        success: false,
+        error: 'isEnabled must be a boolean',
+      } satisfies ApiResponse);
+      return;
+    }
+
+    if (typeof body.priceThreshold !== 'number' || body.priceThreshold < 0) {
+      res.status(HttpStatus.BAD_REQUEST).json({
+        success: false,
+        error: 'priceThreshold must be a non-negative number',
+      } satisfies ApiResponse);
+      return;
+    }
+
+    if (typeof body.messageTemplateId !== 'number' || !COUNTER_OFFER_TEMPLATE_IDS.includes(body.messageTemplateId as 1 | 2 | 3)) {
+      res.status(HttpStatus.BAD_REQUEST).json({
+        success: false,
+        error: `messageTemplateId must be one of: ${COUNTER_OFFER_TEMPLATE_IDS.join(', ')}`,
+      } satisfies ApiResponse);
+      return;
+    }
+
+    const settings: CounterOfferSettingsInput = {
+      isEnabled: body.isEnabled,
+      priceThreshold: body.priceThreshold,
+      messageTemplateId: body.messageTemplateId,
+    };
+
+    await this.counterOfferSettingsRepository.upsertSettings(userId, settings);
+
+    this.logger.log(`Updated counter offer settings for user ${userId}: enabled=${body.isEnabled}, threshold=${body.priceThreshold}, template=${body.messageTemplateId}`);
+
+    res.status(HttpStatus.OK).json({
+      success: true,
+    } satisfies ApiResponse);
   }
 
   // ============================================================================

@@ -125,6 +125,9 @@
         <button class="px-5 py-3 border-none bg-transparent cursor-pointer text-sm font-medium border-b-3 -mb-0.5 transition-all flex flex-col gap-1 hover:text-primary" :class="activeSection === 'miles' ? 'text-primary border-b-primary' : 'text-gray-500 border-transparent'" @click="activeSection = 'miles'">
           <i class="fa-solid fa-box"></i> Estoque
         </button>
+        <button class="px-5 py-3 border-none bg-transparent cursor-pointer text-sm font-medium border-b-3 -mb-0.5 transition-all flex flex-col gap-1 hover:text-primary" :class="activeSection === 'counterOffer' ? 'text-primary border-b-primary' : 'text-gray-500 border-transparent'" @click="activeSection = 'counterOffer'">
+          <i class="fa-solid fa-message"></i> Proposta
+        </button>
       </div>
 
       <!-- Price Tables Section -->
@@ -285,6 +288,83 @@
           </button>
         </div>
       </div>
+
+      <!-- Counter Offer Section -->
+      <div class="section mb-8 p-5 bg-gray-50 rounded-xl max-md:p-0 max-md:mb-6" x-show="activeSection === 'counterOffer'">
+        <div class="section-header flex justify-between items-center mb-4 max-md:mx-3 max-md:py-3 max-md:border-b max-md:border-gray-200">
+          <h2 class="text-gray-800 text-lg font-semibold flex items-center gap-1 max-md:text-base"><i class="fa-solid fa-message"></i> Proposta Privada</h2>
+        </div>
+        <p class="section-description text-gray-500 text-sm mb-4">
+          Quando o comprador pedir um valor abaixo do seu preço, o bot pode enviar uma proposta no privado dele
+        </p>
+
+        <!-- Enable Toggle -->
+        <div class="data-card bg-white border border-gray-200 rounded-xl p-4 mb-4">
+          <div class="flex items-center justify-between">
+            <div>
+              <h4 class="font-semibold text-sm text-gray-800 mb-1">Habilitar Proposta Privada</h4>
+              <p class="text-xs text-gray-500">O bot enviará uma proposta no privado quando o preço oferecido estiver dentro do range aceitável</p>
+            </div>
+            <label class="relative inline-flex items-center cursor-pointer">
+              <input type="checkbox" class="sr-only peer" x-model="counterOfferSettings.isEnabled" @change="markCounterOfferChanged()">
+              <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+            </label>
+          </div>
+        </div>
+
+        <!-- Price Threshold -->
+        <div class="data-card bg-white border border-gray-200 rounded-xl p-4 mb-4" :class="{ 'opacity-50': !counterOfferSettings.isEnabled }">
+          <div class="data-card-header mb-3">
+            <h4 class="font-semibold text-sm text-gray-800">Range de Preço Aceitável</h4>
+            <p class="text-xs text-gray-500 mt-1">Se a diferença entre o preço pedido e o seu preço for até este valor, uma proposta será enviada</p>
+          </div>
+          <div class="flex items-center gap-3">
+            <span class="text-gray-500 text-sm">R$</span>
+            <input type="text" inputmode="decimal" 
+              :value="counterOfferSettings.priceThreshold" 
+              @input="formatInput($event, true); counterOfferSettings.priceThreshold = parseNumber($event.target.value, true) || 0; markCounterOfferChanged()"
+              :disabled="!counterOfferSettings.isEnabled"
+              placeholder="0.50" 
+              class="w-32 p-3 border border-gray-200 rounded-lg text-base text-center transition-all disabled:bg-gray-100 disabled:cursor-not-allowed">
+            <span class="text-gray-500 text-sm">de diferença</span>
+          </div>
+          <p class="text-xs text-gray-400 mt-2">Ex: se seu preço é R$ 16,50 e o range é R$ 0,50, propostas serão enviadas para pedidos de R$ 16,00 ou mais</p>
+        </div>
+
+        <!-- Message Template -->
+        <div class="data-card bg-white border border-gray-200 rounded-xl p-4 mb-4" :class="{ 'opacity-50': !counterOfferSettings.isEnabled }">
+          <div class="data-card-header mb-3">
+            <h4 class="font-semibold text-sm text-gray-800">Modelo de Mensagem</h4>
+            <p class="text-xs text-gray-500 mt-1">Escolha o estilo da mensagem que será enviada ao comprador</p>
+          </div>
+          <div class="flex flex-col gap-3">
+            <template x-for="template in counterOfferTemplates" :key="template.id">
+              <label class="flex items-start gap-3 p-3 border rounded-lg cursor-pointer transition-all" 
+                :class="counterOfferSettings.messageTemplateId === template.id ? 'border-primary bg-primary/5' : 'border-gray-200 hover:border-gray-300'"
+                @click="counterOfferSettings.messageTemplateId = template.id; markCounterOfferChanged()">
+                <input type="radio" name="messageTemplate" 
+                  :value="template.id" 
+                  :checked="counterOfferSettings.messageTemplateId === template.id"
+                  :disabled="!counterOfferSettings.isEnabled"
+                  class="mt-1">
+                <div class="flex-1">
+                  <div class="font-medium text-sm text-gray-800" x-text="template.description"></div>
+                  <pre class="text-xs text-gray-500 mt-2 whitespace-pre-wrap bg-gray-50 p-2 rounded" x-text="template.preview"></pre>
+                </div>
+              </label>
+            </template>
+          </div>
+        </div>
+
+        <div class="btn-group flex gap-2.5 justify-end mt-4 max-md:justify-center">
+          <button type="button" class="bg-linear-135 from-primary to-secondary px-6 py-3 text-sm font-semibold border-none rounded-lg cursor-pointer transition-all text-white disabled:opacity-60 disabled:cursor-not-allowed hover:not-disabled:-translate-y-0.5 hover:not-disabled:shadow-lg" 
+            @click="saveCounterOfferSettings()" 
+            :disabled="savingCounterOffer || !counterOfferChanged">
+            <span x-show="savingCounterOffer" class="spinner mr-2"></span>
+            Salvar Configurações
+          </button>
+        </div>
+      </div>
     </div>
 
     <!-- Bottom Sheet Overlay -->
@@ -387,6 +467,16 @@
         renewingLink: false,
         linkRenewed: false,
 
+        // Counter offer state
+        counterOfferSettings: {
+          isEnabled: false,
+          priceThreshold: 0.5,
+          messageTemplateId: 1,
+        },
+        counterOfferTemplates: [],
+        savingCounterOffer: false,
+        counterOfferChanged: false,
+
         // ============================================================================
         // Computed Properties (as getters)
         // ============================================================================
@@ -452,7 +542,12 @@
               this.startCountdown();
             }
 
-            await Promise.all([this.fetchPrograms(), this.fetchUserData()]);
+            await Promise.all([
+              this.fetchPrograms(), 
+              this.fetchUserData(),
+              this.fetchCounterOfferSettings(),
+              this.fetchCounterOfferTemplates(),
+            ]);
 
             if (this.normalPrograms.length > 0) {
               this.selectedProgramId = this.normalPrograms[0].id;
@@ -486,6 +581,40 @@
           } else {
             throw new Error(data.error || 'Failed to fetch user data');
           }
+        },
+
+        async fetchCounterOfferSettings() {
+          const res = await fetch(`/dashboard/${this.token}/counter-offer`);
+          const data = await res.json();
+          if (data.success) {
+            this.counterOfferSettings = data.data;
+          } else {
+            console.warn('Failed to fetch counter offer settings:', data.error);
+            // Use defaults if fetch fails
+          }
+        },
+
+        async fetchCounterOfferTemplates() {
+          const res = await fetch(`/dashboard/${this.token}/counter-offer/templates`);
+          const data = await res.json();
+          if (data.success) {
+            this.counterOfferTemplates = data.data.templates;
+          } else {
+            console.warn('Failed to fetch counter offer templates:', data.error);
+          }
+        },
+
+        async saveCounterOfferSettingsApi(settings) {
+          const res = await fetch(`/dashboard/${this.token}/counter-offer`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(settings),
+          });
+          const data = await res.json();
+          if (!data.success) {
+            throw new Error(data.error || 'Failed to save counter offer settings');
+          }
+          return data;
         },
 
         async savePricesApi(entries) {
@@ -688,6 +817,23 @@
           } finally {
             this.saving = false;
           }
+        },
+
+        async saveCounterOfferSettings() {
+          this.savingCounterOffer = true;
+          try {
+            await this.saveCounterOfferSettingsApi(this.counterOfferSettings);
+            this.showToast('Configurações de proposta salvas!', 'success');
+            this.counterOfferChanged = false;
+          } catch (error) {
+            this.showToast('Erro ao salvar: ' + error.message, 'error');
+          } finally {
+            this.savingCounterOffer = false;
+          }
+        },
+
+        markCounterOfferChanged() {
+          this.counterOfferChanged = true;
         },
 
         // ============================================================================

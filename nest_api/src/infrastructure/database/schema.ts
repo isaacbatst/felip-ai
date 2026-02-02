@@ -235,3 +235,20 @@ export const userAvailableMiles = pgTable(
     unique('user_available_miles_user_program_unique').on(table.userId, table.programId),
   ],
 );
+
+/**
+ * User counter offer settings table - per-user settings for private counter offer feature
+ * When a buyer's offered price is below the seller's price but within a threshold,
+ * the bot can send a private message with a counter offer instead of responding in the group
+ */
+export const userCounterOfferSettings = pgTable(
+  'user_counter_offer_settings',
+  {
+    userId: text('user_id').primaryKey(), // Telegram user ID
+    isEnabled: boolean('is_enabled').default(false).notNull(), // Feature toggle
+    priceThreshold: real('price_threshold').default(0.5).notNull(), // Max price difference to trigger (e.g., 0.50 = 50 cents)
+    messageTemplateId: integer('message_template_id').default(1).notNull(), // Which template to use (1, 2, or 3)
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+);

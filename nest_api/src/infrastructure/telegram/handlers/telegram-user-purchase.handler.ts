@@ -1,10 +1,12 @@
 import { TelegramUserClientProxyService } from '@/infrastructure/tdlib/telegram-user-client-proxy.service';
 import { MilesProgramRepository } from '@/infrastructure/persistence/miles-program.repository';
+import { CounterOfferSettingsRepository } from '@/infrastructure/persistence/counter-offer-settings.repository';
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { MessageParser } from '../../../domain/interfaces/message-parser.interface';
 import { PriceTableProvider } from '../../../domain/interfaces/price-table-provider.interface';
 import { PriceCalculatorService } from '../../../domain/services/price-calculator.service';
 import { PurchaseValidatorService } from '../../../domain/services/purchase-validator.service';
+import { buildCounterOfferMessage } from '../../../domain/constants/counter-offer-templates';
 import type { Provider } from '../../../domain/types/provider.types';
 
 /**
@@ -18,9 +20,9 @@ export class TelegramPurchaseHandler {
 
   // Fallback hardcoded liminar map (used when database lookup fails or MilesProgramRepository not available)
   private static readonly LEGACY_LIMINAR_MAP: Record<string, string> = {
-    'SMILES': 'SMILES LIMINAR',
+    SMILES: 'SMILES LIMINAR',
     'AZUL/TUDO AZUL': 'AZUL LIMINAR',
-    'LATAM': 'LATAM LIMINAR',
+    LATAM: 'LATAM LIMINAR',
   };
 
   constructor(
@@ -29,6 +31,7 @@ export class TelegramPurchaseHandler {
     private readonly purchaseValidator: PurchaseValidatorService,
     private readonly priceCalculator: PriceCalculatorService,
     private readonly tdlibUserClient: TelegramUserClientProxyService,
+    private readonly counterOfferSettingsRepository: CounterOfferSettingsRepository,
     @Optional() private readonly milesProgramRepository?: MilesProgramRepository,
   ) {}
 
@@ -37,12 +40,16 @@ export class TelegramPurchaseHandler {
     chatId: number,
     messageId: number | undefined,
     text: string,
+    senderId?: number,
   ): Promise<void> {
     const trimmedText = text.trim();
 
     // Validação 1: mensagem muito curta
     if (trimmedText.length < 10) {
-      this.logger.log('Skipping: message too short', { length: trimmedText.length, text: trimmedText });
+      this.logger.log('Skipping: message too short', {
+        length: trimmedText.length,
+        text: trimmedText,
+      });
       return;
     }
 
@@ -107,8 +114,6 @@ export class TelegramPurchaseHandler {
       return;
     }
 
-    console.log('Effective provider', effectiveProvider);
-
     const priceTable = priceTables[effectiveProvider];
 
     if (!priceTable || Object.keys(priceTable).length === 0) {
@@ -120,13 +125,6 @@ export class TelegramPurchaseHandler {
     const options =
       providerCustomMaxPrice !== undefined ? { customMaxPrice: providerCustomMaxPrice } : undefined;
 
-    console.log(
-      'Calculating price',
-      validatedRequest.quantity,
-      validatedRequest.cpfCount,
-      priceTable,
-      options,
-    );
     const priceResult = this.priceCalculator.calculate(
       validatedRequest.quantity,
       validatedRequest.cpfCount,
@@ -140,36 +138,73 @@ export class TelegramPurchaseHandler {
 
     this.logger.log('Message to reply:', messageId);
 
-    // Verifica se o usuário forneceu valores aceitos e se o menor valor aceito é maior que o preço calculado
-    if (validatedRequest.acceptedPrices.length > 0 && priceResult.success) {
-      const minAcceptedPrice = Math.min(...validatedRequest.acceptedPrices);
-      console.log('Min accepted price:', minAcceptedPrice);
-      console.log('Price result:', priceResult.price);
-      if (minAcceptedPrice >= priceResult.price) {
-        // O usuário aceita pagar mais que nosso preço - responder com mensagem customizada
-
-        await this.tdlibUserClient.sendMessage(botUserId, chatId, 'Vamos!', messageId);
-        return;
-      }
+    // Caso 1: Sem accepted prices -> mensagem padrão
+    if (validatedRequest.acceptedPrices.length === 0) {
+      await this.sendGroupAnswer(botUserId, chatId, priceResult.price, effectiveProvider, messageId);
+      return;
     }
 
-    const priceMessage = Intl.NumberFormat('pt-BR', {  maximumFractionDigits: 2 }).format(priceResult.price);
-    const isLiminar = effectiveProvider.toLowerCase().includes('liminar');
-    const finalMessage = isLiminar ? `${priceMessage} LIMINAR` : priceMessage;
+    const maxAcceptedPrice = Math.max(...validatedRequest.acceptedPrices);
 
-    await this.tdlibUserClient.sendMessage(
-      botUserId,
-      chatId,
-      finalMessage,
-      messageId,
+    // Caso 2: Preço aceito >= calculado -> "Vamos!"
+    if (maxAcceptedPrice >= priceResult.price) {
+      this.logger.log('User max accepted price is higher than calculated price', {
+        maxAcceptedPrice,
+        priceResultPrice: priceResult.price,
+      });
+      await this.tdlibUserClient.sendMessage(botUserId, chatId, 'Vamos!', messageId);
+      return;
+    }
+
+    const counterOfferSettings =
+      await this.counterOfferSettingsRepository.getSettings(botUserId);
+
+    // Counter offer desabilitado -> ignorar
+    if (!counterOfferSettings?.isEnabled) {
+      return;
+    }
+
+    const priceDiff = priceResult.price - maxAcceptedPrice;
+    // Diferença acima do threshold -> não responde
+    if (priceDiff > counterOfferSettings.priceThreshold) {
+      this.logger.log('Price difference is greater than threshold, ignoring counter offer', {
+        priceDiff,
+        priceThreshold: counterOfferSettings.priceThreshold,
+        priceResultPrice: priceResult.price,
+        maxAcceptedPrice,
+      });
+      return;
+    }
+
+    if(!senderId) {
+      this.logger.warn('No senderId, ignoring counter offer');
+      return
+    }
+
+    // Envia counter offer no privado
+    const message = buildCounterOfferMessage(
+      counterOfferSettings.messageTemplateId,
+      effectiveProvider,
+      validatedRequest.quantity,
+      validatedRequest.cpfCount,
+      priceResult.price,
     );
+
+    this.logger.log('Sending counter offer to buyer', {
+      senderId,
+      priceDiff,
+      threshold: counterOfferSettings.priceThreshold,
+      templateId: counterOfferSettings.messageTemplateId,
+    });
+
+    await this.tdlibUserClient.sendMessage(botUserId, senderId, message);
   }
 
   /**
    * Determines the effective provider (normal or liminar) based on miles availability.
    * If the normal program doesn't have enough miles, tries to use the liminar program.
    * Returns the effective provider if available, null otherwise.
-   * 
+   *
    * Liminar lookup priority:
    * 1. Database lookup via MilesProgramRepository (if available)
    * 2. Fallback to hardcoded LEGACY_LIMINAR_MAP
@@ -231,7 +266,8 @@ export class TelegramPurchaseHandler {
     // Try database lookup first if repository is available
     if (this.milesProgramRepository) {
       try {
-        const normalProgram = await this.milesProgramRepository.getProgramByName(normalProviderName);
+        const normalProgram =
+          await this.milesProgramRepository.getProgramByName(normalProviderName);
         if (normalProgram) {
           const liminarProgram = await this.milesProgramRepository.findLiminarFor(normalProgram.id);
           if (liminarProgram) {
@@ -243,7 +279,10 @@ export class TelegramPurchaseHandler {
           }
         }
       } catch (error) {
-        this.logger.warn('Error looking up liminar program from database, falling back to hardcoded map', { error });
+        this.logger.warn(
+          'Error looking up liminar program from database, falling back to hardcoded map',
+          { error },
+        );
       }
     }
 
@@ -330,5 +369,21 @@ export class TelegramPurchaseHandler {
     }
 
     return null;
+  }
+
+  /**
+   * Envia a mensagem padrão com o preço calculado.
+   */
+  private async sendGroupAnswer(
+    botUserId: string,
+    chatId: number,
+    price: number,
+    effectiveProvider: Provider,
+    messageId: number | undefined,
+  ): Promise<void> {
+    const priceMessage = Intl.NumberFormat('pt-BR', { maximumFractionDigits: 2 }).format(price);
+    const isLiminar = effectiveProvider.toLowerCase().includes('liminar');
+    const finalMessage = isLiminar ? `${priceMessage} LIMINAR` : priceMessage;
+    await this.tdlibUserClient.sendMessage(botUserId, chatId, finalMessage, messageId);
   }
 }
