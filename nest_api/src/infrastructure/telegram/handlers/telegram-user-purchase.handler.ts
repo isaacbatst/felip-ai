@@ -178,7 +178,7 @@ export class TelegramPurchaseHandler {
         effectiveProvider,
         validatedRequest.quantity,
         validatedRequest.cpfCount,
-        priceResult.price, // nosso preço calculado
+        maxAcceptedPrice, // preço máximo aceito pelo usuário
       );
 
       this.logger.log('Sending call to action to buyer in private', {
