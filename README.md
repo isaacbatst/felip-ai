@@ -1,6 +1,6 @@
 # Felip AI
 
-A Telegram bot application with TDLib worker integration using BullMQ for queue management.
+A Telegram bot application with TDLib worker integration.
 
 ## Architecture
 
