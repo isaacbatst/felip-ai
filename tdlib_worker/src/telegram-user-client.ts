@@ -51,6 +51,8 @@ export class TelegramUserClient {
     this.client = createClient({
       apiId: this.config.apiId,
       apiHash: this.config.apiHash,
+      databaseDirectory: this.config.databaseDirectory,
+      filesDirectory: this.config.filesDirectory,
     });
 
     this.setupBasicEventHandlers();
@@ -121,6 +123,8 @@ export class TelegramUserClient {
     this.client = createClient({
       apiId: this.config.apiId,
       apiHash: this.config.apiHash,
+      databaseDirectory: this.config.databaseDirectory,
+      filesDirectory: this.config.filesDirectory,
     });
 
     // Re-setup event handlers

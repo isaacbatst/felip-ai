@@ -140,6 +140,7 @@ export class WorkerManagerSwarm extends WorkerManager implements OnModuleDestroy
     // Remove any existing RABBITMQ_HOST from envVars first
     const filteredEnvVars = envVars.filter(env => !env.startsWith('RABBITMQ_HOST='));
     filteredEnvVars.push(`RABBITMQ_HOST=felip-ai_rabbitmq`);
+    this.logger.log(`Environment variables: ${JSON.stringify(filteredEnvVars)}`);
 
     try {
       await this.docker.createService({
