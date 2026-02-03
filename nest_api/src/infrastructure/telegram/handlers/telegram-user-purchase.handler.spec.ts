@@ -368,7 +368,7 @@ describe('TelegramPurchaseHandler', () => {
       });
     });
 
-    describe('User accepts price higher than calculated', () => {
+    describe('User accepts specific prices', () => {
       it('should send "Vamos!" when user accepts price higher than calculated', async () => {
         const priceTableResult = createFakePriceTableResult();
         mockPriceTableProvider.getPriceTable.mockResolvedValue(priceTableResult);
@@ -455,6 +455,41 @@ describe('TelegramPurchaseHandler', () => {
         await handler.handlePurchase(botUserId, chatId, messageId, 'SMILES 30k 1CPF aceito 15');
 
         expect(mockTdlibUserClient.sendMessage).not.toHaveBeenCalled();
+      });
+
+      it('should send default price message in group when user accepts price lower than calculated but difference exceeds threshold', async () => {
+        const priceTableResult = createFakePriceTableResult();
+        mockPriceTableProvider.getPriceTable.mockResolvedValue(priceTableResult);
+        mockMessageParser.parse.mockResolvedValue(createPurchaseRequest({
+          quantity: 30,
+          cpfCount: 1,
+          airline: 'SMILES',
+          acceptedPrices: [10], // User accepts 10, calculated is 20 (diff = 10)
+        }));
+
+        // Counter offer enabled but threshold is 5 (diff 10 > threshold 5)
+        mockCounterOfferSettingsRepository.getSettings.mockResolvedValueOnce({
+          userId: botUserId,
+          isEnabled: true,
+          priceThreshold: 5, // Threshold is 5, but difference is 10
+          messageTemplateId: 1,
+          callToActionTemplateId: 1,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+
+        await handler.handlePurchase(botUserId, chatId, messageId, 'SMILES 30k 1CPF aceito 10');
+
+        // Should send default price message in group (but NOT counter offer in private)
+        expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledTimes(1);
+        const groupMessage = mockTdlibUserClient.sendMessage.mock.calls[0][2];
+        expect(groupMessage).toBe('20'); // Default calculated price
+        expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledWith(
+          botUserId,
+          chatId,
+          '20',
+          messageId,
+        );
       });
 
       it('should use minimum of multiple accepted prices for comparison', async () => {

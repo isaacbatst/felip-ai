@@ -200,14 +200,16 @@ export class TelegramPurchaseHandler {
     }
 
     const priceDiff = priceResult.price - maxAcceptedPrice;
-    // Diferença acima do threshold -> não responde
+    // Diferença acima do threshold -> envia mensagem padrão no grupo mesmo assim
     if (priceDiff > counterOfferSettings.priceThreshold) {
-      this.logger.log('Price difference is greater than threshold, ignoring counter offer', {
+      this.logger.log('Price difference is greater than threshold, sending default message only', {
         priceDiff,
         priceThreshold: counterOfferSettings.priceThreshold,
         priceResultPrice: priceResult.price,
         maxAcceptedPrice,
       });
+      // Envia mensagem padrão no grupo mesmo quando fora do range aceitável
+      await this.sendGroupAnswer(botUserId, chatId, priceResult.price, effectiveProvider, messageId);
       return;
     }
 
