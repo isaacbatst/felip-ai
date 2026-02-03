@@ -27,6 +27,7 @@ import { TdlibUpdatesWorkerRabbitMQ } from '@/infrastructure/queue/rabbitmq/tdli
 import { AuthCodeDeduplicationService } from './telegram/auth-code-deduplication.service';
 import { AuthController } from './http/auth.controller';
 import { DashboardController } from './http/dashboard.controller';
+import { LandingController } from './http/landing.controller';
 
 /**
  * Module responsável por serviços de infraestrutura
@@ -34,7 +35,7 @@ import { DashboardController } from './http/dashboard.controller';
  */
 @Module({
   imports: [DomainModule, PersistenceModule, QueueModule, WorkersModule],
-  controllers: [AuthController, DashboardController],
+  controllers: [LandingController, AuthController, DashboardController],
   providers: [
     AppConfigService,
     OpenAIService,

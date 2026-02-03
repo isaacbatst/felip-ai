@@ -31,7 +31,7 @@ export class PurchaseValidatorService {
     return {
       quantity: request.quantity,
       cpfCount: request.cpfCount,
-      airline: request.airline ?? undefined,
+      airlineId: request.airlineId ?? undefined,
       acceptedPrices: request.acceptedPrices ?? [],
     };
   }

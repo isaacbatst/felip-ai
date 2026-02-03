@@ -1,8 +1,11 @@
 import { TelegramUserClientProxyService } from '@/infrastructure/tdlib/telegram-user-client-proxy.service';
-import { MilesProgramRepository } from '@/infrastructure/persistence/miles-program.repository';
+import {
+  MilesProgramRepository,
+  type MilesProgramData,
+} from '@/infrastructure/persistence/miles-program.repository';
 import { CounterOfferSettingsRepository } from '@/infrastructure/persistence/counter-offer-settings.repository';
 import { Injectable, Logger, Optional } from '@nestjs/common';
-import { MessageParser } from '../../../domain/interfaces/message-parser.interface';
+import { MessageParser, type ProgramOption } from '../../../domain/interfaces/message-parser.interface';
 import { PriceTableProvider } from '../../../domain/interfaces/price-table-provider.interface';
 import { PriceCalculatorService } from '../../../domain/services/price-calculator.service';
 import { PurchaseValidatorService } from '../../../domain/services/purchase-validator.service';
@@ -70,10 +73,21 @@ export class TelegramPurchaseHandler {
     // Busca providers disponíveis primeiro para passar ao parser
     const priceTableResult = await this.priceTableProvider.getPriceTable(botUserId);
     const { priceTables, customMaxPrice } = priceTableResult;
-    const providers = Object.keys(priceTables) as Provider[];
 
-    // Passa os providers como contexto para ajudar o modelo a reconhecer melhor
-    const purchaseRequest = await this.messageParser.parse(text, providers);
+    // Busca todos os programas do banco para passar ao parser (melhora reconhecimento)
+    let allPrograms: MilesProgramData[] = [];
+    let programsForParser: ProgramOption[];
+
+    if (this.milesProgramRepository) {
+      allPrograms = await this.milesProgramRepository.getAllPrograms();
+      programsForParser = allPrograms.map((p) => ({ id: p.id, name: p.name }));
+    } else {
+      // Fallback para providers do usuário se repository não estiver disponível
+      programsForParser = Object.keys(priceTables).map((name, idx) => ({ id: idx, name }));
+    }
+
+    // Passa os programas como contexto para ajudar o modelo a reconhecer melhor
+    const purchaseRequest = await this.messageParser.parse(text, programsForParser);
 
     const validatedRequest = this.purchaseValidator.validate(purchaseRequest);
 
@@ -86,12 +100,18 @@ export class TelegramPurchaseHandler {
       (provider) => priceTables[provider] && Object.keys(priceTables[provider]).length > 0,
     ) as Provider[];
 
-    // Encontra o provider correspondente ao programa mencionado usando comparação case-insensitive
+    // Encontra o provider correspondente ao programa pelo ID retornado pelo parser
     let selectedProvider: Provider | null = null;
 
-    if (validatedRequest.airline) {
-      console.log('Finding provider for airline', validatedRequest.airline);
-      selectedProvider = this.findProviderByName(validatedRequest.airline, availableProviders);
+    if (validatedRequest.airlineId !== undefined) {
+      // Busca o programa pelo ID
+      const program = allPrograms.find((p) => p.id === validatedRequest.airlineId);
+      if (program) {
+        console.log('Finding provider for program', { id: program.id, name: program.name });
+        selectedProvider = this.findProviderByName(program.name, availableProviders);
+      } else {
+        console.warn('Program not found for airlineId', validatedRequest.airlineId);
+      }
     }
 
     console.log('Selected provider', selectedProvider);

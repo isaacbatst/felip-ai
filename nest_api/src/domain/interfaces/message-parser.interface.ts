@@ -1,6 +1,13 @@
 import { Injectable } from '@nestjs/common';
-import type { Provider } from '../types/provider.types';
 import type { PurchaseRequest } from '../types/purchase.types';
+
+/**
+ * Opção de programa de milhas para o parser
+ */
+export interface ProgramOption {
+  id: number;
+  name: string;
+}
 
 /**
  * Classe abstrata para parsing de mensagens (ISP - Interface Segregation Principle)
@@ -12,8 +19,8 @@ export abstract class MessageParser {
   /**
    * Faz parsing de uma mensagem de texto para identificar se é uma proposta de compra
    * @param text Texto da mensagem a ser analisado
-   * @param availableProviders Lista de providers disponíveis para validar se a compra é para algum deles
+   * @param programs Lista de programas de milhas disponíveis (com ID e nome)
    */
-  abstract parse(text: string, availableProviders?: Provider[]): Promise<PurchaseRequest | null>;
+  abstract parse(text: string, programs?: ProgramOption[]): Promise<PurchaseRequest | null>;
 }
 

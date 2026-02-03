@@ -7,11 +7,13 @@ export const PurchaseRequestSchema = z.object({
   isPurchaseProposal: z.boolean().describe('Se a mensagem é uma proposta de compra'),
   quantity: z.number().positive().nullable().describe('Quantidade em milhares (número decimal). Exemplos: 84 para "84k" ou "84000", 26.1 para "26.100" ou "26.1k", 69.4 para "69,4k" ou "69400"'),
   cpfCount: z.number().int().positive().nullable().describe('Número de CPFs (ex: 2 para 2CPF)'),
-  airline: z
-    .string()
+  airlineId: z
+    .number()
+    .int()
+    .positive()
     .nullable()
     .describe(
-      'Nome da companhia aérea ou programa de milhas mencionado (ex: LATAM, SMILES, TUDO AZUL)',
+      'ID do programa de milhas selecionado da lista de programas disponíveis',
     ),
   acceptedPrices: z
     .array(z.number().positive())
@@ -29,7 +31,7 @@ export type PurchaseRequest = z.infer<typeof PurchaseRequestSchema>;
 export interface ValidatedPurchaseRequest {
   quantity: number;
   cpfCount: number;
-  airline: string | undefined;
+  airlineId: number | undefined;
   acceptedPrices: number[];
 }
 

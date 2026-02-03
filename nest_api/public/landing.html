@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>LFViagens Chatbot - Automação Inteligente para Balcões de Milhas</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/public/output.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <style>
+    [x-cloak] { display: none !important; }
+    .hero-gradient {
+      background: linear-gradient(135deg, var(--color-primary, #6366f1) 0%, var(--color-secondary, #8b5cf6) 100%);
+    }
+    .card-highlight {
+      box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.3);
+    }
+    .feature-icon {
+      background: linear-gradient(135deg, var(--color-primary, #6366f1) 0%, var(--color-secondary, #8b5cf6) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+  </style>
+</head>
+
+<body x-data="{ selectedPlan: 'pro', showFaq: {} }" class="font-sans bg-gray-50 min-h-screen">
+
+  <!-- Header -->
+  <header class="bg-white shadow-sm sticky top-0 z-50">
+    <div class="max-w-6xl mx-auto px-4 py-4 flex justify-between items-center">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl hero-gradient flex items-center justify-center">
+          <i class="fa-solid fa-plane text-white text-lg"></i>
+        </div>
+        <span class="text-xl font-bold text-gray-800">LFViagens Chatbot</span>
+      </div>
+      <a href="#planos" class="hidden md:inline-flex px-5 py-2.5 hero-gradient text-white font-semibold rounded-lg hover:opacity-90 transition-opacity">
+        Ver Planos
+      </a>
+    </div>
+  </header>
+
+  <!-- Hero Section -->
+  <section class="hero-gradient py-16 md:py-24">
+    <div class="max-w-6xl mx-auto px-4 text-center">
+      <h1 class="text-3xl md:text-5xl font-extrabold text-white mb-6 leading-tight">
+        Automatize seu Balcão de Milhas<br class="hidden md:block"> com Inteligência Artificial
+      </h1>
+      <p class="text-lg md:text-xl text-white/90 mb-8 max-w-2xl mx-auto">
+        Responda compradores automaticamente, gerencie múltiplos grupos e feche mais negócios — tudo isso enquanto você foca no que realmente importa.
+      </p>
+      <div class="flex flex-col md:flex-row gap-4 justify-center">
+        <a href="#planos" class="px-8 py-4 bg-white text-gray-800 font-bold rounded-xl shadow-lg hover:shadow-xl transition-all hover:-translate-y-0.5">
+          <i class="fa-solid fa-rocket mr-2"></i> Começar Agora
+        </a>
+        <a href="#como-funciona" class="px-8 py-4 bg-white/10 text-white font-semibold rounded-xl border-2 border-white/30 hover:bg-white/20 transition-all">
+          <i class="fa-solid fa-play-circle mr-2"></i> Como Funciona
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Features Section -->
+  <section id="como-funciona" class="py-16 md:py-20 bg-white">
+    <div class="max-w-6xl mx-auto px-4">
+      <h2 class="text-2xl md:text-3xl font-bold text-gray-800 text-center mb-4">
+        Por que escolher o LFViagens Chatbot?
+      </h2>
+      <p class="text-gray-500 text-center mb-12 max-w-2xl mx-auto">
+        Nossa ferramenta é mais automatizada, com mais features e mais customização que a concorrência.
+      </p>
+
+      <div class="grid md:grid-cols-3 gap-6 md:gap-8">
+        <!-- Feature 1 -->
+        <div class="bg-gray-50 rounded-2xl p-6 hover:shadow-lg transition-shadow">
+          <div class="w-14 h-14 rounded-xl bg-primary/10 flex items-center justify-center mb-4">
+            <i class="fa-solid fa-bolt text-2xl feature-icon"></i>
+          </div>
+          <h3 class="text-lg font-bold text-gray-800 mb-2">Respostas Automáticas</h3>
+          <p class="text-gray-500 text-sm">
+            O bot responde compradores em segundos com seus preços configurados. Sem delay, sem esforço manual.
+          </p>
+        </div>
+
+        <!-- Feature 2 -->
+        <div class="bg-gray-50 rounded-2xl p-6 hover:shadow-lg transition-shadow">
+          <div class="w-14 h-14 rounded-xl bg-primary/10 flex items-center justify-center mb-4">
+            <i class="fa-solid fa-users text-2xl feature-icon"></i>
+          </div>
+          <h3 class="text-lg font-bold text-gray-800 mb-2">Múltiplos Grupos</h3>
+          <p class="text-gray-500 text-sm">
+            Gerencie vários grupos de Telegram ao mesmo tempo. Cada balcão opera de forma independente.
+          </p>
+        </div>
+
+        <!-- Feature 3 -->
+        <div class="bg-gray-50 rounded-2xl p-6 hover:shadow-lg transition-shadow">
+          <div class="w-14 h-14 rounded-xl bg-primary/10 flex items-center justify-center mb-4">
+            <i class="fa-solid fa-sliders text-2xl feature-icon"></i>
+          </div>
+          <h3 class="text-lg font-bold text-gray-800 mb-2">Dashboard Completo</h3>
+          <p class="text-gray-500 text-sm">
+            Configure preços, estoque, teto máximo e mensagens personalizadas em um painel intuitivo.
+          </p>
+        </div>
+
+        <!-- Feature 4 -->
+        <div class="bg-gray-50 rounded-2xl p-6 hover:shadow-lg transition-shadow">
+          <div class="w-14 h-14 rounded-xl bg-primary/10 flex items-center justify-center mb-4">
+            <i class="fa-solid fa-handshake text-2xl feature-icon"></i>
+          </div>
+          <h3 class="text-lg font-bold text-gray-800 mb-2">Contra-propostas Inteligentes</h3>
+          <p class="text-gray-500 text-sm">
+            Negociação automática no privado. O bot envia propostas quando o preço está dentro do seu range.
+          </p>
+        </div>
+
+        <!-- Feature 5 -->
+        <div class="bg-gradient-to-br from-primary/5 to-secondary/5 rounded-2xl p-6 hover:shadow-lg transition-shadow border border-primary/20">
+          <div class="w-14 h-14 rounded-xl hero-gradient flex items-center justify-center mb-4">
+            <i class="fa-solid fa-brain text-2xl text-white"></i>
+          </div>
+          <div class="flex items-center gap-2 mb-2">
+            <h3 class="text-lg font-bold text-gray-800">IA Avançada</h3>
+            <span class="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-xs font-semibold rounded-full">INCLUSA</span>
+          </div>
+          <p class="text-gray-500 text-sm">
+            Interpretação inteligente de mensagens com IA. Entende variações de texto, abreviações e erros de digitação.
+          </p>
+        </div>
+
+        <!-- Feature 6 -->
+        <div class="bg-gray-50 rounded-2xl p-6 hover:shadow-lg transition-shadow">
+          <div class="w-14 h-14 rounded-xl bg-primary/10 flex items-center justify-center mb-4">
+            <i class="fa-solid fa-shield-halved text-2xl feature-icon"></i>
+          </div>
+          <h3 class="text-lg font-bold text-gray-800 mb-2">Controle Total</h3>
+          <p class="text-gray-500 text-sm">
+            Ative/desative o bot, defina preço teto e gerencie estoque em tempo real pelo dashboard.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Pricing Section -->
+  <section id="planos" class="py-16 md:py-20 bg-gray-50">
+    <div class="max-w-6xl mx-auto px-4">
+      <h2 class="text-2xl md:text-3xl font-bold text-gray-800 text-center mb-4">
+        Escolha seu Plano
+      </h2>
+      <p class="text-gray-500 text-center mb-4 max-w-2xl mx-auto">
+        Preços simples e transparentes. Comece pequeno e cresça conforme sua demanda.
+      </p>
+      <div class="text-center mb-12">
+        <span class="inline-flex items-center gap-2 px-4 py-2 bg-emerald-100 text-emerald-700 rounded-full text-sm font-semibold">
+          <i class="fa-solid fa-tag"></i>
+          Lançamento: 30% OFF nos primeiros 3 meses!
+        </span>
+      </div>
+
+      <div class="grid md:grid-cols-3 gap-6 md:gap-8 max-w-5xl mx-auto">
+        
+        <!-- Starter Plan -->
+        <div class="bg-white rounded-2xl p-6 border-2 transition-all cursor-pointer hover:shadow-lg relative"
+          :class="selectedPlan === 'starter' ? 'border-primary card-highlight' : 'border-gray-200'"
+          @click="selectedPlan = 'starter'">
+          <div class="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 bg-emerald-500 text-white text-xs font-bold rounded-full">
+            30% OFF
+          </div>
+          
+          <div class="text-center mb-6 mt-2">
+            <h3 class="text-lg font-bold text-gray-800 mb-1">Starter</h3>
+            <p class="text-gray-400 text-sm">Para quem está começando</p>
+          </div>
+          
+          <div class="text-center mb-6">
+            <div class="text-gray-400 text-sm line-through mb-1">De R$199/mês</div>
+            <span class="text-4xl font-extrabold text-emerald-600">R$139</span>
+            <span class="text-gray-500">/mês</span>
+          </div>
+
+          <ul class="space-y-3 mb-6">
+            <li class="flex items-start gap-3 text-sm">
+              <i class="fa-solid fa-check text-emerald-500 mt-0.5"></i>
+              <span class="text-gray-600">Até <strong>3 balcões</strong> inclusos</span>
+            </li>
+            <li class="flex items-start gap-3 text-sm">
+              <i class="fa-solid fa-check text-emerald-500 mt-0.5"></i>
+              <span class="text-gray-600">Respostas automáticas</span>
+            </li>
+            <li class="flex items-start gap-3 text-sm">
+              <i class="fa-solid fa-check text-emerald-500 mt-0.5"></i>
+              <span class="text-gray-600">Dashboard completo</span>
+            </li>
+            <li class="flex items-start gap-3 text-sm">
+              <i class="fa-solid fa-check text-emerald-500 mt-0.5"></i>
+              <span class="text-gray-600">Contra-propostas automáticas</span>
+            </li>
+            <li class="flex items-start gap-3 text-sm">
+              <i class="fa-solid fa-check text-emerald-500 mt-0.5"></i>
+              <span class="text-gray-600"><strong>IA Avançada</strong> inclusa</span>
+            </li>
+            <li class="flex items-start gap-3 text-sm text-gray-400">
+              <i class="fa-solid fa-plus mt-0.5"></i>
+              <span>Balcão extra: <strong>R$39/mês</strong></span>
+            </li>
+          </ul>
+
+          <a href="https://t.me/LFViagens?text=Ol%C3%A1!%20Tenho%20interesse%20no%20LFViagens%20Chatbot.%20Quero%20saber%20mais!" target="_blank" class="block w-full py-3 text-center rounded-xl font-semibold transition-all"
+            :class="selectedPlan === 'starter' ? 'hero-gradient text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'">
+            Começar Agora
+          </a>
+        </div>
+
+        <!-- Pro Plan (Recommended) -->
+        <div class="bg-white rounded-2xl p-6 border-2 transition-all cursor-pointer hover:shadow-lg relative"
+          :class="selectedPlan === 'pro' ? 'border-primary card-highlight' : 'border-gray-200'"
+          @click="selectedPlan = 'pro'">
+          <div class="absolute -top-3 left-1/2 -translate-x-1/2 flex gap-2">
+            <span class="px-3 py-1 hero-gradient text-white text-xs font-bold rounded-full text-center">MAIS POPULAR</span>
+            <span class="px-3 py-1 bg-emerald-500 text-white text-xs font-bold rounded-full text-center">30% OFF</span>
+          </div>
+          
+          <div class="text-center mb-6 mt-2">
+            <h3 class="text-lg font-bold text-gray-800 mb-1">Pro</h3>
+            <p class="text-gray-400 text-sm">Para negócios em crescimento</p>
+          </div>
+          
+          <div class="text-center mb-6">
+            <div class="text-gray-400 text-sm line-through mb-1">De R$299/mês</div>
+            <span class="text-4xl font-extrabold text-emerald-600">R$209</span>
+            <span class="text-gray-500">/mês</span>
+          </div>
+
+          <ul class="space-y-3 mb-6">
+            <li class="flex items-start gap-3 text-sm">
+              <i class="fa-solid fa-check text-emerald-500 mt-0.5"></i>
+              <span class="text-gray-600">Até <strong>6 balcões</strong> inclusos</span>
+            </li>
+            <li class="flex items-start gap-3 text-sm">
+              <i class="fa-solid fa-check text-emerald-500 mt-0.5"></i>
+              <span class="text-gray-600">Respostas automáticas</span>
+            </li>
+            <li class="flex items-start gap-3 text-sm">
+              <i class="fa-solid fa-check text-emerald-500 mt-0.5"></i>
+              <span class="text-gray-600">Dashboard completo</span>
+            </li>
+            <li class="flex items-start gap-3 text-sm">
+              <i class="fa-solid fa-check text-emerald-500 mt-0.5"></i>
+              <span class="text-gray-600">Contra-propostas automáticas</span>
+            </li>
+            <li class="flex items-start gap-3 text-sm">
+              <i class="fa-solid fa-check text-emerald-500 mt-0.5"></i>
+              <span class="text-gray-600">Suporte prioritário</span>
+            </li>
+            <li class="flex items-start gap-3 text-sm">
+              <i class="fa-solid fa-check text-emerald-500 mt-0.5"></i>
+              <span class="text-gray-600"><strong>IA Avançada</strong> inclusa</span>
+            </li>
+            <li class="flex items-start gap-3 text-sm text-gray-400">
+              <i class="fa-solid fa-plus mt-0.5"></i>
+              <span>Balcão extra: <strong>R$35/mês</strong></span>
+            </li>
+          </ul>
+
+          <a href="https://t.me/LFViagens?text=Ol%C3%A1!%20Tenho%20interesse%20no%20LFViagens%20Chatbot.%20Quero%20saber%20mais!" target="_blank" class="block w-full py-3 text-center rounded-xl font-semibold transition-all"
+            :class="selectedPlan === 'pro' ? 'hero-gradient text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'">
+            Começar Agora
+          </a>
+        </div>
+
+        <!-- Scale Plan -->
+        <div class="bg-white rounded-2xl p-6 border-2 transition-all cursor-pointer hover:shadow-lg relative"
+          :class="selectedPlan === 'scale' ? 'border-primary card-highlight' : 'border-gray-200'"
+          @click="selectedPlan = 'scale'">
+          <div class="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 bg-emerald-500 text-white text-xs font-bold rounded-full">
+            30% OFF
+          </div>
+          
+          <div class="text-center mb-6 mt-2">
+            <h3 class="text-lg font-bold text-gray-800 mb-1">Scale</h3>
+            <p class="text-gray-400 text-sm">Para operações maiores</p>
+          </div>
+          
+          <div class="text-center mb-6">
+            <div class="text-gray-400 text-sm line-through mb-1">De R$499/mês</div>
+            <span class="text-4xl font-extrabold text-emerald-600">R$349</span>
+            <span class="text-gray-500">/mês</span>
+          </div>
+
+          <ul class="space-y-3 mb-6">
+            <li class="flex items-start gap-3 text-sm">
+              <i class="fa-solid fa-check text-emerald-500 mt-0.5"></i>
+              <span class="text-gray-600"><strong>Balcões ilimitados</strong></span>
+            </li>
+            <li class="flex items-start gap-3 text-sm">
+              <i class="fa-solid fa-check text-emerald-500 mt-0.5"></i>
+              <span class="text-gray-600">Respostas automáticas</span>
+            </li>
+            <li class="flex items-start gap-3 text-sm">
+              <i class="fa-solid fa-check text-emerald-500 mt-0.5"></i>
+              <span class="text-gray-600">Dashboard completo</span>
+            </li>
+            <li class="flex items-start gap-3 text-sm">
+              <i class="fa-solid fa-check text-emerald-500 mt-0.5"></i>
+              <span class="text-gray-600">Contra-propostas automáticas</span>
+            </li>
+            <li class="flex items-start gap-3 text-sm">
+              <i class="fa-solid fa-check text-emerald-500 mt-0.5"></i>
+              <span class="text-gray-600">Suporte prioritário</span>
+            </li>
+            <li class="flex items-start gap-3 text-sm">
+              <i class="fa-solid fa-check text-emerald-500 mt-0.5"></i>
+              <span class="text-gray-600">Onboarding dedicado</span>
+            </li>
+            <li class="flex items-start gap-3 text-sm">
+              <i class="fa-solid fa-check text-emerald-500 mt-0.5"></i>
+              <span class="text-gray-600"><strong>IA Avançada</strong> inclusa</span>
+            </li>
+          </ul>
+
+          <a href="https://t.me/LFViagens?text=Ol%C3%A1!%20Tenho%20interesse%20no%20LFViagens%20Chatbot.%20Quero%20saber%20mais!" target="_blank" class="block w-full py-3 text-center rounded-xl font-semibold transition-all"
+            :class="selectedPlan === 'scale' ? 'hero-gradient text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'">
+            Começar Agora
+          </a>
+        </div>
+      </div>
+
+      <!-- Promo Banner -->
+      <div class="max-w-3xl mx-auto mt-12 bg-gradient-to-r from-emerald-50 to-emerald-100 rounded-2xl p-6 border border-emerald-200">
+        <div class="flex items-start gap-4">
+          <div class="w-12 h-12 rounded-xl bg-emerald-500 flex items-center justify-center shrink-0">
+            <i class="fa-solid fa-gift text-white text-xl"></i>
+          </div>
+          <div>
+            <h4 class="font-bold text-gray-800 mb-2">Promoção de Lançamento: 30% OFF</h4>
+            <p class="text-gray-600 text-sm mb-3">
+              Assine agora e ganhe <strong>30% de desconto nos primeiros 3 meses</strong>. Todos os planos incluem IA Avançada sem custo adicional!
+            </p>
+            <p class="text-emerald-600 text-xs font-medium">
+              <i class="fa-solid fa-clock mr-1"></i>
+              Oferta por tempo limitado. Aproveite!
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FAQ Section -->
+  <section class="py-16 md:py-20 bg-white">
+    <div class="max-w-3xl mx-auto px-4">
+      <h2 class="text-2xl md:text-3xl font-bold text-gray-800 text-center mb-12">
+        Perguntas Frequentes
+      </h2>
+
+      <div class="space-y-4">
+        <!-- FAQ Item 1 -->
+        <div class="border border-gray-200 rounded-xl overflow-hidden">
+          <button class="w-full px-6 py-4 text-left flex justify-between items-center hover:bg-gray-50 transition-colors"
+            @click="showFaq.q1 = !showFaq.q1">
+            <span class="font-semibold text-gray-800">O que é um balcão?</span>
+            <i class="fa-solid fa-chevron-down text-gray-400 transition-transform" :class="showFaq.q1 && 'rotate-180'"></i>
+          </button>
+          <div class="px-6 py-4" x-show="showFaq.q1" x-collapse>
+            <p class="text-gray-500 text-sm">
+              Um balcão é cada grupo de Telegram onde o bot vai operar. Se você tem 3 grupos diferentes de compra/venda de milhas, você precisa de 3 balcões.
+            </p>
+          </div>
+        </div>
+
+        <!-- FAQ Item 2 -->
+        <div class="border border-gray-200 rounded-xl overflow-hidden">
+          <button class="w-full px-6 py-4 text-left flex justify-between items-center hover:bg-gray-50 transition-colors"
+            @click="showFaq.q2 = !showFaq.q2">
+            <span class="font-semibold text-gray-800">Posso testar antes de assinar?</span>
+            <i class="fa-solid fa-chevron-down text-gray-400 transition-transform" :class="showFaq.q2 && 'rotate-180'"></i>
+          </button>
+          <div class="px-6 py-4" x-show="showFaq.q2" x-collapse>
+            <p class="text-gray-500 text-sm">
+              Sim! Oferecemos 7 dias de teste grátis para você conhecer a ferramenta sem compromisso.
+            </p>
+          </div>
+        </div>
+
+        <!-- FAQ Item 3 -->
+        <div class="border border-gray-200 rounded-xl overflow-hidden">
+          <button class="w-full px-6 py-4 text-left flex justify-between items-center hover:bg-gray-50 transition-colors"
+            @click="showFaq.q3 = !showFaq.q3">
+            <span class="font-semibold text-gray-800">Preciso saber programar?</span>
+            <i class="fa-solid fa-chevron-down text-gray-400 transition-transform" :class="showFaq.q3 && 'rotate-180'"></i>
+          </button>
+          <div class="px-6 py-4" x-show="showFaq.q3" x-collapse>
+            <p class="text-gray-500 text-sm">
+              Não! Tudo é configurado pelo dashboard visual. Você só precisa definir seus preços, estoque e o bot faz o resto.
+            </p>
+          </div>
+        </div>
+
+        <!-- FAQ Item 4 -->
+        <div class="border border-gray-200 rounded-xl overflow-hidden">
+          <button class="w-full px-6 py-4 text-left flex justify-between items-center hover:bg-gray-50 transition-colors"
+            @click="showFaq.q4 = !showFaq.q4">
+            <span class="font-semibold text-gray-800">Como funciona a promoção de lançamento?</span>
+            <i class="fa-solid fa-chevron-down text-gray-400 transition-transform" :class="showFaq.q4 && 'rotate-180'"></i>
+          </button>
+          <div class="px-6 py-4" x-show="showFaq.q4" x-collapse>
+            <p class="text-gray-500 text-sm">
+              Ao assinar agora, você ganha <strong>30% de desconto nos primeiros 3 meses</strong>. Após esse período, o plano passa para o valor normal. Todos os planos já incluem IA Avançada sem custo adicional.
+            </p>
+          </div>
+        </div>
+
+        <!-- FAQ Item 5 -->
+        <div class="border border-gray-200 rounded-xl overflow-hidden">
+          <button class="w-full px-6 py-4 text-left flex justify-between items-center hover:bg-gray-50 transition-colors"
+            @click="showFaq.q5 = !showFaq.q5">
+            <span class="font-semibold text-gray-800">Posso cancelar a qualquer momento?</span>
+            <i class="fa-solid fa-chevron-down text-gray-400 transition-transform" :class="showFaq.q5 && 'rotate-180'"></i>
+          </button>
+          <div class="px-6 py-4" x-show="showFaq.q5" x-collapse>
+            <p class="text-gray-500 text-sm">
+              Sim, você pode cancelar sua assinatura a qualquer momento sem multas. Seu acesso continua até o fim do período já pago.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA Section -->
+  <section class="hero-gradient py-16 md:py-20">
+    <div class="max-w-4xl mx-auto px-4 text-center">
+      <h2 class="text-2xl md:text-3xl font-bold text-white mb-4">
+        Pronto para automatizar seu balcão de milhas?
+      </h2>
+      <p class="text-white/80 mb-8 max-w-2xl mx-auto">
+        Aproveite 30% OFF nos primeiros 3 meses. IA Avançada inclusa em todos os planos!
+      </p>
+      <a href="https://t.me/LFViagens?text=Ol%C3%A1!%20Tenho%20interesse%20no%20LFViagens%20Chatbot.%20Quero%20saber%20mais!" target="_blank" class="inline-flex justify-center items-center px-8 py-4 bg-white text-gray-800 font-bold rounded-xl shadow-lg hover:shadow-xl transition-all hover:-translate-y-0.5">
+        <i class="fa-brands fa-telegram mr-2"></i> Começar com 30% OFF
+      </a>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="bg-gray-800 py-12">
+    <div class="max-w-6xl mx-auto px-4">
+      <div class="flex flex-col md:flex-row justify-between items-center gap-6">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center">
+            <i class="fa-solid fa-plane text-white text-lg"></i>
+          </div>
+          <span class="text-xl font-bold text-white">LFViagens Chatbot</span>
+        </div>
+        <div class="flex gap-6 text-gray-400 text-sm">
+          <a href="#" class="hover:text-white transition-colors">Termos de Uso</a>
+          <a href="#" class="hover:text-white transition-colors">Privacidade</a>
+          <a href="#" class="hover:text-white transition-colors">Suporte</a>
+        </div>
+      </div>
+      <div class="mt-8 pt-8 border-t border-gray-700 text-center text-gray-500 text-sm">
+        &copy; 2026 LFViagens Chatbot. Todos os direitos reservados.
+      </div>
+    </div>
+  </footer>
+
+  <script defer src="https://unpkg.com/alpinejs@3.13.3/dist/cdn.min.js"></script>
+  <script src="https://unpkg.com/@alpinejs/collapse@3.13.3/dist/cdn.min.js" defer></script>
+</body>
+
+</html>

@@ -1,8 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { Injectable, Logger } from '@nestjs/common';
 import { zodTextFormat } from 'openai/helpers/zod';
-import { MessageParser } from '../../domain/interfaces/message-parser.interface';
-import type { Provider } from '../../domain/types/provider.types';
+import { MessageParser, type ProgramOption } from '../../domain/interfaces/message-parser.interface';
 import { type PurchaseRequest, PurchaseRequestSchema } from '../../domain/types/purchase.types';
 import { OpenAIService } from './openai.service';
 
@@ -30,11 +29,12 @@ export class MessageParserService extends MessageParser {
       model: 'gpt-5-nano',
     };
   }
-  async parse(text: string, availableProviders?: Provider[]): Promise<PurchaseRequest | null> {
+  async parse(text: string, programs?: ProgramOption[]): Promise<PurchaseRequest | null> {
     try {
       const client = this.openaiService.getClient();
       const variables = {
-        providers: availableProviders?.join(', ') || '',
+        // Format: "1:SMILES, 2:LATAM, 3:AZUL/TUDO AZUL, ..."
+        providers: JSON.stringify(programs || []),
         text: text,
       };
       const id = randomUUID();
@@ -43,7 +43,7 @@ export class MessageParserService extends MessageParser {
         model: this.config.model,
         prompt: {
           id: this.promptId,
-          version: '14',
+          version: '27',
           variables,
         },
         reasoning: {

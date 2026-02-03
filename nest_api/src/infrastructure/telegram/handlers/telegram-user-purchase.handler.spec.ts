@@ -52,12 +52,32 @@ describe('TelegramPurchaseHandler', () => {
     ...overrides,
   });
 
+  // Mapping of program names to IDs for tests
+  const PROGRAM_IDS = {
+    SMILES: 1,
+    'SMILES LIMINAR': 2,
+    LATAM: 3,
+    'LATAM LIMINAR': 4,
+    'AZUL/TUDO AZUL': 5,
+    'AZUL LIMINAR': 6,
+  } as const;
+
+  // Test programs data
+  const testPrograms = [
+    { id: 1, name: 'SMILES', liminarOfId: null, createdAt: new Date() },
+    { id: 2, name: 'SMILES LIMINAR', liminarOfId: 1, createdAt: new Date() },
+    { id: 3, name: 'LATAM', liminarOfId: null, createdAt: new Date() },
+    { id: 4, name: 'LATAM LIMINAR', liminarOfId: 3, createdAt: new Date() },
+    { id: 5, name: 'AZUL/TUDO AZUL', liminarOfId: null, createdAt: new Date() },
+    { id: 6, name: 'AZUL LIMINAR', liminarOfId: 5, createdAt: new Date() },
+  ];
+
   // Helper to create a mock PurchaseRequest
   const createPurchaseRequest = (overrides?: Partial<PurchaseRequest>): PurchaseRequest => ({
     isPurchaseProposal: true,
     quantity: 30,
     cpfCount: 1,
-    airline: 'SMILES',
+    airlineId: PROGRAM_IDS.SMILES,
     acceptedPrices: [],
     ...overrides,
   });
@@ -84,7 +104,7 @@ describe('TelegramPurchaseHandler', () => {
     mockMilesProgramRepository = {
       getProgramByName: jest.fn().mockResolvedValue(null),
       findLiminarFor: jest.fn().mockResolvedValue(null),
-      getAllPrograms: jest.fn().mockResolvedValue([]),
+      getAllPrograms: jest.fn().mockResolvedValue(testPrograms),
       getAllProgramsWithLiminar: jest.fn().mockResolvedValue([]),
       getProgramById: jest.fn().mockResolvedValue(null),
       createProgram: jest.fn(),
@@ -145,7 +165,7 @@ describe('TelegramPurchaseHandler', () => {
         mockMessageParser.parse.mockResolvedValue(createPurchaseRequest({
           quantity: 30,
           cpfCount: 1,
-          airline: 'SMILES',
+          airlineId: PROGRAM_IDS.SMILES,
         }));
 
         await handler.handlePurchase(botUserId, chatId, messageId, 'SMILES 30k 1CPF');
@@ -163,7 +183,7 @@ describe('TelegramPurchaseHandler', () => {
         mockMessageParser.parse.mockResolvedValue(createPurchaseRequest({
           quantity: 30,
           cpfCount: 1,
-          airline: 'LATAM',
+          airlineId: PROGRAM_IDS.LATAM,
         }));
 
         await handler.handlePurchase(botUserId, chatId, messageId, 'LATAM 30k 1CPF');
@@ -180,7 +200,7 @@ describe('TelegramPurchaseHandler', () => {
         mockMessageParser.parse.mockResolvedValue(createPurchaseRequest({
           quantity: 30,
           cpfCount: 1,
-          airline: 'AZUL/TUDO AZUL',
+          airlineId: PROGRAM_IDS['AZUL/TUDO AZUL'],
         }));
 
         await handler.handlePurchase(botUserId, chatId, messageId, 'AZUL 30k 1CPF');
@@ -209,7 +229,7 @@ describe('TelegramPurchaseHandler', () => {
         mockMessageParser.parse.mockResolvedValue(createPurchaseRequest({
           quantity: 30,
           cpfCount: 1,
-          airline: 'SMILES',
+          airlineId: PROGRAM_IDS.SMILES,
         }));
 
         await handler.handlePurchase(botUserId, chatId, messageId, 'SMILES 30k 1CPF');
@@ -236,7 +256,7 @@ describe('TelegramPurchaseHandler', () => {
         mockMessageParser.parse.mockResolvedValue(createPurchaseRequest({
           quantity: 30,
           cpfCount: 1,
-          airline: 'LATAM',
+          airlineId: PROGRAM_IDS.LATAM,
         }));
 
         await handler.handlePurchase(botUserId, chatId, messageId, 'LATAM 30k 1CPF');
@@ -263,7 +283,7 @@ describe('TelegramPurchaseHandler', () => {
         mockMessageParser.parse.mockResolvedValue(createPurchaseRequest({
           quantity: 30,
           cpfCount: 1,
-          airline: 'AZUL/TUDO AZUL',
+          airlineId: PROGRAM_IDS['AZUL/TUDO AZUL'],
         }));
 
         await handler.handlePurchase(botUserId, chatId, messageId, 'AZUL 30k 1CPF');
@@ -292,7 +312,7 @@ describe('TelegramPurchaseHandler', () => {
         mockMessageParser.parse.mockResolvedValue(createPurchaseRequest({
           quantity: 100, // 100k requires 100000 miles
           cpfCount: 1,
-          airline: 'SMILES',
+          airlineId: PROGRAM_IDS.SMILES,
         }));
 
         await handler.handlePurchase(botUserId, chatId, messageId, 'SMILES 100k 1CPF');
@@ -316,7 +336,7 @@ describe('TelegramPurchaseHandler', () => {
         mockMessageParser.parse.mockResolvedValue(createPurchaseRequest({
           quantity: 30,
           cpfCount: 1,
-          airline: 'SMILES',
+          airlineId: PROGRAM_IDS.SMILES,
         }));
 
         await handler.handlePurchase(botUserId, chatId, messageId, 'SMILES 30k 1CPF');
@@ -332,7 +352,7 @@ describe('TelegramPurchaseHandler', () => {
         mockMessageParser.parse.mockResolvedValue(createPurchaseRequest({
           quantity: 30,
           cpfCount: 1,
-          airline: 'SMILES LIMINAR',
+          airlineId: PROGRAM_IDS['SMILES LIMINAR'],
         }));
 
         await handler.handlePurchase(botUserId, chatId, messageId, 'SMILES LIMINAR 30k 1CPF');
@@ -359,7 +379,7 @@ describe('TelegramPurchaseHandler', () => {
         mockMessageParser.parse.mockResolvedValue(createPurchaseRequest({
           quantity: 30,
           cpfCount: 1,
-          airline: 'SMILES LIMINAR',
+          airlineId: PROGRAM_IDS['SMILES LIMINAR'],
         }));
 
         await handler.handlePurchase(botUserId, chatId, messageId, 'SMILES LIMINAR 30k 1CPF');
@@ -375,7 +395,7 @@ describe('TelegramPurchaseHandler', () => {
         mockMessageParser.parse.mockResolvedValue(createPurchaseRequest({
           quantity: 30,
           cpfCount: 1,
-          airline: 'SMILES',
+          airlineId: PROGRAM_IDS.SMILES,
           acceptedPrices: [25], // User accepts 25, calculated is 20
         }));
 
@@ -396,7 +416,7 @@ describe('TelegramPurchaseHandler', () => {
         mockMessageParser.parse.mockResolvedValue(createPurchaseRequest({
           quantity: 30,
           cpfCount: 1,
-          airline: 'SMILES',
+          airlineId: PROGRAM_IDS.SMILES,
           acceptedPrices: [20], // User accepts exactly 20
         }));
 
@@ -417,7 +437,7 @@ describe('TelegramPurchaseHandler', () => {
         mockMessageParser.parse.mockResolvedValue(createPurchaseRequest({
           quantity: 30,
           cpfCount: 1,
-          airline: 'SMILES',
+          airlineId: PROGRAM_IDS.SMILES,
           acceptedPrices: [15], // User accepts 15, calculated is 20
         }));
 
@@ -447,7 +467,7 @@ describe('TelegramPurchaseHandler', () => {
         mockMessageParser.parse.mockResolvedValue(createPurchaseRequest({
           quantity: 30,
           cpfCount: 1,
-          airline: 'SMILES',
+          airlineId: PROGRAM_IDS.SMILES,
           acceptedPrices: [15], // User accepts 15, calculated is 20
         }));
 
@@ -463,7 +483,7 @@ describe('TelegramPurchaseHandler', () => {
         mockMessageParser.parse.mockResolvedValue(createPurchaseRequest({
           quantity: 30,
           cpfCount: 1,
-          airline: 'SMILES',
+          airlineId: PROGRAM_IDS.SMILES,
           acceptedPrices: [10], // User accepts 10, calculated is 20 (diff = 10)
         }));
 
@@ -498,7 +518,7 @@ describe('TelegramPurchaseHandler', () => {
         mockMessageParser.parse.mockResolvedValue(createPurchaseRequest({
           quantity: 30,
           cpfCount: 1,
-          airline: 'SMILES',
+          airlineId: PROGRAM_IDS.SMILES,
           acceptedPrices: [25, 22, 30], // Min is 22, still >= 20
         }));
 
@@ -521,7 +541,7 @@ describe('TelegramPurchaseHandler', () => {
         mockMessageParser.parse.mockResolvedValue(createPurchaseRequest({
           quantity: 30,
           cpfCount: 1,
-          airline: 'UNKNOWN_AIRLINE',
+          airlineId: 999, // Non-existent program ID
         }));
 
         await handler.handlePurchase(botUserId, chatId, messageId, 'UNKNOWN_AIRLINE 30k 1CPF');
@@ -529,13 +549,13 @@ describe('TelegramPurchaseHandler', () => {
         expect(mockTdlibUserClient.sendMessage).not.toHaveBeenCalled();
       });
 
-      it('should not send message when airline is null', async () => {
+      it('should not send message when airlineId is null', async () => {
         const priceTableResult = createFakePriceTableResult();
         mockPriceTableProvider.getPriceTable.mockResolvedValue(priceTableResult);
         mockMessageParser.parse.mockResolvedValue(createPurchaseRequest({
           quantity: 30,
           cpfCount: 1,
-          airline: null,
+          airlineId: null,
         }));
 
         await handler.handlePurchase(botUserId, chatId, messageId, '30k 1CPF');
@@ -561,7 +581,7 @@ describe('TelegramPurchaseHandler', () => {
         mockMessageParser.parse.mockResolvedValue(createPurchaseRequest({
           quantity: null,
           cpfCount: 1,
-          airline: 'SMILES',
+          airlineId: PROGRAM_IDS.SMILES,
         }));
 
         await handler.handlePurchase(botUserId, chatId, messageId, 'SMILES 1CPF');
@@ -575,7 +595,7 @@ describe('TelegramPurchaseHandler', () => {
         mockMessageParser.parse.mockResolvedValue(createPurchaseRequest({
           quantity: 30,
           cpfCount: null,
-          airline: 'SMILES',
+          airlineId: PROGRAM_IDS.SMILES,
         }));
 
         await handler.handlePurchase(botUserId, chatId, messageId, 'SMILES 30k');
@@ -589,7 +609,7 @@ describe('TelegramPurchaseHandler', () => {
         mockMessageParser.parse.mockResolvedValue(createPurchaseRequest({
           quantity: 0,
           cpfCount: 1,
-          airline: 'SMILES',
+          airlineId: PROGRAM_IDS.SMILES,
         }));
 
         await handler.handlePurchase(botUserId, chatId, messageId, 'SMILES 0k 1CPF');
@@ -614,7 +634,7 @@ describe('TelegramPurchaseHandler', () => {
         mockMessageParser.parse.mockResolvedValue(createPurchaseRequest({
           quantity: 60, // 60k / 2 CPFs = 30k per CPF
           cpfCount: 2,
-          airline: 'SMILES',
+          airlineId: PROGRAM_IDS.SMILES,
         }));
 
         await handler.handlePurchase(botUserId, chatId, messageId, 'SMILES 60k 2CPF');
@@ -642,7 +662,7 @@ describe('TelegramPurchaseHandler', () => {
         mockMessageParser.parse.mockResolvedValue(createPurchaseRequest({
           quantity: 15, // Smallest quantity would normally give highest price (22)
           cpfCount: 1,
-          airline: 'SMILES',
+          airlineId: PROGRAM_IDS.SMILES,
         }));
 
         await handler.handlePurchase(botUserId, chatId, messageId, 'SMILES 15k 1CPF');
@@ -672,7 +692,7 @@ describe('TelegramPurchaseHandler', () => {
         mockMessageParser.parse.mockResolvedValue(createPurchaseRequest({
           quantity: 30,
           cpfCount: 1,
-          airline: 'SMILES',
+          airlineId: PROGRAM_IDS.SMILES,
         }));
 
         await handler.handlePurchase(botUserId, chatId, messageId, 'SMILES 30k 1CPF');
