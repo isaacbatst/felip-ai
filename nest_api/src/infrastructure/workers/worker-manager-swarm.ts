@@ -854,13 +854,18 @@ export class WorkerManagerSwarm extends WorkerManager implements OnModuleDestroy
 
       this.logger.log(`Service ${serviceName} current version: ${version} (type: ${typeof version})`);
       
-      // Update the image in TaskTemplate
+      // Get current ForceUpdate value (defaults to 0)
+      const currentForceUpdate = currentSpec.TaskTemplate?.ForceUpdate ?? 0;
+      this.logger.log(`Service ${serviceName} current ForceUpdate: ${currentForceUpdate}`);
+      
+      // Update the image in TaskTemplate and increment ForceUpdate to force task recreation
       const updatedTaskTemplate = {
         ...currentSpec.TaskTemplate,
         ContainerSpec: {
           ...currentSpec.TaskTemplate?.ContainerSpec,
           Image: this.getImageName(), // This will use the newly pulled image
         },
+        ForceUpdate: currentForceUpdate + 1, // Force task recreation even if spec hasn't changed
       };
 
       const updateSpec = {
@@ -875,7 +880,7 @@ export class WorkerManagerSwarm extends WorkerManager implements OnModuleDestroy
 
       await service.update(updateSpec)
 
-      this.logger.log(`Service ${serviceName} update initiated with version ${version}`);
+      this.logger.log(`Service ${serviceName} update initiated with version ${version}, ForceUpdate: ${currentForceUpdate} -> ${currentForceUpdate + 1}`);
       
       await new Promise(resolve => setTimeout(resolve, 2000));
       
