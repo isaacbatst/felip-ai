@@ -87,5 +87,5 @@ jobs:
 
       - name: Update Nest API service only
         run: |
-          ssh -i ~/.ssh/deploy_key root@congressosimulator.com.br \
+          ssh -i ~/.ssh/deploy_key felip-ai@congressosimulator.com.br \
             "docker service update --image ghcr.io/isaacbatst/felip-ai:${{ github.sha }} felip-ai_nest_api"
