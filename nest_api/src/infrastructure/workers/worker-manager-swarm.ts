@@ -140,6 +140,8 @@ export class WorkerManagerSwarm extends WorkerManager implements OnModuleDestroy
     // Remove any existing RABBITMQ_HOST from envVars first
     const filteredEnvVars = envVars.filter(env => !env.startsWith('RABBITMQ_HOST='));
     filteredEnvVars.push(`RABBITMQ_HOST=felip-ai_rabbitmq`);
+    filteredEnvVars.push(`TELEGRAM_DATABASE_DIRECTORY=/app/tdlib_worker/_td_database`);
+    filteredEnvVars.push(`TELEGRAM_FILES_DIRECTORY=/app/tdlib_worker/_td_files`);
     this.logger.log(`Environment variables: ${JSON.stringify(filteredEnvVars)}`);
 
     try {
