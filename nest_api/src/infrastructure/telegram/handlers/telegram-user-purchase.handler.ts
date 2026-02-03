@@ -73,6 +73,7 @@ export class TelegramPurchaseHandler {
     // Busca providers disponíveis primeiro para passar ao parser
     const priceTableResult = await this.priceTableProvider.getPriceTable(botUserId);
     const { priceTables, customMaxPrice } = priceTableResult;
+    this.logger.log('Price table result', { priceTableResult });
 
     // Busca todos os programas do banco para passar ao parser (melhora reconhecimento)
     let allPrograms: MilesProgramData[] = [];
