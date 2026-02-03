@@ -22,6 +22,8 @@ import { MilesProgramRepository } from "@/infrastructure/persistence/miles-progr
 import { MilesProgramDrizzleStore } from "@/infrastructure/persistence/drizzle/miles-program-drizzle-store";
 import { CounterOfferSettingsRepository } from "@/infrastructure/persistence/counter-offer-settings.repository";
 import { CounterOfferSettingsDrizzleStore } from "@/infrastructure/persistence/drizzle/counter-offer-settings-drizzle-store";
+import { PromptConfigRepository } from "@/infrastructure/persistence/prompt-config.repository";
+import { PromptConfigDrizzleStore } from "@/infrastructure/persistence/drizzle/prompt-config-drizzle-store";
 
 @Module({
   imports: [DatabaseModule],
@@ -70,6 +72,10 @@ import { CounterOfferSettingsDrizzleStore } from "@/infrastructure/persistence/d
       provide: CounterOfferSettingsRepository,
       useClass: CounterOfferSettingsDrizzleStore,
     },
+    {
+      provide: PromptConfigRepository,
+      useClass: PromptConfigDrizzleStore,
+    },
   ],
   exports: [
     ConversationRepository,
@@ -83,6 +89,7 @@ import { CounterOfferSettingsDrizzleStore } from "@/infrastructure/persistence/d
     UserDataRepository,
     MilesProgramRepository,
     CounterOfferSettingsRepository,
+    PromptConfigRepository,
   ],
 })
 export class PersistenceModule {}

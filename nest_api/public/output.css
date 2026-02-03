@@ -1088,6 +1088,9 @@
       color: color-mix(in oklab, var(--color-white) 90%, transparent);
     }
   }
+  .lowercase {
+    text-transform: lowercase;
+  }
   .line-through {
     text-decoration-line: line-through;
   }

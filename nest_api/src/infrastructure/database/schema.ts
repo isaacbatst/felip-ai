@@ -253,3 +253,19 @@ export const userCounterOfferSettings = pgTable(
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
 );
+
+/**
+ * Prompt configs table - stores prompt configuration for runtime modification
+ * Used for OpenAI prompt IDs and versions without code changes
+ */
+export const promptConfigs = pgTable(
+  'prompt_configs',
+  {
+    id: integer('id').primaryKey().generatedAlwaysAsIdentity(),
+    key: text('key').notNull().unique(), // e.g., 'message_parser'
+    promptId: text('prompt_id').notNull(),
+    version: text('version').notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+);

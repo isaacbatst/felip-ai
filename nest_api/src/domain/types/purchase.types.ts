@@ -44,6 +44,39 @@ export const PurchaseRequestSchema = z.object({
   output: PurchaseRequestOutputSchema,
 });
 
+/**
+ * Schema para extração de dados via AI (sem airlineId - provider é extraído por keyword)
+ */
+const DataExtractionOutputSchema = z.object({
+  isPurchaseProposal: z.literal(true).describe('Se a mensagem é uma proposta de compra'),
+  quantity: z
+    .number()
+    .positive()
+    .describe(
+      'Quantidade em milhares (número decimal). Exemplos: 84 para "84k" ou "84000", 26.1 para "26.100" ou "26.1k", 69.4 para "69,4k" ou "69400"',
+    ),
+  cpfCount: z.number().int().positive().describe('Número de CPFs (ex: 2 para 2CPF)'),
+  acceptedPrices: z
+    .array(z.number().positive())
+    .default([])
+    .describe(
+      'Lista de valores que o usuário aceita pagar. Se não mencionado na mensagem, retorne array vazio.',
+    ),
+});
+
+/**
+ * Schema para resposta da extração de dados via AI
+ */
+export const DataExtractionRequestSchema = z.object({
+  output: z.discriminatedUnion('isPurchaseProposal', [
+    DataExtractionOutputSchema,
+    NonPurchaseProposalSchema,
+  ]),
+});
+
+export type DataExtractionRequest = z.infer<typeof DataExtractionRequestSchema>;
+export type DataExtractionOutput = z.infer<typeof DataExtractionOutputSchema>;
+
 export type PurchaseRequest = z.infer<typeof PurchaseRequestSchema>;
 export type PurchaseProposal = z.infer<typeof PurchaseProposalSchema>;
 export type NonPurchaseProposal = z.infer<typeof NonPurchaseProposalSchema>;
