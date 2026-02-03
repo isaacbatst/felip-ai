@@ -157,7 +157,7 @@ export class WorkerManagerSwarm extends WorkerManager implements OnModuleDestroy
               {
                 Type: 'volume',
                 Source: `felip-tdlib-${userId}`,
-                Target: '/tdlib',
+                Target: '/app/tdlib_worker/_td_database',
               },
             ],
             Labels: {
