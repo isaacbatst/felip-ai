@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type { PurchaseRequest, ValidatedPurchaseRequest } from '../types/purchase.types';
+import type { PurchaseProposal, ValidatedPurchaseRequest } from '../types/purchase.types';
 
 /**
  * Service responsável por validar propostas de compra
@@ -8,30 +8,20 @@ import type { PurchaseRequest, ValidatedPurchaseRequest } from '../types/purchas
 @Injectable()
 export class PurchaseValidatorService {
   /**
-   * Valida se uma PurchaseRequest tem os dados necessários para calcular preço
+   * Converte uma PurchaseProposal em ValidatedPurchaseRequest
+   * Com a discriminated union, os campos obrigatórios já são garantidos pelo schema
    */
-  validate(request: PurchaseRequest | null): ValidatedPurchaseRequest | null {
+  validate(request: PurchaseProposal | null): ValidatedPurchaseRequest | null {
     if (!request) {
       console.warn('No purchase request received');
       return null;
     }
 
-    if (
-      request.quantity === undefined ||
-      request.cpfCount === undefined ||
-      request.cpfCount === null ||
-      request.quantity === null ||
-      request.quantity <= 0 ||
-      request.cpfCount <= 0
-    ) {
-      console.warn('Invalid purchase request', request);
-      return null;
-    }
-
+    // Com a discriminated union, quantity, cpfCount e airlineId são garantidamente números
     return {
       quantity: request.quantity,
       cpfCount: request.cpfCount,
-      airlineId: request.airlineId ?? undefined,
+      airlineId: request.airlineId,
       acceptedPrices: request.acceptedPrices ?? [],
     };
   }

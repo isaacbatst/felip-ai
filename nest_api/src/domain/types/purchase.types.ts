@@ -1,20 +1,22 @@
 import { z } from 'zod';
 
 /**
- * Schema Zod para validação da proposta de compra
+ * Schema para quando a mensagem É uma proposta de compra
  */
-export const PurchaseRequestSchema = z.object({
-  isPurchaseProposal: z.boolean().describe('Se a mensagem é uma proposta de compra'),
-  quantity: z.number().positive().nullable().describe('Quantidade em milhares (número decimal). Exemplos: 84 para "84k" ou "84000", 26.1 para "26.100" ou "26.1k", 69.4 para "69,4k" ou "69400"'),
-  cpfCount: z.number().int().positive().nullable().describe('Número de CPFs (ex: 2 para 2CPF)'),
+const PurchaseProposalSchema = z.object({
+  isPurchaseProposal: z.literal(true).describe('Se a mensagem é uma proposta de compra'),
+  quantity: z
+    .number()
+    .positive()
+    .describe(
+      'Quantidade em milhares (número decimal). Exemplos: 84 para "84k" ou "84000", 26.1 para "26.100" ou "26.1k", 69.4 para "69,4k" ou "69400"',
+    ),
+  cpfCount: z.number().int().positive().describe('Número de CPFs (ex: 2 para 2CPF)'),
   airlineId: z
     .number()
     .int()
     .positive()
-    .nullable()
-    .describe(
-      'ID do programa de milhas selecionado da lista de programas disponíveis',
-    ),
+    .describe('ID do programa de milhas selecionado da lista de programas disponíveis'),
   acceptedPrices: z
     .array(z.number().positive())
     .default([])
@@ -23,7 +25,28 @@ export const PurchaseRequestSchema = z.object({
     ),
 });
 
+/**
+ * Schema para quando a mensagem NÃO é uma proposta de compra
+ */
+const NonPurchaseProposalSchema = z.object({
+  isPurchaseProposal: z.literal(false).describe('Se a mensagem é uma proposta de compra'),
+});
+
+/**
+ * Schema Zod para validação da proposta de compra usando discriminated union
+ */
+export const PurchaseRequestOutputSchema = z.discriminatedUnion('isPurchaseProposal', [
+  PurchaseProposalSchema,
+  NonPurchaseProposalSchema,
+]);
+
+export const PurchaseRequestSchema = z.object({
+  output: PurchaseRequestOutputSchema,
+});
+
 export type PurchaseRequest = z.infer<typeof PurchaseRequestSchema>;
+export type PurchaseProposal = z.infer<typeof PurchaseProposalSchema>;
+export type NonPurchaseProposal = z.infer<typeof NonPurchaseProposalSchema>;
 
 /**
  * Dados validados de uma proposta de compra
@@ -41,4 +64,3 @@ export interface ValidatedPurchaseRequest {
 export type PriceCalculationResult =
   | { success: true; price: number }
   | { success: false; reason: string };
-

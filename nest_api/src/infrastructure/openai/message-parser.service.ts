@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { Injectable, Logger } from '@nestjs/common';
 import { zodTextFormat } from 'openai/helpers/zod';
 import { MessageParser, type ProgramOption } from '../../domain/interfaces/message-parser.interface';
-import { type PurchaseRequest, PurchaseRequestSchema } from '../../domain/types/purchase.types';
+import { type PurchaseProposal, PurchaseRequestSchema } from '../../domain/types/purchase.types';
 import { OpenAIService } from './openai.service';
 
 /**
@@ -29,7 +29,7 @@ export class MessageParserService extends MessageParser {
       model: 'gpt-5-nano',
     };
   }
-  async parse(text: string, programs?: ProgramOption[]): Promise<PurchaseRequest | null> {
+  async parse(text: string, programs?: ProgramOption[]): Promise<PurchaseProposal | null> {
     try {
       const client = this.openaiService.getClient();
       const variables = {
@@ -38,7 +38,7 @@ export class MessageParserService extends MessageParser {
         text: text,
       };
       const id = randomUUID();
-      this.logger.log('Parsing message', { id, ...variables, });
+      this.logger.log('Parsing message', { id, text });
       const response = await client.responses.parse({
         model: this.config.model,
         prompt: {
@@ -59,22 +59,13 @@ export class MessageParserService extends MessageParser {
 
       this.logger.log('[PARSED] Parsed:', { id, ...parsed });
 
-      if (!parsed || !parsed.isPurchaseProposal) {
+      // Discriminated union ensures that when isPurchaseProposal is true,
+      // quantity, cpfCount, and airlineId are all required numbers
+      if (!parsed || !parsed.output.isPurchaseProposal) {
         return null;
       }
 
-      if (
-        parsed.quantity === undefined ||
-        parsed.cpfCount === undefined ||
-        parsed.quantity === null ||
-        parsed.cpfCount === null ||
-        parsed.quantity <= 0 ||
-        parsed.cpfCount <= 0
-      ) {
-        return null;
-      }
-
-      return parsed;
+      return parsed.output;
     } catch (error) {
       this.logger.error('[ERROR] Error parsing message with GPT:', error);
       return null;
