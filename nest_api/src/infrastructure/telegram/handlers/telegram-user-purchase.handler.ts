@@ -39,7 +39,8 @@ export class TelegramPurchaseHandler {
   ) {}
 
   async handlePurchase(
-    botUserId: string,
+    loggedInUserId: string,
+    telegramUserId: string,
     chatId: number,
     messageId: number | undefined,
     text: string,
@@ -71,7 +72,7 @@ export class TelegramPurchaseHandler {
     }
 
     // Busca providers disponíveis primeiro para passar ao parser
-    const priceTableResult = await this.priceTableProvider.getPriceTable(botUserId);
+    const priceTableResult = await this.priceTableProvider.getPriceTable(loggedInUserId);
     const { priceTables, customMaxPrice } = priceTableResult;
     this.logger.log('Price table result', { priceTableResult });
 
@@ -162,7 +163,7 @@ export class TelegramPurchaseHandler {
     // Caso 1: Sem accepted prices -> mensagem padrão
     if (validatedRequest.acceptedPrices.length === 0) {
       await this.sendGroupAnswer(
-        botUserId,
+        telegramUserId,
         chatId,
         priceResult.price,
         effectiveProvider,
@@ -179,13 +180,13 @@ export class TelegramPurchaseHandler {
         maxAcceptedPrice,
         priceResultPrice: priceResult.price,
       });
-      await this.tdlibUserClient.sendMessage(botUserId, chatId, 'Vamos!', messageId);
+      await this.tdlibUserClient.sendMessage(telegramUserId, chatId, 'Vamos!', messageId);
 
       if (!senderId) {
         this.logger.warn('No senderId, ignoring call to action');
         return;
       }
-      const counterOfferSettings = await this.counterOfferSettingsRepository.getSettings(botUserId);
+      const counterOfferSettings = await this.counterOfferSettingsRepository.getSettings(loggedInUserId);
       if(!counterOfferSettings?.isEnabled) {
         this.logger.warn('Counter offer is disabled, ignoring call to action');
         return;
@@ -208,12 +209,12 @@ export class TelegramPurchaseHandler {
         offeredPrice: priceResult.price,
       });
 
-      await this.tdlibUserClient.sendMessage(botUserId, senderId, message);
+      await this.tdlibUserClient.sendMessage(telegramUserId, senderId, message);
 
       return;
     }
 
-    const counterOfferSettings = await this.counterOfferSettingsRepository.getSettings(botUserId);
+    const counterOfferSettings = await this.counterOfferSettingsRepository.getSettings(loggedInUserId);
 
     // Counter offer desabilitado -> ignorar
     if (!counterOfferSettings?.isEnabled) {
@@ -230,7 +231,7 @@ export class TelegramPurchaseHandler {
         maxAcceptedPrice,
       });
       // Envia mensagem padrão no grupo mesmo quando fora do range aceitável
-      await this.sendGroupAnswer(botUserId, chatId, priceResult.price, effectiveProvider, messageId);
+      await this.sendGroupAnswer(telegramUserId, chatId, priceResult.price, effectiveProvider, messageId);
       return;
     }
 
@@ -240,7 +241,7 @@ export class TelegramPurchaseHandler {
     }
 
     // Envia nossa oferta no grupo
-    await this.sendGroupAnswer(botUserId, chatId, priceResult.price, effectiveProvider, messageId);
+    await this.sendGroupAnswer(telegramUserId, chatId, priceResult.price, effectiveProvider, messageId);
 
     // Envia counter offer no privado
     const message = buildCounterOfferMessage(
@@ -258,7 +259,7 @@ export class TelegramPurchaseHandler {
       templateId: counterOfferSettings.messageTemplateId,
     });
 
-    await this.tdlibUserClient.sendMessage(botUserId, senderId, message);
+    await this.tdlibUserClient.sendMessage(telegramUserId, senderId, message);
   }
 
   /**
@@ -436,7 +437,7 @@ export class TelegramPurchaseHandler {
    * Envia a mensagem padrão com o preço calculado.
    */
   private async sendGroupAnswer(
-    botUserId: string,
+    telegramUserId: string,
     chatId: number,
     price: number,
     effectiveProvider: Provider,
@@ -445,6 +446,6 @@ export class TelegramPurchaseHandler {
     const priceMessage = Intl.NumberFormat('pt-BR', { maximumFractionDigits: 2 }).format(price);
     const isLiminar = effectiveProvider.toLowerCase().includes('liminar');
     const finalMessage = isLiminar ? `${priceMessage} LIMINAR` : priceMessage;
-    await this.tdlibUserClient.sendMessage(botUserId, chatId, finalMessage, messageId);
+    await this.tdlibUserClient.sendMessage(telegramUserId, chatId, finalMessage, messageId);
   }
 }

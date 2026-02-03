@@ -19,7 +19,8 @@ describe('TelegramPurchaseHandler', () => {
   let mockMilesProgramRepository: jest.Mocked<MilesProgramRepository>;
 
   // Test constants
-  const botUserId = 'test-bot-user-123';
+  const loggedInUserId = 'test-logged-in-user-123';
+  const telegramUserId = 'test-telegram-user-456';
   const chatId = 123456;
   const messageId = 789;
 
@@ -168,9 +169,9 @@ describe('TelegramPurchaseHandler', () => {
           airlineId: PROGRAM_IDS.SMILES,
         }));
 
-        await handler.handlePurchase(botUserId, chatId, messageId, 'SMILES 30k 1CPF');
+        await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF');
 
-        expect(mockPriceTableProvider.getPriceTable).toHaveBeenCalledWith(botUserId);
+        expect(mockPriceTableProvider.getPriceTable).toHaveBeenCalledWith(loggedInUserId);
         expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledTimes(1);
         const sentMessage = mockTdlibUserClient.sendMessage.mock.calls[0][2];
         expect(sentMessage).not.toContain('LIMINAR');
@@ -186,7 +187,7 @@ describe('TelegramPurchaseHandler', () => {
           airlineId: PROGRAM_IDS.LATAM,
         }));
 
-        await handler.handlePurchase(botUserId, chatId, messageId, 'LATAM 30k 1CPF');
+        await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'LATAM 30k 1CPF');
 
         expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledTimes(1);
         const sentMessage = mockTdlibUserClient.sendMessage.mock.calls[0][2];
@@ -203,7 +204,7 @@ describe('TelegramPurchaseHandler', () => {
           airlineId: PROGRAM_IDS['AZUL/TUDO AZUL'],
         }));
 
-        await handler.handlePurchase(botUserId, chatId, messageId, 'AZUL 30k 1CPF');
+        await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'AZUL 30k 1CPF');
 
         expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledTimes(1);
         const sentMessage = mockTdlibUserClient.sendMessage.mock.calls[0][2];
@@ -232,7 +233,7 @@ describe('TelegramPurchaseHandler', () => {
           airlineId: PROGRAM_IDS.SMILES,
         }));
 
-        await handler.handlePurchase(botUserId, chatId, messageId, 'SMILES 30k 1CPF');
+        await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF');
 
         expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledTimes(1);
         const sentMessage = mockTdlibUserClient.sendMessage.mock.calls[0][2];
@@ -259,7 +260,7 @@ describe('TelegramPurchaseHandler', () => {
           airlineId: PROGRAM_IDS.LATAM,
         }));
 
-        await handler.handlePurchase(botUserId, chatId, messageId, 'LATAM 30k 1CPF');
+        await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'LATAM 30k 1CPF');
 
         expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledTimes(1);
         const sentMessage = mockTdlibUserClient.sendMessage.mock.calls[0][2];
@@ -286,7 +287,7 @@ describe('TelegramPurchaseHandler', () => {
           airlineId: PROGRAM_IDS['AZUL/TUDO AZUL'],
         }));
 
-        await handler.handlePurchase(botUserId, chatId, messageId, 'AZUL 30k 1CPF');
+        await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'AZUL 30k 1CPF');
 
         expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledTimes(1);
         const sentMessage = mockTdlibUserClient.sendMessage.mock.calls[0][2];
@@ -315,7 +316,7 @@ describe('TelegramPurchaseHandler', () => {
           airlineId: PROGRAM_IDS.SMILES,
         }));
 
-        await handler.handlePurchase(botUserId, chatId, messageId, 'SMILES 100k 1CPF');
+        await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 100k 1CPF');
 
         expect(mockTdlibUserClient.sendMessage).not.toHaveBeenCalled();
       });
@@ -339,7 +340,7 @@ describe('TelegramPurchaseHandler', () => {
           airlineId: PROGRAM_IDS.SMILES,
         }));
 
-        await handler.handlePurchase(botUserId, chatId, messageId, 'SMILES 30k 1CPF');
+        await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF');
 
         expect(mockTdlibUserClient.sendMessage).not.toHaveBeenCalled();
       });
@@ -355,7 +356,7 @@ describe('TelegramPurchaseHandler', () => {
           airlineId: PROGRAM_IDS['SMILES LIMINAR'],
         }));
 
-        await handler.handlePurchase(botUserId, chatId, messageId, 'SMILES LIMINAR 30k 1CPF');
+        await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES LIMINAR 30k 1CPF');
 
         expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledTimes(1);
         const sentMessage = mockTdlibUserClient.sendMessage.mock.calls[0][2];
@@ -382,7 +383,7 @@ describe('TelegramPurchaseHandler', () => {
           airlineId: PROGRAM_IDS['SMILES LIMINAR'],
         }));
 
-        await handler.handlePurchase(botUserId, chatId, messageId, 'SMILES LIMINAR 30k 1CPF');
+        await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES LIMINAR 30k 1CPF');
 
         expect(mockTdlibUserClient.sendMessage).not.toHaveBeenCalled();
       });
@@ -399,11 +400,11 @@ describe('TelegramPurchaseHandler', () => {
           acceptedPrices: [25], // User accepts 25, calculated is 20
         }));
 
-        await handler.handlePurchase(botUserId, chatId, messageId, 'SMILES 30k 1CPF aceito 25');
+        await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF aceito 25');
 
         expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledTimes(1);
         expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledWith(
-          botUserId,
+          telegramUserId,
           chatId,
           'Vamos!',
           messageId,
@@ -420,11 +421,11 @@ describe('TelegramPurchaseHandler', () => {
           acceptedPrices: [20], // User accepts exactly 20
         }));
 
-        await handler.handlePurchase(botUserId, chatId, messageId, 'SMILES 30k 1CPF aceito 20');
+        await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF aceito 20');
 
         expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledTimes(1);
         expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledWith(
-          botUserId,
+          telegramUserId,
           chatId,
           'Vamos!',
           messageId,
@@ -443,7 +444,7 @@ describe('TelegramPurchaseHandler', () => {
 
         // Counter offer must be enabled and threshold >= 5 (price diff is 20-15=5)
         mockCounterOfferSettingsRepository.getSettings.mockResolvedValueOnce({
-          userId: botUserId,
+          userId: loggedInUserId,
           isEnabled: true,
           priceThreshold: 5,
           messageTemplateId: 1,
@@ -453,7 +454,7 @@ describe('TelegramPurchaseHandler', () => {
         });
 
         const senderId = 999;
-        await handler.handlePurchase(botUserId, chatId, messageId, 'SMILES 30k 1CPF aceito 15', senderId);
+        await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF aceito 15', senderId);
 
         // Should send calculated price in group AND counter offer in private
         expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledTimes(2);
@@ -472,7 +473,7 @@ describe('TelegramPurchaseHandler', () => {
         }));
 
         // Counter offer disabled (default mock returns null)
-        await handler.handlePurchase(botUserId, chatId, messageId, 'SMILES 30k 1CPF aceito 15');
+        await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF aceito 15');
 
         expect(mockTdlibUserClient.sendMessage).not.toHaveBeenCalled();
       });
@@ -489,7 +490,7 @@ describe('TelegramPurchaseHandler', () => {
 
         // Counter offer enabled but threshold is 5 (diff 10 > threshold 5)
         mockCounterOfferSettingsRepository.getSettings.mockResolvedValueOnce({
-          userId: botUserId,
+          userId: loggedInUserId,
           isEnabled: true,
           priceThreshold: 5, // Threshold is 5, but difference is 10
           messageTemplateId: 1,
@@ -498,14 +499,14 @@ describe('TelegramPurchaseHandler', () => {
           updatedAt: new Date(),
         });
 
-        await handler.handlePurchase(botUserId, chatId, messageId, 'SMILES 30k 1CPF aceito 10');
+        await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF aceito 10');
 
         // Should send default price message in group (but NOT counter offer in private)
         expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledTimes(1);
         const groupMessage = mockTdlibUserClient.sendMessage.mock.calls[0][2];
         expect(groupMessage).toBe('20'); // Default calculated price
         expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledWith(
-          botUserId,
+          telegramUserId,
           chatId,
           '20',
           messageId,
@@ -522,11 +523,11 @@ describe('TelegramPurchaseHandler', () => {
           acceptedPrices: [25, 22, 30], // Min is 22, still >= 20
         }));
 
-        await handler.handlePurchase(botUserId, chatId, messageId, 'SMILES 30k 1CPF aceito 22');
+        await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF aceito 22');
 
         expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledTimes(1);
         expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledWith(
-          botUserId,
+          telegramUserId,
           chatId,
           'Vamos!',
           messageId,
@@ -544,7 +545,7 @@ describe('TelegramPurchaseHandler', () => {
           airlineId: 999, // Non-existent program ID
         }));
 
-        await handler.handlePurchase(botUserId, chatId, messageId, 'UNKNOWN_AIRLINE 30k 1CPF');
+        await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'UNKNOWN_AIRLINE 30k 1CPF');
 
         expect(mockTdlibUserClient.sendMessage).not.toHaveBeenCalled();
       });
@@ -557,7 +558,7 @@ describe('TelegramPurchaseHandler', () => {
         mockPriceTableProvider.getPriceTable.mockResolvedValue(priceTableResult);
         mockMessageParser.parse.mockResolvedValue(null);
 
-        await handler.handlePurchase(botUserId, chatId, messageId, 'random text');
+        await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'random text');
 
         expect(mockTdlibUserClient.sendMessage).not.toHaveBeenCalled();
       });
@@ -575,7 +576,7 @@ describe('TelegramPurchaseHandler', () => {
           airlineId: PROGRAM_IDS.SMILES,
         }));
 
-        await handler.handlePurchase(botUserId, chatId, messageId, 'SMILES 0k 1CPF');
+        await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 0k 1CPF');
 
         expect(mockTdlibUserClient.sendMessage).not.toHaveBeenCalled();
       });
@@ -600,7 +601,7 @@ describe('TelegramPurchaseHandler', () => {
           airlineId: PROGRAM_IDS.SMILES,
         }));
 
-        await handler.handlePurchase(botUserId, chatId, messageId, 'SMILES 60k 2CPF');
+        await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 60k 2CPF');
 
         expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledTimes(1);
         const sentMessage = mockTdlibUserClient.sendMessage.mock.calls[0][2];
@@ -628,7 +629,7 @@ describe('TelegramPurchaseHandler', () => {
           airlineId: PROGRAM_IDS.SMILES,
         }));
 
-        await handler.handlePurchase(botUserId, chatId, messageId, 'SMILES 15k 1CPF');
+        await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 15k 1CPF');
 
         expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledTimes(1);
         const sentMessage = mockTdlibUserClient.sendMessage.mock.calls[0][2];
@@ -658,7 +659,7 @@ describe('TelegramPurchaseHandler', () => {
           airlineId: PROGRAM_IDS.SMILES,
         }));
 
-        await handler.handlePurchase(botUserId, chatId, messageId, 'SMILES 30k 1CPF');
+        await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF');
 
         // No message sent because SMILES is not in availableProviders (empty price table)
         expect(mockTdlibUserClient.sendMessage).not.toHaveBeenCalled();

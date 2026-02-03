@@ -183,11 +183,12 @@ export class TelegramUserMessageProcessor {
       if (text) {
         logData.text = text;
         // Handle text message with purchase handler
-        // userIdStr is botUserId (string) - needed for sendMessage HTTP calls
+        // loggedInUserIdStr is the seller's account ID - used for price table and settings lookups
+        // userIdStr is the telegramUserId (string) - needed for sendMessage HTTP calls
         // Pass finalText which includes original message context if this is a reply
         // senderId is the user who sent the message (for counter offer feature)
         if (chatId && messageId !== undefined) {
-          await this.purchaseHandler.handlePurchase(userIdStr, chatId, messageId, text, senderId);
+          await this.purchaseHandler.handlePurchase(loggedInUserIdStr, userIdStr, chatId, messageId, text, senderId);
         }
       } else {
         logData.content = '(non-text message)';
