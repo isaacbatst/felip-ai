@@ -1,16 +1,12 @@
 import { TelegramUserClientProxyService } from '@/infrastructure/tdlib/telegram-user-client-proxy.service';
-import {
-  MilesProgramRepository,
-  type MilesProgramData,
-} from '@/infrastructure/persistence/miles-program.repository';
+import { MilesProgramRepository } from '@/infrastructure/persistence/miles-program.repository';
 import { CounterOfferSettingsRepository } from '@/infrastructure/persistence/counter-offer-settings.repository';
-import { Injectable, Logger, Optional } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { MessageParser, type ProgramOption } from '../../../domain/interfaces/message-parser.interface';
 import { PriceTableProvider } from '../../../domain/interfaces/price-table-provider.interface';
 import { PriceCalculatorService } from '../../../domain/services/price-calculator.service';
 import { PurchaseValidatorService } from '../../../domain/services/purchase-validator.service';
 import { buildCounterOfferMessage, buildCallToActionMessage } from '../../../domain/constants/counter-offer-templates';
-import type { Provider } from '../../../domain/types/provider.types';
 
 /**
  * Handler responsável por processar requisições de compra de milhas
@@ -21,13 +17,6 @@ import type { Provider } from '../../../domain/types/provider.types';
 export class TelegramPurchaseHandler {
   private readonly logger = new Logger(TelegramPurchaseHandler.name);
 
-  // Fallback hardcoded liminar map (used when database lookup fails or MilesProgramRepository not available)
-  private static readonly LEGACY_LIMINAR_MAP: Record<string, string> = {
-    SMILES: 'SMILES LIMINAR',
-    'AZUL/TUDO AZUL': 'AZUL LIMINAR',
-    LATAM: 'LATAM LIMINAR',
-  };
-
   constructor(
     private readonly messageParser: MessageParser,
     private readonly priceTableProvider: PriceTableProvider,
@@ -35,7 +24,7 @@ export class TelegramPurchaseHandler {
     private readonly priceCalculator: PriceCalculatorService,
     private readonly tdlibUserClient: TelegramUserClientProxyService,
     private readonly counterOfferSettingsRepository: CounterOfferSettingsRepository,
-    @Optional() private readonly milesProgramRepository?: MilesProgramRepository,
+    private readonly milesProgramRepository: MilesProgramRepository,
   ) {}
 
   async handlePurchase(
@@ -71,93 +60,78 @@ export class TelegramPurchaseHandler {
       return;
     }
 
-    // Busca providers disponíveis primeiro para passar ao parser
-    const priceTableResult = await this.priceTableProvider.getPriceTable(loggedInUserId);
-    const { priceTables, customMaxPrice } = priceTableResult;
-    this.logger.log('Price table result', { priceTableResult });
-
     // Busca todos os programas do banco para passar ao parser (melhora reconhecimento)
-    let allPrograms: MilesProgramData[] = [];
-    let programsForParser: ProgramOption[];
-
-    if (this.milesProgramRepository) {
-      allPrograms = await this.milesProgramRepository.getAllPrograms();
-      programsForParser = allPrograms.map((p) => ({ id: p.id, name: p.name }));
-    } else {
-      // Fallback para providers do usuário se repository não estiver disponível
-      programsForParser = Object.keys(priceTables).map((name, idx) => ({ id: idx, name }));
-    }
+    const allPrograms = await this.milesProgramRepository.getAllPrograms();
+    const programsForParser: ProgramOption[] = allPrograms.map((p) => ({ id: p.id, name: p.name }));
 
     // Passa os programas como contexto para ajudar o modelo a reconhecer melhor
     const purchaseRequest = await this.messageParser.parse(text, programsForParser);
-    const validatedRequest = this.purchaseValidator.validate(purchaseRequest);
 
-    if (!validatedRequest) {
+    if (!purchaseRequest) {
       this.logger.warn('No validated request');
       return;
     }
 
-    const availableProviders = Object.keys(priceTables).filter(
-      (provider) => priceTables[provider] && Object.keys(priceTables[provider]).length > 0,
-    ) as Provider[];
-
-    // Encontra o provider correspondente ao programa pelo ID retornado pelo parser
-    let selectedProvider: Provider | null = null;
-
-    if (validatedRequest.airlineId !== undefined) {
-      // Busca o programa pelo ID
-      const program = allPrograms.find((p) => p.id === validatedRequest.airlineId);
-      if (program) {
-        this.logger.debug('Finding provider for program', { id: program.id, name: program.name });
-        selectedProvider = (availableProviders.find(
-          (p) => p.toUpperCase() === program.name.toUpperCase(),
-        ) as Provider) ?? null;
-
-        if (!selectedProvider) {
-          this.logger.warn('Program not available in user price tables', {
-            programName: program.name,
-            availableProviders,
-          });
-        }
-      } else {
-        this.logger.warn('Program not found for airlineId', { airlineId: validatedRequest.airlineId });
-      }
-    }
-
-    this.logger.debug('Selected provider', { selectedProvider });
-
-    if (!selectedProvider) {
-      this.logger.warn('No provider found for the requested airline');
+    if (purchaseRequest.airlineId === undefined) {
+      this.logger.warn('No airlineId in purchase request');
       return;
     }
 
-    // Determine the effective provider (normal or liminar) based on miles availability
-    const effectiveProvider = await this.getEffectiveProvider(
-      selectedProvider,
-      validatedRequest.quantity,
-      priceTableResult.availableMiles,
-      availableProviders,
+    // Get the program from the ID returned by the parser
+    const program = allPrograms.find((p) => p.id === purchaseRequest.airlineId);
+    if (!program) {
+      this.logger.warn('Program not found for airlineId', { airlineId: purchaseRequest.airlineId });
+      return;
+    }
+
+    this.logger.debug('Selected program', { id: program.id, name: program.name });
+
+    // Check if user has configured this program
+    const configuredProgramIds = await this.priceTableProvider.getConfiguredProgramIds(loggedInUserId);
+    if (!configuredProgramIds.includes(program.id)) {
+      this.logger.warn('Program not configured for user', {
+        programId: program.id,
+        programName: program.name,
+        configuredProgramIds,
+      });
+      return;
+    }
+
+    // Determine the effective program ID (normal or liminar) based on miles availability
+    const effectiveProgramId = await this.getEffectiveProgramId(
+      loggedInUserId,
+      program.id,
+      purchaseRequest.quantity,
     );
 
-    if (!effectiveProvider) {
-      this.logger.warn('No effective provider found (neither normal nor liminar has enough miles)');
+    if (effectiveProgramId === null) {
+      this.logger.warn('No effective program found (neither normal nor liminar has enough miles)');
       return;
     }
 
-    const priceTable = priceTables[effectiveProvider];
+    // Get the effective program data for display purposes
+    const effectiveProgram = effectiveProgramId === program.id
+      ? program
+      : await this.milesProgramRepository.getProgramById(effectiveProgramId);
+
+    if (!effectiveProgram) {
+      this.logger.warn('Effective program not found', { effectiveProgramId });
+      return;
+    }
+
+    const priceTable = await this.priceTableProvider.getPriceTableForProgram(loggedInUserId, effectiveProgramId);
 
     if (!priceTable || Object.keys(priceTable).length === 0) {
-      this.logger.warn('No price table found for the effective provider');
+      this.logger.warn('No price table found for the effective program', { effectiveProgramId });
       return;
     }
 
-    const providerCustomMaxPrice = customMaxPrice[effectiveProvider];
-    const options =
-      providerCustomMaxPrice !== undefined ? { customMaxPrice: providerCustomMaxPrice } : undefined;
+    const maxPrice = await this.priceTableProvider.getMaxPriceForProgram(loggedInUserId, effectiveProgramId);
+    const options = maxPrice !== null ? { customMaxPrice: maxPrice } : undefined;
 
     const priceResult = this.priceCalculator.calculate(
-      validatedRequest.quantity,
-      validatedRequest.cpfCount,
+      purchaseRequest.quantity,
+      purchaseRequest.cpfCount,
       priceTable,
       options,
     );
@@ -168,19 +142,21 @@ export class TelegramPurchaseHandler {
 
     this.logger.log('Message to reply:', messageId);
 
+    const isLiminar = effectiveProgram.name.toLowerCase().includes('liminar');
+
     // Caso 1: Sem accepted prices -> mensagem padrão
-    if (validatedRequest.acceptedPrices.length === 0) {
+    if (purchaseRequest.acceptedPrices.length === 0) {
       await this.sendGroupAnswer(
         telegramUserId,
         chatId,
         priceResult.price,
-        effectiveProvider,
+        isLiminar,
         messageId,
       );
       return;
     }
 
-    const maxAcceptedPrice = Math.max(...validatedRequest.acceptedPrices);
+    const maxAcceptedPrice = Math.max(...purchaseRequest.acceptedPrices);
 
     // Caso 2: Preço aceito >= calculado -> "Vamos!" + call to action no privado
     if (maxAcceptedPrice >= priceResult.price) {
@@ -205,9 +181,9 @@ export class TelegramPurchaseHandler {
 
       const message = buildCallToActionMessage(
         templateId,
-        effectiveProvider,
-        validatedRequest.quantity,
-        validatedRequest.cpfCount,
+        effectiveProgram.name,
+        purchaseRequest.quantity,
+        purchaseRequest.cpfCount,
         maxAcceptedPrice, // preço máximo aceito pelo usuário
       );
 
@@ -239,7 +215,7 @@ export class TelegramPurchaseHandler {
         maxAcceptedPrice,
       });
       // Envia mensagem padrão no grupo mesmo quando fora do range aceitável
-      await this.sendGroupAnswer(telegramUserId, chatId, priceResult.price, effectiveProvider, messageId);
+      await this.sendGroupAnswer(telegramUserId, chatId, priceResult.price, isLiminar, messageId);
       return;
     }
 
@@ -249,14 +225,14 @@ export class TelegramPurchaseHandler {
     }
 
     // Envia nossa oferta no grupo
-    await this.sendGroupAnswer(telegramUserId, chatId, priceResult.price, effectiveProvider, messageId);
+    await this.sendGroupAnswer(telegramUserId, chatId, priceResult.price, isLiminar, messageId);
 
     // Envia counter offer no privado
     const message = buildCounterOfferMessage(
       counterOfferSettings.messageTemplateId,
-      effectiveProvider,
-      validatedRequest.quantity,
-      validatedRequest.cpfCount,
+      effectiveProgram.name,
+      purchaseRequest.quantity,
+      purchaseRequest.cpfCount,
       priceResult.price,
     );
 
@@ -271,132 +247,72 @@ export class TelegramPurchaseHandler {
   }
 
   /**
-   * Determines the effective provider (normal or liminar) based on miles availability.
+   * Determines the effective program ID (normal or liminar) based on miles availability.
    * If the normal program doesn't have enough miles, tries to use the liminar program.
-   * Returns the effective provider if available, null otherwise.
-   *
-   * Liminar lookup priority:
-   * 1. Database lookup via MilesProgramRepository (if available)
-   * 2. Fallback to hardcoded LEGACY_LIMINAR_MAP
+   * Returns the effective program ID if available, null otherwise.
    */
-  private async getEffectiveProvider(
-    selectedProvider: Provider,
+  private async getEffectiveProgramId(
+    userId: string,
+    programId: number,
     quantity: number,
-    availableMiles: Record<string, number | null>,
-    availableProviders: Provider[],
-  ): Promise<Provider | null> {
-    const isLiminar = selectedProvider.toLowerCase().includes('liminar');
+  ): Promise<number | null> {
+    // Get the program to check if it's already a liminar
+    const program = await this.milesProgramRepository.getProgramById(programId);
+    if (!program) {
+      return null;
+    }
+
+    const isLiminar = program.name.toLowerCase().includes('liminar');
 
     // If it's already a liminar program, just validate it
     if (isLiminar) {
-      if (this.validateMilesAvailability(selectedProvider, quantity, availableMiles)) {
-        return selectedProvider;
+      const hasMiles = await this.priceTableProvider.hasSufficientMiles(userId, programId, quantity);
+      if (hasMiles) {
+        return programId;
       }
+      this.logger.warn('Not enough miles for liminar program', { programId, quantity });
       return null;
     }
 
     // Try normal program first
-    if (this.validateMilesAvailability(selectedProvider, quantity, availableMiles)) {
-      return selectedProvider;
+    const hasNormalMiles = await this.priceTableProvider.hasSufficientMiles(userId, programId, quantity);
+    if (hasNormalMiles) {
+      return programId;
     }
+
+    this.logger.debug('Normal program has insufficient miles, looking for liminar', { programId, quantity });
 
     // If normal doesn't have enough miles, try liminar
-    const liminarProgramName = await this.findLiminarProgramName(selectedProvider);
-    if (!liminarProgramName) {
+    const liminarProgram = await this.milesProgramRepository.findLiminarFor(programId);
+    if (!liminarProgram) {
+      this.logger.debug('No liminar program found for', { programId });
       return null;
     }
 
-    // Check if liminar program exists in available providers
-    const liminarProvider = availableProviders.find(
-      (p) => p.toUpperCase() === liminarProgramName.toUpperCase(),
-    ) as Provider | undefined;
-
-    if (!liminarProvider) {
+    // Check if user has configured the liminar program
+    const configuredProgramIds = await this.priceTableProvider.getConfiguredProgramIds(userId);
+    if (!configuredProgramIds.includes(liminarProgram.id)) {
+      this.logger.debug('Liminar program not configured for user', { liminarProgramId: liminarProgram.id });
       return null;
     }
 
-    // Validate liminar program
-    if (this.validateMilesAvailability(liminarProvider, quantity, availableMiles)) {
+    // Validate liminar program has enough miles
+    const hasLiminarMiles = await this.priceTableProvider.hasSufficientMiles(userId, liminarProgram.id, quantity);
+    if (hasLiminarMiles) {
       this.logger.debug('Using liminar program instead of normal', {
-        normal: selectedProvider,
-        liminar: liminarProvider,
+        normalProgramId: programId,
+        liminarProgramId: liminarProgram.id,
+        liminarName: liminarProgram.name,
       });
-      return liminarProvider;
+      return liminarProgram.id;
     }
 
-    return null;
-  }
-
-  /**
-   * Find the liminar program name for a given normal program.
-   * First tries database lookup, then falls back to hardcoded map.
-   */
-  private async findLiminarProgramName(normalProviderName: string): Promise<string | null> {
-    // Try database lookup first if repository is available
-    if (this.milesProgramRepository) {
-      try {
-        const normalProgram =
-          await this.milesProgramRepository.getProgramByName(normalProviderName);
-        if (normalProgram) {
-          const liminarProgram = await this.milesProgramRepository.findLiminarFor(normalProgram.id);
-          if (liminarProgram) {
-            this.logger.debug('Found liminar program from database', {
-              normal: normalProviderName,
-              liminar: liminarProgram.name,
-            });
-            return liminarProgram.name;
-          }
-        }
-      } catch (error) {
-        this.logger.warn(
-          'Error looking up liminar program from database, falling back to hardcoded map',
-          { error },
-        );
-      }
-    }
-
-    // Fallback to hardcoded map
-    const liminarName = TelegramPurchaseHandler.LEGACY_LIMINAR_MAP[normalProviderName];
-    if (liminarName) {
-      this.logger.debug('Using hardcoded liminar map', {
-        normal: normalProviderName,
-        liminar: liminarName,
-      });
-    }
-    return liminarName ?? null;
-  }
-
-  /**
-   * Validates if a provider has enough miles available for the requested quantity.
-   */
-  private validateMilesAvailability(
-    provider: Provider,
-    required: number,
-    availableMiles: Record<string, number | null>,
-  ): boolean {
-    const requiredMiles = required;
-    const availableMilesForProvider = availableMiles[provider];
-    const hasEnoughMiles =
-      availableMilesForProvider !== null && availableMilesForProvider >= requiredMiles;
-
-    this.logger.debug('Miles availability', {
-      provider,
-      requiredMiles,
-      availableMilesForProvider,
-      hasEnoughMiles,
+    this.logger.warn('Neither normal nor liminar program has enough miles', {
+      normalProgramId: programId,
+      liminarProgramId: liminarProgram.id,
+      quantity,
     });
-
-    if (!availableMilesForProvider) {
-      this.logger.warn('No miles available for the provider', { provider });
-      return false;
-    }
-
-    if (!hasEnoughMiles) {
-      this.logger.warn('Not enough miles available for the provider', { provider });
-      return false;
-    }
-
-    return true;
+    return null;
   }
 
   /**
@@ -406,11 +322,10 @@ export class TelegramPurchaseHandler {
     telegramUserId: string,
     chatId: number,
     price: number,
-    effectiveProvider: Provider,
+    isLiminar: boolean,
     messageId: number | undefined,
   ): Promise<void> {
     const priceMessage = Intl.NumberFormat('pt-BR', { maximumFractionDigits: 2 }).format(price);
-    const isLiminar = effectiveProvider.toLowerCase().includes('liminar');
     const finalMessage = isLiminar ? `${priceMessage} LIMINAR` : priceMessage;
     await this.tdlibUserClient.sendMessage(telegramUserId, chatId, finalMessage, messageId);
   }

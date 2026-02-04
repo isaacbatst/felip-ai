@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import type { PriceTableResultV2 } from '../../domain/types/google-sheets.types';
+import type { PriceTableV2 } from '../../domain/types/price.types';
 import { PriceTableProvider } from '../../domain/interfaces/price-table-provider.interface';
 
 /**
@@ -93,6 +94,41 @@ export abstract class AbstractPriceTableCache
   extends CacheService<PriceTableResultV2>
   implements PriceTableProvider
 {
+  /**
+   * @deprecated Use DatabasePriceTableProvider instead
+   */
+  async getPriceTableForProgram(_userId: string, _programId: number): Promise<PriceTableV2 | null> {
+    throw new Error('AbstractPriceTableCache is deprecated. Use DatabasePriceTableProvider instead.');
+  }
+
+  /**
+   * @deprecated Use DatabasePriceTableProvider instead
+   */
+  async getMaxPriceForProgram(_userId: string, _programId: number): Promise<number | null> {
+    throw new Error('AbstractPriceTableCache is deprecated. Use DatabasePriceTableProvider instead.');
+  }
+
+  /**
+   * @deprecated Use DatabasePriceTableProvider instead
+   */
+  async getAvailableMilesForProgram(_userId: string, _programId: number): Promise<number | null> {
+    throw new Error('AbstractPriceTableCache is deprecated. Use DatabasePriceTableProvider instead.');
+  }
+
+  /**
+   * @deprecated Use DatabasePriceTableProvider instead
+   */
+  async getConfiguredProgramIds(_userId: string): Promise<number[]> {
+    throw new Error('AbstractPriceTableCache is deprecated. Use DatabasePriceTableProvider instead.');
+  }
+
+  /**
+   * @deprecated Use DatabasePriceTableProvider instead
+   */
+  async hasSufficientMiles(_userId: string, _programId: number, _quantity: number): Promise<boolean> {
+    throw new Error('AbstractPriceTableCache is deprecated. Use DatabasePriceTableProvider instead.');
+  }
+
   /**
    * Implementa o método da interface PriceTableProvider
    * Delega para o método get() da classe base
