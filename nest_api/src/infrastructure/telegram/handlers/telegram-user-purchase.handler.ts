@@ -65,12 +65,19 @@ export class TelegramPurchaseHandler {
     const programsForParser: ProgramOption[] = allPrograms.map((p) => ({ id: p.id, name: p.name }));
 
     // Passa os programas como contexto para ajudar o modelo a reconhecer melhor
-    const purchaseRequest = await this.messageParser.parse(text, programsForParser);
+    const purchaseRequests = await this.messageParser.parse(text, programsForParser);
 
-    if (!purchaseRequest) {
-      this.logger.warn('No validated request');
+    // Ignorar se não houver propostas ou se houver mais de uma
+    if (!purchaseRequests || purchaseRequests.length !== 1) {
+      if (purchaseRequests && purchaseRequests.length > 1) {
+        this.logger.warn('Multiple proposals found, ignoring', { count: purchaseRequests.length });
+      } else {
+        this.logger.warn('No validated request');
+      }
       return;
     }
+
+    const purchaseRequest = purchaseRequests[0];
 
     if (purchaseRequest.airlineId === undefined) {
       this.logger.warn('No airlineId in purchase request');

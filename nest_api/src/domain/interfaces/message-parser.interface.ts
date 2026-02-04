@@ -17,11 +17,11 @@ export interface ProgramOption {
 @Injectable()
 export abstract class MessageParser {
   /**
-   * Faz parsing de uma mensagem de texto para identificar se é uma proposta de compra
+   * Faz parsing de uma mensagem de texto para identificar propostas de compra
    * @param text Texto da mensagem a ser analisado
    * @param programs Lista de programas de milhas disponíveis (com ID e nome)
-   * @returns PurchaseProposal quando é uma proposta válida, null caso contrário
+   * @returns Array de PurchaseProposal quando há propostas válidas, null caso contrário
    */
-  abstract parse(text: string, programs?: ProgramOption[]): Promise<PurchaseProposal | null>;
+  abstract parse(text: string, programs?: ProgramOption[]): Promise<PurchaseProposal[] | null>;
 }
 

@@ -30,7 +30,7 @@ const PurchaseProposalSchema = z.object({
  */
 const NonPurchaseProposalSchema = z.object({
   isPurchaseProposal: z.literal(false).describe('Se a mensagem é uma proposta de compra'),
-});
+}).describe('Nenhuma proposta de compra foi encontrada na mensagem');
 
 /**
  * Schema Zod para validação da proposta de compra usando discriminated union
@@ -44,18 +44,14 @@ export const PurchaseRequestSchema = z.object({
   output: PurchaseRequestOutputSchema,
 });
 
-/**
- * Schema para extração de dados via AI (sem airlineId - provider é extraído por keyword)
- */
-const DataExtractionOutputSchema = z.object({
-  isPurchaseProposal: z.literal(true).describe('Se a mensagem é uma proposta de compra'),
+const ProposalSchema = z.object({
   quantity: z
     .number()
     .positive()
     .describe(
       'Quantidade. 84k => 84000, 26.1k => 26100, 34.500k => 34500, 25kk => 25000000',
     ),
-  cpfCount: z.number().int().positive().describe('Número de CPFs, contando com bebês (ex: 2 para 2CPF, 4 para 3CPF + 1 bebê)'),
+  cpfCount: z.number().int().positive().describe('Número de CPFs, contando com bebês (ex: 2 para 2CPF, 4 para 3CPF + 1 bebê/bb/baby)'),
   acceptedPrices: z
     .array(z.number().positive())
     .default([])
@@ -63,6 +59,14 @@ const DataExtractionOutputSchema = z.object({
       'Lista de valores que o usuário aceita pagar. Se não mencionado na mensagem, retorne array vazio.',
     ),
 });
+
+/**
+ * Schema para extração de dados via AI (sem airlineId - provider é extraído por keyword)
+ */
+const DataExtractionOutputSchema = z.object({
+  isPurchaseProposal: z.literal(true).describe('Se a mensagem é uma proposta de compra'),
+  proposals: z.array(ProposalSchema).min(1).describe('Lista de propostas de compra na mensagem'),
+}).describe('Dados extraídos da mensagem, contendo uma ou mais propostas de compra');
 
 /**
  * Schema para resposta da extração de dados via AI

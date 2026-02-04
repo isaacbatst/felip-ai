@@ -45,7 +45,7 @@ export class MessageParserService extends MessageParser {
     };
   }
 
-  async parse(text: string, programs?: ProgramOption[]): Promise<PurchaseProposal | null> {
+  async parse(text: string, programs?: ProgramOption[]): Promise<PurchaseProposal[] | null> {
     const id = randomUUID();
 
     try {
@@ -69,13 +69,13 @@ export class MessageParserService extends MessageParser {
         return null;
       }
 
-      return {
-        isPurchaseProposal: true,
-        quantity: data.quantity,
-        cpfCount: data.cpfCount,
+      return data.proposals.map((proposal) => ({
+        isPurchaseProposal: true as const,
+        quantity: proposal.quantity,
+        cpfCount: proposal.cpfCount,
         airlineId,
-        acceptedPrices: data.acceptedPrices,
-      };
+        acceptedPrices: proposal.acceptedPrices,
+      }));
     } catch (error) {
       this.logger.error('[ERROR] Error parsing message with GPT:', { id, error });
       return null;
