@@ -7,6 +7,7 @@ import {
   DataExtractionRequestSchema,
   type DataExtractionOutput,
 } from '../../domain/types/purchase.types';
+import { ProviderExtractionUtil } from '../../domain/utils/provider-extraction.util';
 import { OpenAIService } from './openai.service';
 import { PromptConfigRepository } from '../persistence/prompt-config.repository';
 
@@ -51,7 +52,7 @@ export class MessageParserService extends MessageParser {
       this.logger.log('Parsing message', { id, text });
 
       // Step 1: Extract provider using keyword matching
-      const airlineId = this.extractProvider(text, programs);
+      const airlineId = ProviderExtractionUtil.extractProvider(text, programs);
 
       if (airlineId === null) {
         this.logger.log('No provider found in message', { id });
@@ -79,36 +80,6 @@ export class MessageParserService extends MessageParser {
       this.logger.error('[ERROR] Error parsing message with GPT:', { id, error });
       return null;
     }
-  }
-
-  /**
-   * Extract provider ID using keyword matching (no AI)
-   */
-  private extractProvider(text: string, programs?: ProgramOption[]): number | null {
-    if (!programs?.length) return null;
-
-    const normalizedText = this.normalizeText(text);
-    const hasLiminar = normalizedText.includes('liminar');
-
-    // Sort by keyword length (longer = more specific)
-    const sortedPrograms = this.getSortedProgramsBySpecificity(programs);
-
-    for (const program of sortedPrograms) {
-      const isLiminarProgram = program.name.toLowerCase().includes('liminar');
-
-      // Skip LIMINAR programs unless "liminar" is in the message
-      if (isLiminarProgram && !hasLiminar) continue;
-
-      // Skip non-LIMINAR programs if "liminar" is explicitly mentioned
-      if (!isLiminarProgram && hasLiminar) continue;
-
-      const keywords = this.getKeywords(program.name);
-      if (keywords.some((kw) => normalizedText.includes(kw))) {
-        return program.id;
-      }
-    }
-
-    return null;
   }
 
   /**
@@ -150,43 +121,5 @@ export class MessageParserService extends MessageParser {
     }
 
     return parsed.output;
-  }
-
-  /**
-   * Normalize text for keyword matching:
-   * - lowercase
-   * - remove accents
-   * - replace special chars with space
-   * - normalize whitespace
-   */
-  private normalizeText(text: string): string {
-    return text
-      .toLowerCase()
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '') // Remove accents
-      .replace(/[^\w\s]/g, ' ') // Replace special chars with space
-      .replace(/\s+/g, ' ') // Normalize whitespace
-      .trim();
-  }
-
-  /**
-   * Get keywords from program name by splitting on '/'
-   */
-  private getKeywords(programName: string): string[] {
-    return programName
-      .split('/')
-      .map((alias) => this.normalizeText(alias))
-      .filter(Boolean);
-  }
-
-  /**
-   * Sort programs by keyword specificity (longer keywords first)
-   */
-  private getSortedProgramsBySpecificity(programs: ProgramOption[]): ProgramOption[] {
-    return [...programs].sort((a, b) => {
-      const maxLenA = Math.max(...this.getKeywords(a.name).map((k) => k.length));
-      const maxLenB = Math.max(...this.getKeywords(b.name).map((k) => k.length));
-      return maxLenB - maxLenA; // Longer keywords first
-    });
   }
 }

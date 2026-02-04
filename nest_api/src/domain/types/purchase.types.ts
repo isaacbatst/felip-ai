@@ -53,9 +53,9 @@ const DataExtractionOutputSchema = z.object({
     .number()
     .positive()
     .describe(
-      'Quantidade em milhares (número decimal). Exemplos: 84 para "84k" ou "84000", 26.1 para "26.100" ou "26.1k", 69.4 para "69,4k" ou "69400"',
+      'Quantidade. 84k => 84000, 26.1k => 26100, 34.500k => 34500, 25kk => 25000000',
     ),
-  cpfCount: z.number().int().positive().describe('Número de CPFs (ex: 2 para 2CPF)'),
+  cpfCount: z.number().int().positive().describe('Número de CPFs, contando com bebês (ex: 2 para 2CPF, 4 para 3CPF + 1 bebê)'),
   acceptedPrices: z
     .array(z.number().positive())
     .default([])

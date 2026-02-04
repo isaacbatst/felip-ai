@@ -25,22 +25,25 @@ describe('TelegramPurchaseHandler', () => {
   const messageId = 789;
 
   // Fake price table data for testing
+  // Price table keys are in actual miles (15000 = 15k, 30000 = 30k, etc.)
   const createFakePriceTableResult = (overrides?: Partial<PriceTableResultV2>): PriceTableResultV2 => ({
     priceTables: {
-      'SMILES': { 15: 22, 30: 20, 50: 18 },
-      'SMILES LIMINAR': { 15: 23, 30: 21, 50: 19 },
-      'LATAM': { 15: 21, 30: 19, 50: 17 },
-      'LATAM LIMINAR': { 15: 22, 30: 20, 50: 18 },
-      'AZUL/TUDO AZUL': { 15: 20, 30: 18, 50: 16 },
-      'AZUL LIMINAR': { 15: 21, 30: 19, 50: 17 },
+      'SMILES': { 15000: 22, 30000: 20, 50000: 18 },
+      'SMILES LIMINAR': { 15000: 23, 30000: 21, 50000: 19 },
+      'LATAM': { 15000: 21, 30000: 19, 50000: 17 },
+      'LATAM LIMINAR': { 15000: 22, 30000: 20, 50000: 18 },
+      'AZUL/TUDO AZUL': { 15000: 20, 30000: 18, 50000: 16 },
+      'AZUL LIMINAR': { 15000: 21, 30000: 19, 50000: 17 },
     },
+    // availableMiles values are in thousands (50 = 50k miles)
+    // This matches the implementation which divides quantity by 1000 before comparing
     availableMiles: {
-      'SMILES': 50000,
-      'SMILES LIMINAR': 30000,
-      'LATAM': 40000,
-      'LATAM LIMINAR': 20000,
-      'AZUL/TUDO AZUL': 60000,
-      'AZUL LIMINAR': 25000,
+      'SMILES': 50,
+      'SMILES LIMINAR': 30,
+      'LATAM': 40,
+      'LATAM LIMINAR': 20,
+      'AZUL/TUDO AZUL': 60,
+      'AZUL LIMINAR': 25,
     },
     customMaxPrice: {
       'SMILES': 22,
@@ -76,7 +79,7 @@ describe('TelegramPurchaseHandler', () => {
   // Helper to create a mock PurchaseProposal
   const createPurchaseProposal = (overrides?: Partial<Omit<PurchaseProposal, 'isPurchaseProposal'>>): PurchaseProposal => ({
     isPurchaseProposal: true,
-    quantity: 30,
+    quantity: 30_000,
     cpfCount: 1,
     airlineId: PROGRAM_IDS.SMILES,
     acceptedPrices: [],
@@ -153,18 +156,18 @@ describe('TelegramPurchaseHandler', () => {
       it('should send calculated price without LIMINAR suffix when normal provider has enough miles', async () => {
         const priceTableResult = createFakePriceTableResult({
           availableMiles: {
-            'SMILES': 50000, // Has enough for 30k request
-            'SMILES LIMINAR': 30000,
-            'LATAM': 40000,
-            'LATAM LIMINAR': 20000,
-            'AZUL/TUDO AZUL': 60000,
-            'AZUL LIMINAR': 25000,
+            'SMILES': 50, // Has enough for 30k request (50k > 30k)
+            'SMILES LIMINAR': 30,
+            'LATAM': 40,
+            'LATAM LIMINAR': 20,
+            'AZUL/TUDO AZUL': 60,
+            'AZUL LIMINAR': 25,
           },
         });
 
         mockPriceTableProvider.getPriceTable.mockResolvedValue(priceTableResult);
         mockMessageParser.parse.mockResolvedValue(createPurchaseProposal({
-          quantity: 30,
+          quantity: 30_000,
           cpfCount: 1,
           airlineId: PROGRAM_IDS.SMILES,
         }));
@@ -182,7 +185,7 @@ describe('TelegramPurchaseHandler', () => {
         const priceTableResult = createFakePriceTableResult();
         mockPriceTableProvider.getPriceTable.mockResolvedValue(priceTableResult);
         mockMessageParser.parse.mockResolvedValue(createPurchaseProposal({
-          quantity: 30,
+          quantity: 30_000,
           cpfCount: 1,
           airlineId: PROGRAM_IDS.LATAM,
         }));
@@ -199,7 +202,7 @@ describe('TelegramPurchaseHandler', () => {
         const priceTableResult = createFakePriceTableResult();
         mockPriceTableProvider.getPriceTable.mockResolvedValue(priceTableResult);
         mockMessageParser.parse.mockResolvedValue(createPurchaseProposal({
-          quantity: 30,
+          quantity: 30_000,
           cpfCount: 1,
           airlineId: PROGRAM_IDS['AZUL/TUDO AZUL'],
         }));
@@ -217,18 +220,18 @@ describe('TelegramPurchaseHandler', () => {
       it('should fallback to SMILES LIMINAR when SMILES has insufficient miles', async () => {
         const priceTableResult = createFakePriceTableResult({
           availableMiles: {
-            'SMILES': 10000, // Not enough for 30k request
-            'SMILES LIMINAR': 50000, // Has enough
-            'LATAM': 40000,
-            'LATAM LIMINAR': 20000,
-            'AZUL/TUDO AZUL': 60000,
-            'AZUL LIMINAR': 25000,
+            'SMILES': 10, // Not enough for 30k request (10k < 30k)
+            'SMILES LIMINAR': 50, // Has enough (50k > 30k)
+            'LATAM': 40,
+            'LATAM LIMINAR': 20,
+            'AZUL/TUDO AZUL': 60,
+            'AZUL LIMINAR': 25,
           },
         });
 
         mockPriceTableProvider.getPriceTable.mockResolvedValue(priceTableResult);
         mockMessageParser.parse.mockResolvedValue(createPurchaseProposal({
-          quantity: 30,
+          quantity: 30_000,
           cpfCount: 1,
           airlineId: PROGRAM_IDS.SMILES,
         }));
@@ -244,18 +247,18 @@ describe('TelegramPurchaseHandler', () => {
       it('should fallback to LATAM LIMINAR when LATAM has insufficient miles', async () => {
         const priceTableResult = createFakePriceTableResult({
           availableMiles: {
-            'SMILES': 50000,
-            'SMILES LIMINAR': 30000,
-            'LATAM': 10000, // Not enough
-            'LATAM LIMINAR': 50000, // Has enough
-            'AZUL/TUDO AZUL': 60000,
-            'AZUL LIMINAR': 25000,
+            'SMILES': 50,
+            'SMILES LIMINAR': 30,
+            'LATAM': 10, // Not enough (10k < 30k)
+            'LATAM LIMINAR': 50, // Has enough (50k > 30k)
+            'AZUL/TUDO AZUL': 60,
+            'AZUL LIMINAR': 25,
           },
         });
 
         mockPriceTableProvider.getPriceTable.mockResolvedValue(priceTableResult);
         mockMessageParser.parse.mockResolvedValue(createPurchaseProposal({
-          quantity: 30,
+          quantity: 30_000,
           cpfCount: 1,
           airlineId: PROGRAM_IDS.LATAM,
         }));
@@ -271,18 +274,18 @@ describe('TelegramPurchaseHandler', () => {
       it('should fallback to AZUL LIMINAR when AZUL/TUDO AZUL has insufficient miles', async () => {
         const priceTableResult = createFakePriceTableResult({
           availableMiles: {
-            'SMILES': 50000,
-            'SMILES LIMINAR': 30000,
-            'LATAM': 40000,
-            'LATAM LIMINAR': 20000,
-            'AZUL/TUDO AZUL': 10000, // Not enough
-            'AZUL LIMINAR': 50000, // Has enough
+            'SMILES': 50,
+            'SMILES LIMINAR': 30,
+            'LATAM': 40,
+            'LATAM LIMINAR': 20,
+            'AZUL/TUDO AZUL': 10, // Not enough (10k < 30k)
+            'AZUL LIMINAR': 50, // Has enough (50k > 30k)
           },
         });
 
         mockPriceTableProvider.getPriceTable.mockResolvedValue(priceTableResult);
         mockMessageParser.parse.mockResolvedValue(createPurchaseProposal({
-          quantity: 30,
+          quantity: 30_000,
           cpfCount: 1,
           airlineId: PROGRAM_IDS['AZUL/TUDO AZUL'],
         }));
@@ -300,18 +303,18 @@ describe('TelegramPurchaseHandler', () => {
       it('should not send message when neither SMILES nor SMILES LIMINAR has enough miles', async () => {
         const priceTableResult = createFakePriceTableResult({
           availableMiles: {
-            'SMILES': 10000, // Not enough for 100k
-            'SMILES LIMINAR': 50000, // Not enough for 100k
-            'LATAM': 40000,
-            'LATAM LIMINAR': 20000,
-            'AZUL/TUDO AZUL': 60000,
-            'AZUL LIMINAR': 25000,
+            'SMILES': 10, // Not enough for 100k (10k < 100k)
+            'SMILES LIMINAR': 50, // Not enough for 100k (50k < 100k)
+            'LATAM': 40,
+            'LATAM LIMINAR': 20,
+            'AZUL/TUDO AZUL': 60,
+            'AZUL LIMINAR': 25,
           },
         });
 
         mockPriceTableProvider.getPriceTable.mockResolvedValue(priceTableResult);
         mockMessageParser.parse.mockResolvedValue(createPurchaseProposal({
-          quantity: 100, // 100k requires 100000 miles
+          quantity: 100_000, // 100k requires 100 in availableMiles units
           cpfCount: 1,
           airlineId: PROGRAM_IDS.SMILES,
         }));
@@ -325,17 +328,17 @@ describe('TelegramPurchaseHandler', () => {
         const priceTableResult = createFakePriceTableResult({
           availableMiles: {
             'SMILES': 0,
-            'SMILES LIMINAR': 20000, // Not enough for 30k
-            'LATAM': 40000,
-            'LATAM LIMINAR': 20000,
-            'AZUL/TUDO AZUL': 60000,
-            'AZUL LIMINAR': 25000,
+            'SMILES LIMINAR': 20, // Not enough for 30k (20k < 30k)
+            'LATAM': 40,
+            'LATAM LIMINAR': 20,
+            'AZUL/TUDO AZUL': 60,
+            'AZUL LIMINAR': 25,
           },
         });
 
         mockPriceTableProvider.getPriceTable.mockResolvedValue(priceTableResult);
         mockMessageParser.parse.mockResolvedValue(createPurchaseProposal({
-          quantity: 30,
+          quantity: 30_000,
           cpfCount: 1,
           airlineId: PROGRAM_IDS.SMILES,
         }));
@@ -351,7 +354,7 @@ describe('TelegramPurchaseHandler', () => {
         const priceTableResult = createFakePriceTableResult();
         mockPriceTableProvider.getPriceTable.mockResolvedValue(priceTableResult);
         mockMessageParser.parse.mockResolvedValue(createPurchaseProposal({
-          quantity: 30,
+          quantity: 30_000,
           cpfCount: 1,
           airlineId: PROGRAM_IDS['SMILES LIMINAR'],
         }));
@@ -367,18 +370,18 @@ describe('TelegramPurchaseHandler', () => {
       it('should not send message when user requests liminar directly but it has insufficient miles', async () => {
         const priceTableResult = createFakePriceTableResult({
           availableMiles: {
-            'SMILES': 50000,
-            'SMILES LIMINAR': 10000, // Not enough for 30k
-            'LATAM': 40000,
-            'LATAM LIMINAR': 20000,
-            'AZUL/TUDO AZUL': 60000,
-            'AZUL LIMINAR': 25000,
+            'SMILES': 50,
+            'SMILES LIMINAR': 10, // Not enough for 30k (10k < 30k)
+            'LATAM': 40,
+            'LATAM LIMINAR': 20,
+            'AZUL/TUDO AZUL': 60,
+            'AZUL LIMINAR': 25,
           },
         });
 
         mockPriceTableProvider.getPriceTable.mockResolvedValue(priceTableResult);
         mockMessageParser.parse.mockResolvedValue(createPurchaseProposal({
-          quantity: 30,
+          quantity: 30_000,
           cpfCount: 1,
           airlineId: PROGRAM_IDS['SMILES LIMINAR'],
         }));
@@ -394,7 +397,7 @@ describe('TelegramPurchaseHandler', () => {
         const priceTableResult = createFakePriceTableResult();
         mockPriceTableProvider.getPriceTable.mockResolvedValue(priceTableResult);
         mockMessageParser.parse.mockResolvedValue(createPurchaseProposal({
-          quantity: 30,
+          quantity: 30_000,
           cpfCount: 1,
           airlineId: PROGRAM_IDS.SMILES,
           acceptedPrices: [25], // User accepts 25, calculated is 20
@@ -415,7 +418,7 @@ describe('TelegramPurchaseHandler', () => {
         const priceTableResult = createFakePriceTableResult();
         mockPriceTableProvider.getPriceTable.mockResolvedValue(priceTableResult);
         mockMessageParser.parse.mockResolvedValue(createPurchaseProposal({
-          quantity: 30,
+          quantity: 30_000,
           cpfCount: 1,
           airlineId: PROGRAM_IDS.SMILES,
           acceptedPrices: [20], // User accepts exactly 20
@@ -436,7 +439,7 @@ describe('TelegramPurchaseHandler', () => {
         const priceTableResult = createFakePriceTableResult();
         mockPriceTableProvider.getPriceTable.mockResolvedValue(priceTableResult);
         mockMessageParser.parse.mockResolvedValue(createPurchaseProposal({
-          quantity: 30,
+          quantity: 30_000,
           cpfCount: 1,
           airlineId: PROGRAM_IDS.SMILES,
           acceptedPrices: [15], // User accepts 15, calculated is 20
@@ -466,7 +469,7 @@ describe('TelegramPurchaseHandler', () => {
         const priceTableResult = createFakePriceTableResult();
         mockPriceTableProvider.getPriceTable.mockResolvedValue(priceTableResult);
         mockMessageParser.parse.mockResolvedValue(createPurchaseProposal({
-          quantity: 30,
+          quantity: 30_000,
           cpfCount: 1,
           airlineId: PROGRAM_IDS.SMILES,
           acceptedPrices: [15], // User accepts 15, calculated is 20
@@ -482,7 +485,7 @@ describe('TelegramPurchaseHandler', () => {
         const priceTableResult = createFakePriceTableResult();
         mockPriceTableProvider.getPriceTable.mockResolvedValue(priceTableResult);
         mockMessageParser.parse.mockResolvedValue(createPurchaseProposal({
-          quantity: 30,
+          quantity: 30_000,
           cpfCount: 1,
           airlineId: PROGRAM_IDS.SMILES,
           acceptedPrices: [10], // User accepts 10, calculated is 20 (diff = 10)
@@ -517,7 +520,7 @@ describe('TelegramPurchaseHandler', () => {
         const priceTableResult = createFakePriceTableResult();
         mockPriceTableProvider.getPriceTable.mockResolvedValue(priceTableResult);
         mockMessageParser.parse.mockResolvedValue(createPurchaseProposal({
-          quantity: 30,
+          quantity: 30_000,
           cpfCount: 1,
           airlineId: PROGRAM_IDS.SMILES,
           acceptedPrices: [25, 22, 30], // Min is 22, still >= 20
@@ -540,7 +543,7 @@ describe('TelegramPurchaseHandler', () => {
         const priceTableResult = createFakePriceTableResult();
         mockPriceTableProvider.getPriceTable.mockResolvedValue(priceTableResult);
         mockMessageParser.parse.mockResolvedValue(createPurchaseProposal({
-          quantity: 30,
+          quantity: 30_000,
           cpfCount: 1,
           airlineId: 999, // Non-existent program ID
         }));
@@ -586,17 +589,17 @@ describe('TelegramPurchaseHandler', () => {
       it('should calculate price correctly with multiple CPFs', async () => {
         const priceTableResult = createFakePriceTableResult({
           availableMiles: {
-            'SMILES': 100000, // Enough for 60k request
-            'SMILES LIMINAR': 30000,
-            'LATAM': 40000,
-            'LATAM LIMINAR': 20000,
-            'AZUL/TUDO AZUL': 60000,
-            'AZUL LIMINAR': 25000,
+            'SMILES': 100, // Enough for 60k request (100k > 60k)
+            'SMILES LIMINAR': 30,
+            'LATAM': 40,
+            'LATAM LIMINAR': 20,
+            'AZUL/TUDO AZUL': 60,
+            'AZUL LIMINAR': 25,
           },
         });
         mockPriceTableProvider.getPriceTable.mockResolvedValue(priceTableResult);
         mockMessageParser.parse.mockResolvedValue(createPurchaseProposal({
-          quantity: 60, // 60k / 2 CPFs = 30k per CPF
+          quantity: 60_000, // 60k / 2 CPFs = 30k per CPF
           cpfCount: 2,
           airlineId: PROGRAM_IDS.SMILES,
         }));
@@ -624,7 +627,7 @@ describe('TelegramPurchaseHandler', () => {
 
         mockPriceTableProvider.getPriceTable.mockResolvedValue(priceTableResult);
         mockMessageParser.parse.mockResolvedValue(createPurchaseProposal({
-          quantity: 15, // Smallest quantity would normally give highest price (22)
+          quantity: 15_000, // Smallest quantity would normally give highest price (22)
           cpfCount: 1,
           airlineId: PROGRAM_IDS.SMILES,
         }));
@@ -640,21 +643,21 @@ describe('TelegramPurchaseHandler', () => {
     describe('Empty price table', () => {
       it('should not send message when price table is empty for provider (provider is not in availableProviders)', async () => {
         // Note: When a provider has an empty price table, it's filtered out from availableProviders.
-        // Therefore, findProviderByName will return null and no message is sent.
+        // Therefore, the provider lookup will return null and no message is sent.
         const priceTableResult = createFakePriceTableResult({
           priceTables: {
             'SMILES': {}, // Empty price table - will be filtered out
-            'SMILES LIMINAR': { 15: 23, 30: 21, 50: 19 },
-            'LATAM': { 15: 21, 30: 19, 50: 17 },
-            'LATAM LIMINAR': { 15: 22, 30: 20, 50: 18 },
-            'AZUL/TUDO AZUL': { 15: 20, 30: 18, 50: 16 },
-            'AZUL LIMINAR': { 15: 21, 30: 19, 50: 17 },
+            'SMILES LIMINAR': { 15000: 23, 30000: 21, 50000: 19 },
+            'LATAM': { 15000: 21, 30000: 19, 50000: 17 },
+            'LATAM LIMINAR': { 15000: 22, 30000: 20, 50000: 18 },
+            'AZUL/TUDO AZUL': { 15000: 20, 30000: 18, 50000: 16 },
+            'AZUL LIMINAR': { 15000: 21, 30000: 19, 50000: 17 },
           },
         });
 
         mockPriceTableProvider.getPriceTable.mockResolvedValue(priceTableResult);
         mockMessageParser.parse.mockResolvedValue(createPurchaseProposal({
-          quantity: 30,
+          quantity: 30_000,
           cpfCount: 1,
           airlineId: PROGRAM_IDS.SMILES,
         }));
@@ -667,51 +670,4 @@ describe('TelegramPurchaseHandler', () => {
     });
   });
 
-  describe('findProviderByName (static)', () => {
-    const availableProviders = [
-      'SMILES',
-      'SMILES LIMINAR',
-      'LATAM',
-      'LATAM LIMINAR',
-      'AZUL/TUDO AZUL',
-      'AZUL LIMINAR',
-    ];
-
-    it('should find provider with exact match (case-insensitive)', () => {
-      expect(TelegramPurchaseHandler.findProviderByName('SMILES', availableProviders)).toBe('SMILES');
-      expect(TelegramPurchaseHandler.findProviderByName('smiles', availableProviders)).toBe('SMILES');
-      expect(TelegramPurchaseHandler.findProviderByName('Smiles', availableProviders)).toBe('SMILES');
-    });
-
-    it('should find liminar provider with exact match', () => {
-      expect(TelegramPurchaseHandler.findProviderByName('SMILES LIMINAR', availableProviders)).toBe('SMILES LIMINAR');
-      expect(TelegramPurchaseHandler.findProviderByName('smiles liminar', availableProviders)).toBe('SMILES LIMINAR');
-    });
-
-    it('should find AZUL/TUDO AZUL provider', () => {
-      expect(TelegramPurchaseHandler.findProviderByName('AZUL/TUDO AZUL', availableProviders)).toBe('AZUL/TUDO AZUL');
-    });
-
-    it('should return null when provider not found', () => {
-      expect(TelegramPurchaseHandler.findProviderByName('UNKNOWN', availableProviders)).toBeNull();
-      expect(TelegramPurchaseHandler.findProviderByName('GOL', availableProviders)).toBeNull();
-    });
-
-    it('should return null when mentionedProvider is null', () => {
-      expect(TelegramPurchaseHandler.findProviderByName(null, availableProviders)).toBeNull();
-    });
-
-    it('should return null when mentionedProvider is undefined', () => {
-      expect(TelegramPurchaseHandler.findProviderByName(undefined, availableProviders)).toBeNull();
-    });
-
-    it('should return null when mentionedProvider is empty string', () => {
-      expect(TelegramPurchaseHandler.findProviderByName('', availableProviders)).toBeNull();
-    });
-
-    it('should handle whitespace in provider name', () => {
-      expect(TelegramPurchaseHandler.findProviderByName('  SMILES  ', availableProviders)).toBe('SMILES');
-      expect(TelegramPurchaseHandler.findProviderByName(' SMILES LIMINAR ', availableProviders)).toBe('SMILES LIMINAR');
-    });
-  });
 });

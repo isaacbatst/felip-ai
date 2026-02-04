@@ -90,7 +90,6 @@ export class TelegramPurchaseHandler {
 
     // Passa os programas como contexto para ajudar o modelo a reconhecer melhor
     const purchaseRequest = await this.messageParser.parse(text, programsForParser);
-
     const validatedRequest = this.purchaseValidator.validate(purchaseRequest);
 
     if (!validatedRequest) {
@@ -109,17 +108,26 @@ export class TelegramPurchaseHandler {
       // Busca o programa pelo ID
       const program = allPrograms.find((p) => p.id === validatedRequest.airlineId);
       if (program) {
-        console.log('Finding provider for program', { id: program.id, name: program.name });
-        selectedProvider = this.findProviderByName(program.name, availableProviders);
+        this.logger.debug('Finding provider for program', { id: program.id, name: program.name });
+        selectedProvider = (availableProviders.find(
+          (p) => p.toUpperCase() === program.name.toUpperCase(),
+        ) as Provider) ?? null;
+
+        if (!selectedProvider) {
+          this.logger.warn('Program not available in user price tables', {
+            programName: program.name,
+            availableProviders,
+          });
+        }
       } else {
-        console.warn('Program not found for airlineId', validatedRequest.airlineId);
+        this.logger.warn('Program not found for airlineId', { airlineId: validatedRequest.airlineId });
       }
     }
 
-    console.log('Selected provider', selectedProvider);
+    this.logger.debug('Selected provider', { selectedProvider });
 
     if (!selectedProvider) {
-      console.warn('No provider found for the requested airline');
+      this.logger.warn('No provider found for the requested airline');
       return;
     }
 
@@ -132,14 +140,14 @@ export class TelegramPurchaseHandler {
     );
 
     if (!effectiveProvider) {
-      console.warn('No effective provider found (neither normal nor liminar has enough miles)');
+      this.logger.warn('No effective provider found (neither normal nor liminar has enough miles)');
       return;
     }
 
     const priceTable = priceTables[effectiveProvider];
 
     if (!priceTable || Object.keys(priceTable).length === 0) {
-      console.warn('No price table found for the effective provider');
+      this.logger.warn('No price table found for the effective provider');
       return;
     }
 
@@ -277,19 +285,18 @@ export class TelegramPurchaseHandler {
     availableMiles: Record<string, number | null>,
     availableProviders: Provider[],
   ): Promise<Provider | null> {
-    const requiredMiles = quantity * 1000;
     const isLiminar = selectedProvider.toLowerCase().includes('liminar');
 
     // If it's already a liminar program, just validate it
     if (isLiminar) {
-      if (this.validateMilesAvailability(selectedProvider, requiredMiles, availableMiles)) {
+      if (this.validateMilesAvailability(selectedProvider, quantity, availableMiles)) {
         return selectedProvider;
       }
       return null;
     }
 
     // Try normal program first
-    if (this.validateMilesAvailability(selectedProvider, requiredMiles, availableMiles)) {
+    if (this.validateMilesAvailability(selectedProvider, quantity, availableMiles)) {
       return selectedProvider;
     }
 
@@ -309,7 +316,7 @@ export class TelegramPurchaseHandler {
     }
 
     // Validate liminar program
-    if (this.validateMilesAvailability(liminarProvider, requiredMiles, availableMiles)) {
+    if (this.validateMilesAvailability(liminarProvider, quantity, availableMiles)) {
       this.logger.debug('Using liminar program instead of normal', {
         normal: selectedProvider,
         liminar: liminarProvider,
@@ -364,9 +371,10 @@ export class TelegramPurchaseHandler {
    */
   private validateMilesAvailability(
     provider: Provider,
-    requiredMiles: number,
+    required: number,
     availableMiles: Record<string, number | null>,
   ): boolean {
+    const requiredMiles = required / 1000;
     const availableMilesForProvider = availableMiles[provider];
     const hasEnoughMiles =
       availableMilesForProvider !== null && availableMilesForProvider >= requiredMiles;
@@ -379,58 +387,16 @@ export class TelegramPurchaseHandler {
     });
 
     if (!availableMilesForProvider) {
-      console.warn('No miles available for the provider', provider);
+      this.logger.warn('No miles available for the provider', { provider });
       return false;
     }
 
     if (!hasEnoughMiles) {
-      console.warn('Not enough miles available for the provider', provider);
+      this.logger.warn('Not enough miles available for the provider', { provider });
       return false;
     }
 
     return true;
-  }
-
-  /**
-   * Encontra o provider correspondente ao programa mencionado usando comparação case-insensitive
-   * Retorna o provider exato da lista de providers disponíveis
-   */
-  private findProviderByName(
-    mentionedProvider: string | null | undefined,
-    availableProviders: Provider[],
-  ): Provider | null {
-    console.log('Finding provider by name', mentionedProvider, availableProviders);
-    return TelegramPurchaseHandler.findProviderByName(mentionedProvider, availableProviders);
-  }
-
-  static findProviderByName(
-    mentionedProvider: string | null | undefined,
-    availableProviders: Provider[],
-  ): Provider | null {
-    if (!mentionedProvider) {
-      return null;
-    }
-
-    const normalizedMentioned = mentionedProvider.trim().toUpperCase();
-
-    // Primeiro tenta correspondência exata (case-insensitive)
-    for (const provider of availableProviders) {
-      if (provider.trim().toUpperCase() === normalizedMentioned) {
-        return provider;
-      }
-    }
-
-    // Depois tenta correspondência parcial (case-insensitive)
-    for (const provider of availableProviders) {
-      const normalizedProvider = provider.trim().toUpperCase();
-
-      // Verifica se um contém o outro
-      if (normalizedProvider === normalizedMentioned) {
-        return provider;
-      }
-    }
-
-    return null;
   }
 
   /**
