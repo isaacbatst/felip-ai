@@ -35,15 +35,13 @@ describe('TelegramPurchaseHandler', () => {
       'AZUL/TUDO AZUL': { 15000: 20, 30000: 18, 50000: 16 },
       'AZUL LIMINAR': { 15000: 21, 30000: 19, 50000: 17 },
     },
-    // availableMiles values are in thousands (50 = 50k miles)
-    // This matches the implementation which divides quantity by 1000 before comparing
     availableMiles: {
-      'SMILES': 50,
-      'SMILES LIMINAR': 30,
-      'LATAM': 40,
-      'LATAM LIMINAR': 20,
-      'AZUL/TUDO AZUL': 60,
-      'AZUL LIMINAR': 25,
+      'SMILES': 50000,
+      'SMILES LIMINAR': 30000,
+      'LATAM': 40000,
+      'LATAM LIMINAR': 20000,
+      'AZUL/TUDO AZUL': 60000,
+      'AZUL LIMINAR': 25000,
     },
     customMaxPrice: {
       'SMILES': 22,
@@ -156,12 +154,12 @@ describe('TelegramPurchaseHandler', () => {
       it('should send calculated price without LIMINAR suffix when normal provider has enough miles', async () => {
         const priceTableResult = createFakePriceTableResult({
           availableMiles: {
-            'SMILES': 50, // Has enough for 30k request (50k > 30k)
-            'SMILES LIMINAR': 30,
-            'LATAM': 40,
-            'LATAM LIMINAR': 20,
-            'AZUL/TUDO AZUL': 60,
-            'AZUL LIMINAR': 25,
+            'SMILES': 50000, // Has enough for 30k request (50000 > 30000)
+            'SMILES LIMINAR': 30000,
+            'LATAM': 40000,
+            'LATAM LIMINAR': 20000,
+            'AZUL/TUDO AZUL': 60000,
+            'AZUL LIMINAR': 25000,
           },
         });
 
@@ -220,12 +218,12 @@ describe('TelegramPurchaseHandler', () => {
       it('should fallback to SMILES LIMINAR when SMILES has insufficient miles', async () => {
         const priceTableResult = createFakePriceTableResult({
           availableMiles: {
-            'SMILES': 10, // Not enough for 30k request (10k < 30k)
-            'SMILES LIMINAR': 50, // Has enough (50k > 30k)
-            'LATAM': 40,
-            'LATAM LIMINAR': 20,
-            'AZUL/TUDO AZUL': 60,
-            'AZUL LIMINAR': 25,
+            'SMILES': 10000, // Not enough for 30k request (10000 < 30000)
+            'SMILES LIMINAR': 50000, // Has enough (50000 > 30000)
+            'LATAM': 40000,
+            'LATAM LIMINAR': 20000,
+            'AZUL/TUDO AZUL': 60000,
+            'AZUL LIMINAR': 25000,
           },
         });
 
@@ -247,12 +245,12 @@ describe('TelegramPurchaseHandler', () => {
       it('should fallback to LATAM LIMINAR when LATAM has insufficient miles', async () => {
         const priceTableResult = createFakePriceTableResult({
           availableMiles: {
-            'SMILES': 50,
-            'SMILES LIMINAR': 30,
-            'LATAM': 10, // Not enough (10k < 30k)
-            'LATAM LIMINAR': 50, // Has enough (50k > 30k)
-            'AZUL/TUDO AZUL': 60,
-            'AZUL LIMINAR': 25,
+            'SMILES': 50000,
+            'SMILES LIMINAR': 30000,
+            'LATAM': 10000, // Not enough (10000 < 30000)
+            'LATAM LIMINAR': 50000, // Has enough (50000 > 30000)
+            'AZUL/TUDO AZUL': 60000,
+            'AZUL LIMINAR': 25000,
           },
         });
 
@@ -274,12 +272,12 @@ describe('TelegramPurchaseHandler', () => {
       it('should fallback to AZUL LIMINAR when AZUL/TUDO AZUL has insufficient miles', async () => {
         const priceTableResult = createFakePriceTableResult({
           availableMiles: {
-            'SMILES': 50,
-            'SMILES LIMINAR': 30,
-            'LATAM': 40,
-            'LATAM LIMINAR': 20,
-            'AZUL/TUDO AZUL': 10, // Not enough (10k < 30k)
-            'AZUL LIMINAR': 50, // Has enough (50k > 30k)
+            'SMILES': 50000,
+            'SMILES LIMINAR': 30000,
+            'LATAM': 40000,
+            'LATAM LIMINAR': 20000,
+            'AZUL/TUDO AZUL': 10000, // Not enough (10000 < 30000)
+            'AZUL LIMINAR': 50000, // Has enough (50000 > 30000)
           },
         });
 
@@ -303,12 +301,12 @@ describe('TelegramPurchaseHandler', () => {
       it('should not send message when neither SMILES nor SMILES LIMINAR has enough miles', async () => {
         const priceTableResult = createFakePriceTableResult({
           availableMiles: {
-            'SMILES': 10, // Not enough for 100k (10k < 100k)
-            'SMILES LIMINAR': 50, // Not enough for 100k (50k < 100k)
-            'LATAM': 40,
-            'LATAM LIMINAR': 20,
-            'AZUL/TUDO AZUL': 60,
-            'AZUL LIMINAR': 25,
+            'SMILES': 10000, // Not enough for 100k (10000 < 100000)
+            'SMILES LIMINAR': 50000, // Not enough for 100k (50000 < 100000)
+            'LATAM': 40000,
+            'LATAM LIMINAR': 20000,
+            'AZUL/TUDO AZUL': 60000,
+            'AZUL LIMINAR': 25000,
           },
         });
 
@@ -328,11 +326,11 @@ describe('TelegramPurchaseHandler', () => {
         const priceTableResult = createFakePriceTableResult({
           availableMiles: {
             'SMILES': 0,
-            'SMILES LIMINAR': 20, // Not enough for 30k (20k < 30k)
-            'LATAM': 40,
-            'LATAM LIMINAR': 20,
-            'AZUL/TUDO AZUL': 60,
-            'AZUL LIMINAR': 25,
+            'SMILES LIMINAR': 20000, // Not enough for 30k (20000 < 30000)
+            'LATAM': 40000,
+            'LATAM LIMINAR': 20000,
+            'AZUL/TUDO AZUL': 60000,
+            'AZUL LIMINAR': 25000,
           },
         });
 
@@ -370,12 +368,12 @@ describe('TelegramPurchaseHandler', () => {
       it('should not send message when user requests liminar directly but it has insufficient miles', async () => {
         const priceTableResult = createFakePriceTableResult({
           availableMiles: {
-            'SMILES': 50,
-            'SMILES LIMINAR': 10, // Not enough for 30k (10k < 30k)
-            'LATAM': 40,
-            'LATAM LIMINAR': 20,
-            'AZUL/TUDO AZUL': 60,
-            'AZUL LIMINAR': 25,
+            'SMILES': 50000,
+            'SMILES LIMINAR': 10000, // Not enough for 30k (10000 < 30000)
+            'LATAM': 40000,
+            'LATAM LIMINAR': 20000,
+            'AZUL/TUDO AZUL': 60000,
+            'AZUL LIMINAR': 25000,
           },
         });
 
@@ -589,12 +587,12 @@ describe('TelegramPurchaseHandler', () => {
       it('should calculate price correctly with multiple CPFs', async () => {
         const priceTableResult = createFakePriceTableResult({
           availableMiles: {
-            'SMILES': 100, // Enough for 60k request (100k > 60k)
-            'SMILES LIMINAR': 30,
-            'LATAM': 40,
-            'LATAM LIMINAR': 20,
-            'AZUL/TUDO AZUL': 60,
-            'AZUL LIMINAR': 25,
+            'SMILES': 100000, // Enough for 60k request (100000 > 60000)
+            'SMILES LIMINAR': 30000,
+            'LATAM': 40000,
+            'LATAM LIMINAR': 20000,
+            'AZUL/TUDO AZUL': 60000,
+            'AZUL LIMINAR': 25000,
           },
         });
         mockPriceTableProvider.getPriceTable.mockResolvedValue(priceTableResult);

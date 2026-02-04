@@ -62,22 +62,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Create env file
-        run: |
-          echo "TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}" >> envfile
-          echo "TELEGRAM_PHONE=${{ secrets.TELEGRAM_PHONE }}" >> envfile
-          echo "GOOGLE_SPREADSHEET_ID=${{ secrets.GOOGLE_SPREADSHEET_ID }}" >> envfile
-          echo "GOOGLE_SERVICE_ACCOUNT_KEY_FILE=/app/nest_api/service-account-key.json" >> envfile
-          echo "WORKER_ENV_FILE=${{ secrets.WORKER_ENV_FILE }}" >> envfile
-          echo "OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}" >> envfile
-          echo "DATABASE_URL=${{ secrets.DATABASE_URL }}" >> envfile
-          echo "WORKER_MANAGER_TYPE=${{ secrets.WORKER_MANAGER_TYPE }}" >> envfile
-          echo "GIT_COMMIT_HASH=${{ github.sha }}" >> envfile
-          echo "RABBITMQ_HOST=${{ secrets.RABBITMQ_HOST }}" >> envfile
-          echo "RABBITMQ_PORT=${{ secrets.RABBITMQ_PORT }}" >> envfile
-          echo "RABBITMQ_USER=${{ secrets.RABBITMQ_USER }}" >> envfile
-          echo "RABBITMQ_PASSWORD=${{ secrets.RABBITMQ_PASSWORD }}" >> envfile
-          echo "APP_BASE_URL=https://chatbot.lfviagens.com" >> envfile
       - name: Setup SSH
         run: |
           mkdir -p ~/.ssh
@@ -88,5 +72,21 @@ jobs:
       - name: Update Nest API service only
         run: |
           ssh -i ~/.ssh/deploy_key felip-ai@congressosimulator.com.br \
-            "docker service update --image ghcr.io/isaacbatst/felip-ai:${{ github.sha }} felip-ai_nest_api && \
+            "docker service update \
+              --image ghcr.io/isaacbatst/felip-ai:${{ github.sha }} \
+              --env-add TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }} \
+              --env-add TELEGRAM_PHONE=${{ secrets.TELEGRAM_PHONE }} \
+              --env-add GOOGLE_SPREADSHEET_ID=${{ secrets.GOOGLE_SPREADSHEET_ID }} \
+              --env-add GOOGLE_SERVICE_ACCOUNT_KEY_FILE=/app/nest_api/service-account-key.json \
+              --env-add WORKER_ENV_FILE=${{ secrets.WORKER_ENV_FILE }} \
+              --env-add OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }} \
+              --env-add DATABASE_URL=${{ secrets.DATABASE_URL }} \
+              --env-add WORKER_MANAGER_TYPE=${{ secrets.WORKER_MANAGER_TYPE }} \
+              --env-add GIT_COMMIT_HASH=${{ github.sha }} \
+              --env-add RABBITMQ_HOST=${{ secrets.RABBITMQ_HOST }} \
+              --env-add RABBITMQ_PORT=${{ secrets.RABBITMQ_PORT }} \
+              --env-add RABBITMQ_USER=${{ secrets.RABBITMQ_USER }} \
+              --env-add RABBITMQ_PASSWORD=${{ secrets.RABBITMQ_PASSWORD }} \
+              --env-add APP_BASE_URL=https://chatbot.lfviagens.com \
+              felip-ai_nest_api && \
              docker system prune -af --filter 'until=24h'"

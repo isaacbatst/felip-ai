@@ -374,7 +374,7 @@ export class TelegramPurchaseHandler {
     required: number,
     availableMiles: Record<string, number | null>,
   ): boolean {
-    const requiredMiles = required / 1000;
+    const requiredMiles = required;
     const availableMilesForProvider = availableMiles[provider];
     const hasEnoughMiles =
       availableMilesForProvider !== null && availableMilesForProvider >= requiredMiles;
