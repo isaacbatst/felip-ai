@@ -130,7 +130,7 @@ export class TelegramPurchaseHandler {
     const options = maxPrice !== null ? { customMaxPrice: maxPrice } : undefined;
 
     const priceResult = this.priceCalculator.calculate(
-      purchaseRequest.quantity,
+      purchaseRequest.quantity / 1000, // Convert from units to thousands (price table keys are in thousands)
       purchaseRequest.cpfCount,
       priceTable,
       options,

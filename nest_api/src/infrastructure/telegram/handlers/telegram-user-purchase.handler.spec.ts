@@ -24,14 +24,14 @@ describe('TelegramPurchaseHandler', () => {
   const chatId = 123456;
   const messageId = 789;
 
-  // Fake price tables by program ID
+  // Fake price tables by program ID (keys in thousands to match production format)
   const priceTables: Record<number, PriceTableV2> = {
-    1: { 15000: 22, 30000: 20, 50000: 18 }, // SMILES
-    2: { 15000: 23, 30000: 21, 50000: 19 }, // SMILES LIMINAR
-    3: { 15000: 21, 30000: 19, 50000: 17 }, // LATAM
-    4: { 15000: 22, 30000: 20, 50000: 18 }, // LATAM LIMINAR
-    5: { 15000: 20, 30000: 18, 50000: 16 }, // AZUL/TUDO AZUL
-    6: { 15000: 21, 30000: 19, 50000: 17 }, // AZUL LIMINAR
+    1: { 15: 22, 30: 20, 50: 18 }, // SMILES
+    2: { 15: 23, 30: 21, 50: 19 }, // SMILES LIMINAR
+    3: { 15: 21, 30: 19, 50: 17 }, // LATAM
+    4: { 15: 22, 30: 20, 50: 18 }, // LATAM LIMINAR
+    5: { 15: 20, 30: 18, 50: 16 }, // AZUL/TUDO AZUL
+    6: { 15: 21, 30: 19, 50: 17 }, // AZUL LIMINAR
   };
 
   // Fake available miles by program ID
