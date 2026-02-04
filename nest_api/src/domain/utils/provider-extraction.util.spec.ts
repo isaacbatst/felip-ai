@@ -101,6 +101,51 @@ describe('ProviderExtractionUtil', () => {
     });
   });
 
+  describe('extractWordsFromText', () => {
+    it('should split text into words', () => {
+      const words = ProviderExtractionUtil.extractWordsFromText('compro smile 100k');
+      expect(words).toEqual(['compro', 'smile', '100k']);
+    });
+
+    it('should filter out words shorter than 3 characters', () => {
+      const words = ProviderExtractionUtil.extractWordsFromText('vendo aa 10 k smiles');
+      expect(words).toEqual(['vendo', 'smiles']);
+    });
+
+    it('should handle empty string', () => {
+      const words = ProviderExtractionUtil.extractWordsFromText('');
+      expect(words).toEqual([]);
+    });
+  });
+
+  describe('fuzzyMatchKeyword', () => {
+    it('should return true when word matches keyword above threshold', () => {
+      // "smile" vs "smiles" = 83% similarity
+      expect(ProviderExtractionUtil.fuzzyMatchKeyword(['smile'], 'smiles')).toBe(true);
+    });
+
+    it('should return false for short keywords (<=3 chars)', () => {
+      // Short keywords require exact match
+      expect(ProviderExtractionUtil.fuzzyMatchKeyword(['ab'], 'aa')).toBe(false);
+      expect(ProviderExtractionUtil.fuzzyMatchKeyword(['gol'], 'gol')).toBe(false);
+    });
+
+    it('should return false when similarity is below threshold', () => {
+      // "azl" vs "azul" = 75% similarity, below 80% threshold
+      expect(ProviderExtractionUtil.fuzzyMatchKeyword(['azl'], 'azul')).toBe(false);
+    });
+
+    it('should check all words in the array', () => {
+      // "latm" vs "latam" = 80% similarity
+      expect(ProviderExtractionUtil.fuzzyMatchKeyword(['vendo', 'latm', 'barato'], 'latam')).toBe(true);
+    });
+
+    it('should accept custom threshold', () => {
+      // With lower threshold, "azl" vs "azul" should match
+      expect(ProviderExtractionUtil.fuzzyMatchKeyword(['azl'], 'azul', 0.7)).toBe(true);
+    });
+  });
+
   describe('extractProvider', () => {
     describe('basic matching', () => {
       it('should return null when no programs provided', () => {
@@ -180,6 +225,39 @@ describe('ProviderExtractionUtil', () => {
           { id: 2, name: 'LATAM' },
         ];
         expect(ProviderExtractionUtil.extractProvider('vendo smiles liminar', programsWithoutLiminar)).toBeNull();
+      });
+    });
+
+    describe('fuzzy matching', () => {
+      it('should match "smile" to SMILES program via fuzzy match', () => {
+        expect(ProviderExtractionUtil.extractProvider('compro smile 100k', samplePrograms)).toBe(1);
+      });
+
+      it('should match "latm" to LATAM program via fuzzy match', () => {
+        expect(ProviderExtractionUtil.extractProvider('vendo latm', samplePrograms)).toBe(19);
+      });
+
+      it('should NOT fuzzy match short keywords like AA', () => {
+        // "ab" should not match "aa" because AA is too short for fuzzy matching
+        expect(ProviderExtractionUtil.extractProvider('vendo ab', samplePrograms)).toBeNull();
+      });
+
+      it('should prefer exact match over fuzzy match', () => {
+        // When "smiles" is in the text, it should match exactly
+        expect(ProviderExtractionUtil.extractProvider('vendo smiles', samplePrograms)).toBe(1);
+      });
+
+      it('should handle the original problem case: "Compro SMILE 100K 1 cpf 14,5"', () => {
+        expect(ProviderExtractionUtil.extractProvider('Compro SMILE 100K 1 cpf 14,5', samplePrograms)).toBe(1);
+      });
+
+      it('should NOT fuzzy match when similarity is below threshold', () => {
+        // "azl" vs "azul" = 75% similarity, below 80% threshold
+        expect(ProviderExtractionUtil.extractProvider('vendo azl', samplePrograms)).toBeNull();
+      });
+
+      it('should match "aeroplan" exactly, not via fuzzy', () => {
+        expect(ProviderExtractionUtil.extractProvider('tenho aeroplan', samplePrograms)).toBe(3);
       });
     });
 

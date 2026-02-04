@@ -48,7 +48,7 @@ export class FuzzyMatchUtil {
     return result ?? Infinity;
   }
 
-  private static stringSimilarity(str1: string, str2: string): number {
+  static stringSimilarity(str1: string, str2: string): number {
     if (str1 === str2) return 1.0;
     if (str1.length === 0 && str2.length === 0) return 1.0;
     if (str1.length === 0 || str2.length === 0) return 0.0;
