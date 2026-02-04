@@ -378,6 +378,47 @@ describe('PriceCalculatorService', () => {
     });
   });
 
+  describe('Tabelas com preços crescentes (inversão)', () => {
+    it('deve lidar com tabelas onde preços aumentam com quantidade', () => {
+      const priceTable: PriceTableV2 = { 1: 10, 3: 15, 4: 20 };
+      const result = service.calculate(4, 2, priceTable);
+      // quantityPerCpf = 2, interpolated between qty 1 (10) and qty 3 (15) = 12.5
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.price).toBe(12.5);
+      }
+    });
+
+    it('deve retornar priceAtMaxQty quando quantidade está acima do máximo', () => {
+      const priceTable: PriceTableV2 = { 1: 10, 3: 15, 4: 20 };
+      // Quantidade acima do máximo deve retornar o preço na quantidade máxima
+      const result = service.calculate(10, 1, priceTable);
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.price).toBe(20); // priceAtMaxQty (preço para qty=4)
+      }
+    });
+
+    it('deve aplicar maxPrice correto quando preços aumentam com quantidade', () => {
+      const priceTable: PriceTableV2 = { 1: 10, 3: 15, 4: 20 };
+      // Quantidade no mínimo deve retornar maxPrice
+      const result = service.calculate(1, 1, priceTable);
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.price).toBe(10); // preço para qty=1
+      }
+    });
+
+    it('deve interpolar corretamente quando preços aumentam', () => {
+      const priceTable: PriceTableV2 = { 10: 5, 20: 10, 30: 15 };
+      const result = service.calculate(15, 1, priceTable); // Entre 10 e 20
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.price).toBe(7.5); // Interpolação linear: 5 + (10-5) * (15-10)/(20-10) = 7.5
+      }
+    });
+  });
+
   describe('Casos de borda', () => {
     const priceTable: PriceTableV2 = {
       15: 20,

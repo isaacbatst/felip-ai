@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import type { PriceTableV2 } from '../types/price.types';
 import type { PriceCalculationResult } from '../types/purchase.types';
 import { InterpolationUtil } from '../utils/interpolation.util';
@@ -20,8 +20,14 @@ interface PriceTableData {
   quantities: number[];
   minQty: number;
   maxQty: number;
+  /** Maior preço na tabela (valor máximo entre todos os preços) */
   maxPrice: number;
+  /** Menor preço na tabela (valor mínimo entre todos os preços) */
   minPrice: number;
+  /** Preço na menor quantidade (priceTable[minQty]) */
+  priceAtMinQty: number;
+  /** Preço na maior quantidade (priceTable[maxQty]) */
+  priceAtMaxQty: number;
   allPricesSame: boolean;
 }
 
@@ -31,6 +37,7 @@ interface PriceTableData {
  */
 @Injectable()
 export class PriceCalculatorService {
+  private readonly logger = new Logger(PriceCalculatorService.name);
   private static readonly DEFAULT_SLOPE = -1 / 30;
 
   /**
@@ -63,13 +70,16 @@ export class PriceCalculatorService {
     priceTable: PriceTableV2,
   ): PriceCalculationResult | null {
     if (quantity <= 0) {
+      this.logger.warn('Validation failed: quantity must be greater than zero', { quantity });
       return PriceCalculatorService.errorResult('Quantidade deve ser maior que zero');
     }
     if (cpfCount <= 0) {
+      this.logger.warn('Validation failed: cpfCount must be greater than zero', { cpfCount });
       return PriceCalculatorService.errorResult('Número de CPF deve ser maior que zero');
     }
     const quantities = InterpolationUtil.extractSortedQuantities(priceTable);
     if (quantities.length === 0) {
+      this.logger.warn('Validation failed: price table is empty');
       return PriceCalculatorService.errorResult('Tabela de preços vazia');
     }
     return null;
@@ -84,17 +94,32 @@ export class PriceCalculatorService {
     const maxQty = quantities[quantities.length - 1];
 
     if (minQty === undefined || maxQty === undefined) {
+      this.logger.warn('Failed to extract price table data: minQty or maxQty undefined');
       return PriceCalculatorService.errorResult('Erro ao processar tabela de preços');
     }
 
-    const maxPrice = priceTable[minQty];
-    const minPrice = priceTable[maxQty];
+    // Calculate actual min/max from values, not positions
+    const allPrices = quantities.map(qty => priceTable[qty]).filter((p): p is number => p !== undefined);
 
-    if (minPrice === undefined || maxPrice === undefined) {
-      return PriceCalculatorService.errorResult('Preços mínimo ou máximo não encontrados');
+    if (allPrices.length === 0) {
+      this.logger.warn('Failed to extract price table data: no valid prices found');
+      return PriceCalculatorService.errorResult('Preços não encontrados na tabela');
     }
 
-    const allPricesSame = quantities.every((qty) => priceTable[qty] === maxPrice);
+    const minPrice = Math.min(...allPrices);
+    const maxPrice = Math.max(...allPrices);
+
+    const priceAtMinQty = priceTable[minQty];
+    const priceAtMaxQty = priceTable[maxQty];
+
+    if (priceAtMinQty === undefined || priceAtMaxQty === undefined) {
+      this.logger.warn('Failed to extract price table data: priceAtMinQty or priceAtMaxQty undefined');
+      return PriceCalculatorService.errorResult('Preços nas quantidades limite não encontrados');
+    }
+
+    const allPricesSame = allPrices.every(price => price === allPrices[0]);
+
+    this.logger.log('Extracted price table data', { minQty, maxQty, minPrice, maxPrice, priceAtMinQty, priceAtMaxQty, allPricesSame });
 
     return {
       quantities,
@@ -102,6 +127,8 @@ export class PriceCalculatorService {
       maxQty,
       maxPrice,
       minPrice,
+      priceAtMinQty,
+      priceAtMaxQty,
       allPricesSame,
     };
   }
@@ -149,13 +176,13 @@ export class PriceCalculatorService {
   private extrapolatePrice(
     quantityPerCpf: number,
     minQty: number,
-    maxPrice: number,
+    priceAtMinQty: number,
     priceTable: PriceTableV2,
     quantities: number[],
     allPricesSame: boolean,
   ): number {
     const slope = this.getExtrapolationSlope(priceTable, quantities, allPricesSame);
-    return maxPrice + slope * (quantityPerCpf - minQty);
+    return priceAtMinQty + slope * (quantityPerCpf - minQty);
   }
 
   /**
@@ -169,14 +196,18 @@ export class PriceCalculatorService {
   ): number {
     // Primeiro aplica o limite mínimo da tabela
     let finalPrice = Math.max(price, minPrice);
-    
+
     // Depois aplica o limite máximo (o menor entre maxPrice da tabela e customMaxPrice se fornecido)
-    const effectiveMaxPrice = customMaxPrice !== undefined 
+    const effectiveMaxPrice = customMaxPrice !== undefined
       ? customMaxPrice
       : maxPrice;
-    
+
     finalPrice = Math.min(finalPrice, effectiveMaxPrice);
-    
+
+    if (finalPrice !== price) {
+      this.logger.log('Price limits applied', { originalPrice: price, finalPrice, minPrice, maxPrice, customMaxPrice });
+    }
+
     return finalPrice;
   }
 
@@ -184,11 +215,12 @@ export class PriceCalculatorService {
    * Calcula preço quando quantidade está exatamente no mínimo
    */
   private calculatePriceAtMinimum(
-    maxPrice: number,
+    priceAtMinQty: number,
     minPrice: number,
+    maxPrice: number,
     customMaxPrice?: number,
   ): PriceCalculationResult {
-    const finalPrice = this.applyPriceLimits(maxPrice, maxPrice, minPrice, customMaxPrice);
+    const finalPrice = this.applyPriceLimits(priceAtMinQty, maxPrice, minPrice, customMaxPrice);
     return PriceCalculatorService.successResult(finalPrice);
   }
 
@@ -202,20 +234,24 @@ export class PriceCalculatorService {
     priceTable: PriceTableV2,
     customMaxPrice?: number,
   ): PriceCalculationResult {
-    const { minQty, maxPrice, minPrice, quantities, allPricesSame } = tableData;
+    const { minQty, maxPrice, minPrice, priceAtMinQty, quantities, allPricesSame } = tableData;
 
     if (allPricesSame && quantities.length === 2 && customMaxPrice === undefined) {
-      return PriceCalculatorService.successResult(maxPrice);
+      this.logger.log('Using priceAtMinQty for same-price table with 2 quantities', { priceAtMinQty });
+      return PriceCalculatorService.successResult(priceAtMinQty);
     }
 
+    const slope = this.getExtrapolationSlope(priceTable, quantities, allPricesSame);
     const extrapolatedPrice = this.extrapolatePrice(
       quantityPerCpf,
       minQty,
-      maxPrice,
+      priceAtMinQty,
       priceTable,
       quantities,
       allPricesSame,
     );
+
+    this.logger.log('Extrapolation result', { quantityPerCpf, minQty, slope, extrapolatedPrice });
 
     // Aplica limites incluindo customMaxPrice (extrapolação funciona para qualquer cpfCount)
     const finalPrice = this.applyPriceLimits(extrapolatedPrice, maxPrice, minPrice, customMaxPrice);
@@ -237,10 +273,12 @@ export class PriceCalculatorService {
     quantities: number[],
     priceTable: PriceTableV2,
     minPrice: number,
+    maxPrice: number,
     customMaxPrice?: number,
   ): PriceCalculationResult {
     const points = InterpolationUtil.findInterpolationPoints(quantityPerCpf, quantities);
     if (!points) {
+      this.logger.warn('Could not find interpolation points', { quantityPerCpf });
       return PriceCalculatorService.errorResult(
         'Não foi possível encontrar pontos para interpolação',
       );
@@ -250,11 +288,13 @@ export class PriceCalculatorService {
     const upperPrice = priceTable[points.upper];
 
     if (lowerPrice === undefined || upperPrice === undefined) {
+      this.logger.warn('Interpolation prices not found', { lowerQty: points.lower, upperQty: points.upper });
       return PriceCalculatorService.errorResult('Preços para interpolação não encontrados');
     }
 
     if (lowerPrice === upperPrice) {
-      const finalPrice = this.applyPriceLimits(lowerPrice, lowerPrice, minPrice, customMaxPrice);
+      this.logger.log('Interpolation points have same price', { price: lowerPrice });
+      const finalPrice = this.applyPriceLimits(lowerPrice, maxPrice, minPrice, customMaxPrice);
       return PriceCalculatorService.successResult(finalPrice);
     }
 
@@ -266,9 +306,15 @@ export class PriceCalculatorService {
       upperPrice,
     );
 
-    // Usa maxPrice da tabela (que é o preço para a menor quantidade)
-    const minQty = quantities[0];
-    const maxPrice = minQty !== undefined ? (priceTable[minQty] ?? lowerPrice) : lowerPrice;
+    this.logger.log('Interpolation result', {
+      quantityPerCpf,
+      lowerQty: points.lower,
+      lowerPrice,
+      upperQty: points.upper,
+      upperPrice,
+      interpolatedPrice,
+    });
+
     const finalPrice = this.applyPriceLimits(interpolatedPrice, maxPrice, minPrice, customMaxPrice);
     return PriceCalculatorService.successResult(finalPrice);
   }
@@ -282,6 +328,8 @@ export class PriceCalculatorService {
     priceTable: PriceTableV2,
     options?: CalculatePriceOptions,
   ): PriceCalculationResult {
+    this.logger.log('Calculating price', { quantity, cpfCount, options });
+
     const validationError = this.validateInputs(quantity, cpfCount, priceTable);
     if (validationError) {
       return validationError;
@@ -294,33 +342,41 @@ export class PriceCalculatorService {
     const tableData = tableDataOrError;
 
     const quantityPerCpf = quantity / cpfCount;
-    const { minQty, maxQty, minPrice } = tableData;
+    const { minQty, maxQty, minPrice, maxPrice, priceAtMinQty, priceAtMaxQty } = tableData;
+
+    this.logger.log('Calculated quantityPerCpf', { quantityPerCpf, minQty, maxQty });
+
+    let result: PriceCalculationResult;
 
     if (quantityPerCpf === minQty) {
-      return this.calculatePriceAtMinimum(tableData.maxPrice, tableData.minPrice, options?.customMaxPrice);
-    }
-
-    if (quantityPerCpf < minQty) {
-      return this.calculatePriceBelowMinimum(
+      this.logger.log('Quantity at minimum, using priceAtMinQty', { priceAtMinQty });
+      result = this.calculatePriceAtMinimum(priceAtMinQty, minPrice, maxPrice, options?.customMaxPrice);
+    } else if (quantityPerCpf < minQty) {
+      this.logger.log('Quantity below minimum, using extrapolation', { quantityPerCpf, minQty });
+      result = this.calculatePriceBelowMinimum(
         quantityPerCpf,
         cpfCount,
         tableData,
         priceTable,
         options?.customMaxPrice,
       );
+    } else if (quantityPerCpf >= maxQty) {
+      this.logger.log('Quantity above maximum, using priceAtMaxQty', { quantityPerCpf, maxQty, priceAtMaxQty });
+      result = this.calculatePriceAboveMaximum(priceAtMaxQty);
+    } else {
+      this.logger.log('Quantity in range, using interpolation', { quantityPerCpf, minQty, maxQty });
+      result = this.calculatePriceInRange(
+        quantityPerCpf,
+        tableData.quantities,
+        priceTable,
+        minPrice,
+        maxPrice,
+        options?.customMaxPrice,
+      );
     }
 
-    if (quantityPerCpf >= maxQty) {
-      return this.calculatePriceAboveMaximum(minPrice);
-    }
-
-    return this.calculatePriceInRange(
-      quantityPerCpf,
-      tableData.quantities,
-      priceTable,
-      minPrice,
-      options?.customMaxPrice,
-    );
+    this.logger.log('Price calculation complete', { quantity, cpfCount, result });
+    return result;
   }
 }
 
