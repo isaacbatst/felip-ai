@@ -52,6 +52,9 @@ function loadConfig(): Config {
     ? `tdlib-commands-${userId}`
     : process.env.QUEUE_TDLIB_COMMANDS || 'tdlib-commands';
 
+  console.log(`[LOG] Database directory: ${process.env.TELEGRAM_DATABASE_DIRECTORY}`);
+  console.log(`[LOG] Files directory: ${process.env.TELEGRAM_FILES_DIRECTORY}`);
+
   return {
     telegram: {
       apiId: Number.parseInt(apiId, 10),
