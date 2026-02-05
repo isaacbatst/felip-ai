@@ -239,6 +239,29 @@ export class TelegramUserClient {
   }
 
   /**
+   * Creates a private chat with a user
+   * Returns existing chat if one exists, creates it if it doesn't
+   */
+  async createPrivateChat(userId: number, force: boolean = false): Promise<{ id: number }> {
+    const client = this.ensureClient();
+    const result = await client.invoke({
+      _: 'createPrivateChat',
+      user_id: userId,
+      force,
+    });
+    return result as { id: number };
+  }
+
+  /**
+   * Sends a message to a user by their user ID
+   * Creates the private chat first if it doesn't exist
+   */
+  async sendMessageToUser(userId: number, text: string, replyToMessageId?: number): Promise<unknown> {
+    const chat = await this.createPrivateChat(userId, true);
+    return this.sendMessage(chat.id, text, replyToMessageId);
+  }
+
+  /**
    * Obtém lista de chats
    */
   async getChats(chatList: { _: string }, limit: number): Promise<unknown> {

@@ -126,6 +126,7 @@ describe('TelegramPurchaseHandler', () => {
 
     mockTdlibUserClient = {
       sendMessage: jest.fn().mockResolvedValue(undefined),
+      sendMessageToUser: jest.fn().mockResolvedValue(undefined),
     } as unknown as jest.Mocked<TelegramUserClientProxyService>;
 
     mockCounterOfferSettingsRepository = {
@@ -424,10 +425,18 @@ describe('TelegramPurchaseHandler', () => {
         const senderId = 999;
         await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF aceito 15', senderId);
 
-        // Should send calculated price in group AND counter offer in private
-        expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledTimes(2);
+        // Should send calculated price in group via sendMessage
+        expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledTimes(1);
         const groupMessage = mockTdlibUserClient.sendMessage.mock.calls[0][2];
         expect(groupMessage).toBe('20');
+
+        // Should send counter offer in private via sendMessageToUser
+        expect(mockTdlibUserClient.sendMessageToUser).toHaveBeenCalledTimes(1);
+        expect(mockTdlibUserClient.sendMessageToUser).toHaveBeenCalledWith(
+          telegramUserId,
+          senderId,
+          expect.any(String),
+        );
       });
 
       it('should not send message when user accepts price lower than calculated and counter offer is disabled', async () => {

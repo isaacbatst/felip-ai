@@ -61,8 +61,10 @@ export class TelegramUserMessageProcessor {
 
       // Get telegramUserId via HTTP to check for self-messages
       try {
-        const telegramUserId = await this.telegramUserClient.getUserId(userIdStr) as number | null;
-        
+        const telegramUserId = (await this.telegramUserClient.getUserId(userIdStr)) as
+          | number
+          | null;
+
         // Check if this is a self-message
         if (senderId === telegramUserId) {
           this.logger.warn('Self message received, ignoring...', {
@@ -76,7 +78,10 @@ export class TelegramUserMessageProcessor {
         // Not a self-message, process it directly
         await this.processMessageDirectly(queuedMessage);
       } catch (error) {
-        this.logger.error('Error getting telegramUserId for self-message check', { error, userId: userIdStr });
+        this.logger.error('Error getting telegramUserId for self-message check', {
+          error,
+          userId: userIdStr,
+        });
         // If we can't get userId, process anyway (better than blocking)
         await this.processMessageDirectly(queuedMessage);
       }
@@ -130,35 +135,32 @@ export class TelegramUserMessageProcessor {
         return;
       }
 
-      // Get loggedInUserId from repository
-      // First try isLoggedIn which returns loggedInUserId if user is logged in
-      let loggedInUserId = await this.conversationRepository.isLoggedIn(telegramUserId);
-      
-      // If not found, try to get session by telegramUserId (might be in progress)
-      if (!loggedInUserId) {
-        const session = await this.conversationRepository.getSessionByTelegramUserId(telegramUserId);
-        if (session?.loggedInUserId) {
-          loggedInUserId = session.loggedInUserId;
-        }
-      }
+      const conversation = await this.conversationRepository.getConversationByTelegramUserId(telegramUserId);
 
-      if (!loggedInUserId) {
-        this.logger.warn(`No loggedInUserId found for telegramUserId: ${telegramUserId}, ignoring message...`);
+      if (!conversation) {
+        this.logger.warn(
+          `No loggedInUserId found for telegramUserId: ${telegramUserId}, ignoring message...`,
+        );
         return;
       }
 
       // Check if bot is enabled for this user (default is true if no record exists)
-      const loggedInUserIdStr = loggedInUserId.toString();
+      const loggedInUserIdStr = conversation.loggedInUserId.toString();
       const isBotEnabled = await this.botStatusRepository.getBotStatus(loggedInUserIdStr);
       if (!isBotEnabled) {
-        this.logger.warn(`Bot is disabled for loggedInUserId ${loggedInUserId}, ignoring message...`);
+        this.logger.warn(
+          `Bot is disabled for loggedInUserId ${conversation.loggedInUserId}, ignoring message...`,
+        );
         return;
       }
 
       // Check authorization (subscription or whitelist based on AUTHORIZATION_MODE)
-      const isAuthorized = await this.hybridAuthorizationService.isAuthorized(loggedInUserIdStr);
+      console.log('loggedInPhoneNumber', conversation.phoneNumber);
+      const isAuthorized = await this.hybridAuthorizationService.isAuthorized(loggedInUserIdStr, conversation.phoneNumber);
       if (!isAuthorized) {
-        this.logger.warn(`User ${loggedInUserId} not authorized (no active subscription), ignoring message...`);
+        this.logger.warn(
+          `User ${conversation.loggedInUserId} not authorized (no active subscription), ignoring message...`,
+        );
         return;
       }
 
@@ -166,10 +168,12 @@ export class TelegramUserMessageProcessor {
       // Use loggedInUserId to get active groups
       const activeGroups = await this.activeGroupsRepository.getActiveGroups(loggedInUserIdStr);
       if (activeGroups === null || !activeGroups.includes(chatId)) {
-        this.logger.warn(`Group ${chatId} is not activated for loggedInUserId ${loggedInUserId}, ignoring message...`);
+        this.logger.warn(
+          `Group ${chatId} is not activated for loggedInUserId ${conversation.loggedInUserId}, ignoring message...`,
+        );
         return;
       }
-      
+
       // Extract text content
       let text = '';
       let contentType = 'unknown';
@@ -197,7 +201,14 @@ export class TelegramUserMessageProcessor {
         // Pass finalText which includes original message context if this is a reply
         // senderId is the user who sent the message (for counter offer feature)
         if (chatId && messageId !== undefined) {
-          await this.purchaseHandler.handlePurchase(loggedInUserIdStr, userIdStr, chatId, messageId, text, senderId);
+          await this.purchaseHandler.handlePurchase(
+            loggedInUserIdStr,
+            userIdStr,
+            chatId,
+            messageId,
+            text,
+            senderId,
+          );
         }
       } else {
         logData.content = '(non-text message)';
@@ -209,4 +220,3 @@ export class TelegramUserMessageProcessor {
     }
   }
 }
-

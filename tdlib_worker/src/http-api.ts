@@ -4,6 +4,7 @@ import { TelegramUserClient } from './telegram-user-client';
 export interface TdlibCommandRequest {
   type:
     | 'sendMessage'
+    | 'sendMessageToUser'
     | 'login'
     | 'getChats'
     | 'getChat'
@@ -84,6 +85,14 @@ export class HttpApi {
           replyToMessageId?: number;
         };
         return await this.client.sendMessage(chatId, text, replyToMessageId);
+      }
+      case 'sendMessageToUser': {
+        const { userId, text, replyToMessageId } = payload as {
+          userId: number;
+          text: string;
+          replyToMessageId?: number;
+        };
+        return await this.client.sendMessageToUser(userId, text, replyToMessageId);
       }
       case 'getChats': {
         const { chatList, limit } = payload as {

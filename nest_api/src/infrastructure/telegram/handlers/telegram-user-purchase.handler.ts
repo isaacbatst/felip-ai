@@ -1,12 +1,11 @@
-import { TelegramUserClientProxyService } from '@/infrastructure/tdlib/telegram-user-client-proxy.service';
-import { MilesProgramRepository } from '@/infrastructure/persistence/miles-program.repository';
 import { CounterOfferSettingsRepository } from '@/infrastructure/persistence/counter-offer-settings.repository';
+import { MilesProgramRepository } from '@/infrastructure/persistence/miles-program.repository';
+import { TelegramUserClientProxyService } from '@/infrastructure/tdlib/telegram-user-client-proxy.service';
 import { Injectable, Logger } from '@nestjs/common';
+import { buildCallToActionMessage, buildCounterOfferMessage } from '../../../domain/constants/counter-offer-templates';
 import { MessageParser, type ProgramOption } from '../../../domain/interfaces/message-parser.interface';
 import { PriceTableProvider } from '../../../domain/interfaces/price-table-provider.interface';
 import { PriceCalculatorService } from '../../../domain/services/price-calculator.service';
-import { PurchaseValidatorService } from '../../../domain/services/purchase-validator.service';
-import { buildCounterOfferMessage, buildCallToActionMessage } from '../../../domain/constants/counter-offer-templates';
 
 /**
  * Handler responsável por processar requisições de compra de milhas
@@ -20,7 +19,6 @@ export class TelegramPurchaseHandler {
   constructor(
     private readonly messageParser: MessageParser,
     private readonly priceTableProvider: PriceTableProvider,
-    private readonly purchaseValidator: PurchaseValidatorService,
     private readonly priceCalculator: PriceCalculatorService,
     private readonly tdlibUserClient: TelegramUserClientProxyService,
     private readonly counterOfferSettingsRepository: CounterOfferSettingsRepository,
@@ -200,7 +198,7 @@ export class TelegramPurchaseHandler {
         offeredPrice: priceResult.price,
       });
 
-      await this.tdlibUserClient.sendMessage(telegramUserId, senderId, message);
+      await this.tdlibUserClient.sendMessageToUser(telegramUserId, senderId, message);
 
       return;
     }
@@ -250,7 +248,7 @@ export class TelegramPurchaseHandler {
       templateId: counterOfferSettings.messageTemplateId,
     });
 
-    await this.tdlibUserClient.sendMessage(telegramUserId, senderId, message);
+    await this.tdlibUserClient.sendMessageToUser(telegramUserId, senderId, message);
   }
 
   /**

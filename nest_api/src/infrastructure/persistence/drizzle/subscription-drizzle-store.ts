@@ -1,5 +1,5 @@
 import { Injectable, Inject, Logger } from '@nestjs/common';
-import { eq, and, lt, lte } from 'drizzle-orm';
+import { eq, and, lt, lte, gte } from 'drizzle-orm';
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import {
   SubscriptionRepository,
@@ -205,7 +205,7 @@ export class SubscriptionDrizzleStore extends SubscriptionRepository {
       .where(
         and(
           lte(subscriptions.currentPeriodEnd, futureDate),
-          lte(now, subscriptions.currentPeriodEnd),
+          gte(subscriptions.currentPeriodEnd, now),
           eq(subscriptions.status, 'trialing'),
         ),
       );
