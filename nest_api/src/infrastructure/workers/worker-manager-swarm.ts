@@ -190,7 +190,7 @@ export class WorkerManagerSwarm extends WorkerManager implements OnModuleDestroy
           Parallelism: 1,
           Delay: 10000000000, // 10 seconds
           FailureAction: 'rollback',
-          Order: 'start-first',
+          Order: 'stop-first',
         },
         EndpointSpec: {
           Mode: 'vip',
