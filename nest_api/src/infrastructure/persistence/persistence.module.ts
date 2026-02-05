@@ -24,6 +24,12 @@ import { CounterOfferSettingsRepository } from "@/infrastructure/persistence/cou
 import { CounterOfferSettingsDrizzleStore } from "@/infrastructure/persistence/drizzle/counter-offer-settings-drizzle-store";
 import { PromptConfigRepository } from "@/infrastructure/persistence/prompt-config.repository";
 import { PromptConfigDrizzleStore } from "@/infrastructure/persistence/drizzle/prompt-config-drizzle-store";
+import { SubscriptionPlanRepository } from "@/infrastructure/persistence/subscription-plan.repository";
+import { SubscriptionPlanDrizzleStore } from "@/infrastructure/persistence/drizzle/subscription-plan-drizzle-store";
+import { SubscriptionRepository } from "@/infrastructure/persistence/subscription.repository";
+import { SubscriptionDrizzleStore } from "@/infrastructure/persistence/drizzle/subscription-drizzle-store";
+import { SubscriptionTokenRepository } from "@/infrastructure/persistence/subscription-token.repository";
+import { SubscriptionTokenDrizzleStore } from "@/infrastructure/persistence/drizzle/subscription-token-drizzle-store";
 
 @Module({
   imports: [DatabaseModule],
@@ -76,6 +82,18 @@ import { PromptConfigDrizzleStore } from "@/infrastructure/persistence/drizzle/p
       provide: PromptConfigRepository,
       useClass: PromptConfigDrizzleStore,
     },
+    {
+      provide: SubscriptionPlanRepository,
+      useClass: SubscriptionPlanDrizzleStore,
+    },
+    {
+      provide: SubscriptionRepository,
+      useClass: SubscriptionDrizzleStore,
+    },
+    {
+      provide: SubscriptionTokenRepository,
+      useClass: SubscriptionTokenDrizzleStore,
+    },
   ],
   exports: [
     ConversationRepository,
@@ -90,6 +108,9 @@ import { PromptConfigDrizzleStore } from "@/infrastructure/persistence/drizzle/p
     MilesProgramRepository,
     CounterOfferSettingsRepository,
     PromptConfigRepository,
+    SubscriptionPlanRepository,
+    SubscriptionRepository,
+    SubscriptionTokenRepository,
   ],
 })
 export class PersistenceModule {}

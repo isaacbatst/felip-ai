@@ -44,9 +44,9 @@ export class TelegramPhoneNumberHandler {
     // Check if phone number is in whitelist
     if (!this.phoneWhitelist.isAllowed(normalizedPhone)) {
       this.logger.warn('Phone number not allowed, clearing session', { phoneNumber });
-      const session = await this.conversationRepository.getSessionByTelegramUserId(userId);
+      const session = await this.conversationRepository.getConversationByTelegramUserId(userId);
       if (session) {
-        await this.conversationRepository.deleteSession(session.requestId);
+        await this.conversationRepository.deleteConversation(session.requestId);
       }
       await this.botService.bot.api.sendMessage(
         chatId,

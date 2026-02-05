@@ -28,6 +28,10 @@ import { AuthCodeDeduplicationService } from './telegram/auth-code-deduplication
 import { AuthController } from './http/auth.controller';
 import { DashboardController } from './http/dashboard.controller';
 import { LandingController } from './http/landing.controller';
+import { SubscriptionController } from './http/subscription.controller';
+import { SubscriptionService } from './subscription/subscription.service';
+import { SubscriptionAuthorizationService } from './subscription/subscription-authorization.service';
+import { HybridAuthorizationService } from './subscription/hybrid-authorization.service';
 
 /**
  * Module responsável por serviços de infraestrutura
@@ -35,7 +39,7 @@ import { LandingController } from './http/landing.controller';
  */
 @Module({
   imports: [DomainModule, PersistenceModule, QueueModule, WorkersModule],
-  controllers: [LandingController, AuthController, DashboardController],
+  controllers: [LandingController, AuthController, DashboardController, SubscriptionController],
   providers: [
     AppConfigService,
     OpenAIService,
@@ -63,6 +67,10 @@ import { LandingController } from './http/landing.controller';
     TelegramUserQueueProcessorRabbitMQ,
     TelegramBotQueueProcessorRabbitMQ,
     TdlibUpdatesWorkerRabbitMQ,
+    // Subscription services
+    SubscriptionService,
+    SubscriptionAuthorizationService,
+    HybridAuthorizationService,
   ],
   exports: [
     MessageParser,
@@ -71,6 +79,9 @@ import { LandingController } from './http/landing.controller';
     PhoneWhitelistService,
     TelegramBotMessageHandler,
     TelegramUserMessageProcessor,
+    SubscriptionService,
+    SubscriptionAuthorizationService,
+    HybridAuthorizationService,
   ],
 })
 export class InfrastructureModule {}

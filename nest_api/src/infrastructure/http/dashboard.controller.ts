@@ -22,6 +22,8 @@ import { TelegramBotService } from '@/infrastructure/telegram/telegram-bot-servi
 import { TelegramUserClientProxyService } from '@/infrastructure/tdlib/telegram-user-client-proxy.service';
 import { ConversationRepository } from '@/infrastructure/persistence/conversation.repository';
 import { AppConfigService } from '@/config/app.config';
+import { SubscriptionTokenRepository } from '@/infrastructure/persistence/subscription-token.repository';
+import { SubscriptionService } from '@/infrastructure/subscription/subscription.service';
 import { 
   COUNTER_OFFER_TEMPLATES, 
   COUNTER_OFFER_TEMPLATE_DESCRIPTIONS, 
@@ -146,6 +148,36 @@ interface UpdateBotStatusDto {
   isEnabled: boolean;
 }
 
+interface SubscriptionLinkResponse {
+  url: string;
+  expiresAt: string;
+}
+
+interface SubscriptionStatusResponse {
+  subscription: {
+    id: number;
+    status: string;
+    startDate: string;
+    currentPeriodStart: string;
+    currentPeriodEnd: string;
+    nextBillingDate: string | null;
+    trialUsed: boolean;
+    extraGroups: number;
+    plan: {
+      id: number;
+      name: string;
+      displayName: string;
+      priceInCents: number;
+      groupLimit: number;
+    };
+    totalGroupLimit: number;
+    activeGroupsCount: number;
+    daysRemaining: number;
+  } | null;
+  subscriptionPageUrl: string | null;
+  trialUsed: boolean;
+}
+
 /**
  * HTTP Controller for web-based dashboard
  * Handles token validation and user data management
@@ -165,6 +197,8 @@ export class DashboardController {
     private readonly telegramUserClient: TelegramUserClientProxyService,
     private readonly conversationRepository: ConversationRepository,
     private readonly appConfig: AppConfigService,
+    private readonly subscriptionTokenRepository: SubscriptionTokenRepository,
+    private readonly subscriptionService: SubscriptionService,
   ) {}
 
   /**
@@ -1053,6 +1087,164 @@ export class DashboardController {
     res.status(HttpStatus.OK).json({
       success: true,
     } satisfies ApiResponse);
+  }
+
+  // ============================================================================
+  // Subscription Management
+  // ============================================================================
+
+  /**
+   * GET /dashboard/:token/subscription - Get subscription status summary
+   */
+  @Get(':token/subscription')
+  async getSubscriptionStatus(
+    @Param('token') token: string,
+    @Res() res: Response,
+  ): Promise<void> {
+    const userId = await this.validateAndGetUserId(token, res);
+    if (!userId) return;
+
+    const subscription = await this.subscriptionService.getSubscription(userId);
+    const hasUsedTrial = await this.subscriptionService.hasUsedTrial(userId);
+
+    // Generate subscription page URL
+    let subscriptionPageUrl: string | null = null;
+    try {
+      const ttlMinutes = this.appConfig.getSubscriptionTokenTtlMinutes();
+      const { token: subscriptionToken } = await this.subscriptionTokenRepository.createToken(
+        userId,
+        ttlMinutes,
+      );
+      const baseUrl = this.appConfig.getAppBaseUrl();
+      subscriptionPageUrl = `${baseUrl}/subscription/${subscriptionToken}`;
+    } catch (error) {
+      this.logger.warn('Failed to generate subscription page URL', { error, userId });
+    }
+
+    if (!subscription) {
+      res.status(HttpStatus.OK).json({
+        success: true,
+        data: {
+          subscription: null,
+          subscriptionPageUrl,
+          trialUsed: hasUsedTrial,
+        },
+      } satisfies ApiResponse<SubscriptionStatusResponse>);
+      return;
+    }
+
+    const daysRemaining = await this.subscriptionService.getDaysRemaining(userId);
+    const activeGroups = await this.activeGroupsRepository.getActiveGroups(userId);
+    const activeGroupsCount = activeGroups?.length ?? 0;
+
+    res.status(HttpStatus.OK).json({
+      success: true,
+      data: {
+        subscription: {
+          id: subscription.id,
+          status: subscription.status,
+          startDate: subscription.startDate.toISOString(),
+          currentPeriodStart: subscription.currentPeriodStart.toISOString(),
+          currentPeriodEnd: subscription.currentPeriodEnd.toISOString(),
+          nextBillingDate: subscription.nextBillingDate?.toISOString() ?? null,
+          trialUsed: subscription.trialUsed,
+          extraGroups: subscription.extraGroups,
+          plan: {
+            id: subscription.plan.id,
+            name: subscription.plan.name,
+            displayName: subscription.plan.displayName,
+            priceInCents: subscription.plan.priceInCents,
+            groupLimit: subscription.plan.groupLimit,
+          },
+          totalGroupLimit: subscription.plan.groupLimit + subscription.extraGroups,
+          activeGroupsCount,
+          daysRemaining: daysRemaining ?? 0,
+        },
+        subscriptionPageUrl,
+        trialUsed: subscription.trialUsed,
+      },
+    } satisfies ApiResponse<SubscriptionStatusResponse>);
+  }
+
+  /**
+   * POST /dashboard/:token/subscription/generate-link - Generate subscription management link
+   */
+  @Post(':token/subscription/generate-link')
+  async generateSubscriptionLink(
+    @Param('token') token: string,
+    @Res() res: Response,
+  ): Promise<void> {
+    const userId = await this.validateAndGetUserId(token, res);
+    if (!userId) return;
+
+    const ttlMinutes = this.appConfig.getSubscriptionTokenTtlMinutes();
+    const { token: subscriptionToken, expiresAt } = await this.subscriptionTokenRepository.createToken(
+      userId,
+      ttlMinutes,
+    );
+
+    const baseUrl = this.appConfig.getAppBaseUrl();
+    const subscriptionUrl = `${baseUrl}/subscription/${subscriptionToken}`;
+
+    this.logger.log(`Generated subscription link for user ${userId}`);
+
+    res.status(HttpStatus.OK).json({
+      success: true,
+      data: {
+        url: subscriptionUrl,
+        expiresAt: expiresAt.toISOString(),
+      },
+    } satisfies ApiResponse<SubscriptionLinkResponse>);
+  }
+
+  /**
+   * POST /dashboard/:token/subscription/trial - Start a free trial
+   */
+  @Post(':token/subscription/trial')
+  async startTrial(
+    @Param('token') token: string,
+    @Res() res: Response,
+  ): Promise<void> {
+    const userId = await this.validateAndGetUserId(token, res);
+    if (!userId) return;
+
+    try {
+      const result = await this.subscriptionService.startTrial(userId);
+      const daysRemaining = await this.subscriptionService.getDaysRemaining(userId) ?? 0;
+
+      this.logger.log(`Trial started via dashboard for user ${userId}`);
+
+      res.status(HttpStatus.OK).json({
+        success: true,
+        data: {
+          subscription: {
+            id: result.subscription.id,
+            status: result.subscription.status,
+            plan: {
+              name: result.subscription.plan.name,
+              displayName: result.subscription.plan.displayName,
+            },
+            currentPeriodEnd: result.subscription.currentPeriodEnd.toISOString(),
+            daysRemaining,
+          },
+        },
+      } satisfies ApiResponse);
+    } catch (error) {
+      if (error instanceof Error && 'code' in error) {
+        const subscriptionError = error as { message: string; code: string };
+        res.status(HttpStatus.BAD_REQUEST).json({
+          success: false,
+          error: subscriptionError.message,
+        } satisfies ApiResponse);
+        return;
+      }
+
+      this.logger.error('Error starting trial', { error, userId });
+      res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
+        success: false,
+        error: 'Erro ao iniciar período de teste. Tente novamente.',
+      } satisfies ApiResponse);
+    }
   }
 
   // ============================================================================

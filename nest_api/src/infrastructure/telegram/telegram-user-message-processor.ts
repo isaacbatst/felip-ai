@@ -6,6 +6,7 @@ import { ActiveGroupsRepository } from '@/infrastructure/persistence/active-grou
 import { ConversationRepository } from '@/infrastructure/persistence/conversation.repository';
 import { BotStatusRepository } from '@/infrastructure/persistence/bot-status.repository';
 import { TdlibUpdateNewMessage } from '../tdlib/tdlib-update.types';
+import { HybridAuthorizationService } from '@/infrastructure/subscription/hybrid-authorization.service';
 
 /**
  * Processor responsável por processar mensagens da fila
@@ -21,6 +22,7 @@ export class TelegramUserMessageProcessor {
     private readonly telegramUserClient: TelegramUserClientProxyService,
     private readonly conversationRepository: ConversationRepository,
     private readonly botStatusRepository: BotStatusRepository,
+    private readonly hybridAuthorizationService: HybridAuthorizationService,
   ) {}
 
   /**
@@ -150,6 +152,13 @@ export class TelegramUserMessageProcessor {
       const isBotEnabled = await this.botStatusRepository.getBotStatus(loggedInUserIdStr);
       if (!isBotEnabled) {
         this.logger.warn(`Bot is disabled for loggedInUserId ${loggedInUserId}, ignoring message...`);
+        return;
+      }
+
+      // Check authorization (subscription or whitelist based on AUTHORIZATION_MODE)
+      const isAuthorized = await this.hybridAuthorizationService.isAuthorized(loggedInUserIdStr);
+      if (!isAuthorized) {
+        this.logger.warn(`User ${loggedInUserId} not authorized (no active subscription), ignoring message...`);
         return;
       }
 

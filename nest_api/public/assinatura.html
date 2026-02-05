@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Assinatura - Gerenciar Plano</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/public/output.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <script defer src="https://unpkg.com/alpinejs@3.13.3/dist/cdn.min.js"></script>
+</head>
+
+<body x-data="subscription()" x-init="init()" x-cloak class="font-sans bg-white md:bg-gradient-to-br md:from-primary md:to-secondary min-h-screen p-5 max-md:p-0">
+  <!-- Loading Overlay -->
+  <div class="fixed inset-0 bg-white/90 flex items-center justify-center z-[1000]" x-show="loading || errorMessage">
+    <div class="text-center" x-show="loading && !errorMessage">
+      <div class="spinner" style="width: 40px; height: 40px; border-width: 4px;"></div>
+      <p class="mt-4 text-gray-500">Carregando...</p>
+    </div>
+    <div class="text-center p-10" x-show="errorMessage">
+      <div class="mb-4"><i class="fa-solid fa-triangle-exclamation w-12 h-12 text-red-800"></i></div>
+      <h2 class="text-red-800 mb-2 text-lg font-semibold">Link Inválido</h2>
+      <p class="text-gray-500" x-text="errorMessage"></p>
+    </div>
+  </div>
+
+  <div class="bg-white p-8 rounded-2xl shadow-2xl max-w-2xl mx-auto max-md:p-4 max-md:rounded-none max-md:shadow-none" x-show="!loading && !errorMessage">
+    <!-- Header -->
+    <div class="flex justify-between items-center mb-6 pb-5 border-b-2 border-gray-100">
+      <h1 class="text-gray-800 text-2xl font-semibold max-md:text-xl">
+        <i class="fa-solid fa-credit-card mr-2 text-primary"></i>
+        Assinatura
+      </h1>
+    </div>
+
+    <!-- No Subscription State -->
+    <template x-if="!subscription">
+      <div>
+        <!-- Trial CTA -->
+        <div class="bg-gradient-to-br from-primary/10 to-secondary/10 border-2 border-primary/20 rounded-2xl p-6 mb-6 text-center">
+          <div class="w-16 h-16 mx-auto mb-4 rounded-full bg-primary/20 flex items-center justify-center">
+            <i class="fa-solid fa-gift text-primary text-2xl"></i>
+          </div>
+          <h2 class="text-xl font-bold text-gray-800 mb-2">Comece seu Período de Teste</h2>
+          <p class="text-gray-600 mb-4">Experimente todas as funcionalidades gratuitamente por 7 dias.</p>
+
+          <ul class="text-left mb-6 space-y-2 max-w-xs mx-auto">
+            <li class="flex items-center gap-2 text-gray-700">
+              <i class="fa-solid fa-check text-emerald-500"></i>
+              <span>3 grupos ativos</span>
+            </li>
+            <li class="flex items-center gap-2 text-gray-700">
+              <i class="fa-solid fa-check text-emerald-500"></i>
+              <span>Todas as funcionalidades</span>
+            </li>
+            <li class="flex items-center gap-2 text-gray-700">
+              <i class="fa-solid fa-check text-emerald-500"></i>
+              <span>Configuração via dashboard</span>
+            </li>
+            <li class="flex items-center gap-2 text-gray-700">
+              <i class="fa-solid fa-check text-emerald-500"></i>
+              <span>Sem compromisso</span>
+            </li>
+          </ul>
+
+          <button
+            @click="startTrial()"
+            :disabled="startingTrial || trialUsed"
+            class="w-full max-w-xs px-6 py-4 bg-gradient-to-r from-primary to-secondary text-white font-semibold rounded-xl transition-all hover:shadow-lg hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:shadow-none">
+            <span x-show="startingTrial" class="spinner mr-2" style="width: 16px; height: 16px;"></span>
+            <span x-show="!startingTrial && !trialUsed">
+              <i class="fa-solid fa-rocket mr-2"></i>
+              Começar Teste Gratuito
+            </span>
+            <span x-show="trialUsed && !startingTrial">
+              <i class="fa-solid fa-times-circle mr-2"></i>
+              Teste já utilizado
+            </span>
+          </button>
+        </div>
+
+        <!-- Plans Preview (for future slices) -->
+        <div class="border-t-2 border-gray-100 pt-6">
+          <h3 class="text-lg font-semibold text-gray-800 mb-4 text-center">Planos Disponíveis</h3>
+          <div class="grid gap-4 md:grid-cols-3">
+            <template x-for="plan in plans" :key="plan.id">
+              <div class="border-2 border-gray-200 rounded-xl p-4 hover:border-primary/50 transition-all">
+                <h4 class="font-bold text-gray-800" x-text="plan.displayName"></h4>
+                <p class="text-2xl font-bold text-primary my-2">
+                  R$ <span x-text="(plan.priceInCents / 100).toFixed(0)"></span>
+                  <span class="text-sm font-normal text-gray-500">/mês</span>
+                </p>
+                <p class="text-sm text-gray-600" x-text="`${plan.groupLimit} grupos ativos`"></p>
+                <button disabled class="w-full mt-4 px-4 py-2 bg-gray-100 text-gray-400 rounded-lg cursor-not-allowed">
+                  Em breve
+                </button>
+              </div>
+            </template>
+          </div>
+        </div>
+      </div>
+    </template>
+
+    <!-- Active Subscription State -->
+    <template x-if="subscription">
+      <div>
+        <!-- Status Card -->
+        <div class="border-2 rounded-2xl p-6 mb-6"
+          :class="{
+            'border-emerald-200 bg-emerald-50': subscription.status === 'active',
+            'border-amber-200 bg-amber-50': subscription.status === 'trialing',
+            'border-red-200 bg-red-50': subscription.status === 'canceled' || subscription.status === 'expired',
+            'border-orange-200 bg-orange-50': subscription.status === 'past_due'
+          }">
+
+          <div class="flex items-start justify-between mb-4">
+            <div>
+              <div class="flex items-center gap-2 mb-1">
+                <span class="text-lg font-bold text-gray-800" x-text="subscription.plan.displayName"></span>
+                <span class="px-2 py-0.5 rounded-full text-xs font-semibold"
+                  :class="{
+                    'bg-emerald-200 text-emerald-800': subscription.status === 'active',
+                    'bg-amber-200 text-amber-800': subscription.status === 'trialing',
+                    'bg-red-200 text-red-800': subscription.status === 'canceled' || subscription.status === 'expired',
+                    'bg-orange-200 text-orange-800': subscription.status === 'past_due'
+                  }"
+                  x-text="getStatusLabel(subscription.status)">
+                </span>
+              </div>
+              <p class="text-gray-600 text-sm" x-text="subscription.plan.priceInCents === 0 ? 'Gratuito' : `R$ ${(subscription.plan.priceInCents / 100).toFixed(2)}/mês`"></p>
+            </div>
+            <div class="w-12 h-12 rounded-full flex items-center justify-center"
+              :class="{
+                'bg-emerald-200 text-emerald-600': subscription.status === 'active',
+                'bg-amber-200 text-amber-600': subscription.status === 'trialing',
+                'bg-red-200 text-red-600': subscription.status === 'canceled' || subscription.status === 'expired',
+                'bg-orange-200 text-orange-600': subscription.status === 'past_due'
+              }">
+              <i class="fa-solid text-xl"
+                :class="{
+                  'fa-check': subscription.status === 'active',
+                  'fa-clock': subscription.status === 'trialing',
+                  'fa-times': subscription.status === 'canceled' || subscription.status === 'expired',
+                  'fa-exclamation': subscription.status === 'past_due'
+                }"></i>
+            </div>
+          </div>
+
+          <!-- Usage Stats -->
+          <div class="grid grid-cols-2 gap-4 mb-4">
+            <div class="bg-white/50 rounded-xl p-3">
+              <p class="text-xs text-gray-500 mb-1">Grupos Ativos</p>
+              <p class="text-lg font-bold text-gray-800">
+                <span x-text="subscription.activeGroupsCount"></span>
+                <span class="text-gray-400 font-normal">/</span>
+                <span x-text="subscription.totalGroupLimit"></span>
+              </p>
+            </div>
+            <div class="bg-white/50 rounded-xl p-3">
+              <p class="text-xs text-gray-500 mb-1" x-text="subscription.status === 'trialing' ? 'Dias Restantes' : 'Próxima Cobrança'"></p>
+              <p class="text-lg font-bold text-gray-800" x-text="subscription.status === 'trialing' ? subscription.daysRemaining + ' dias' : formatDate(subscription.nextBillingDate)"></p>
+            </div>
+          </div>
+
+          <!-- Trial Warning -->
+          <template x-if="subscription.status === 'trialing' && subscription.daysRemaining <= 3">
+            <div class="bg-amber-100 border border-amber-300 rounded-lg p-3 flex items-center gap-2">
+              <i class="fa-solid fa-exclamation-triangle text-amber-600"></i>
+              <p class="text-sm text-amber-800">
+                Seu período de teste expira em <strong x-text="subscription.daysRemaining"></strong> dias.
+              </p>
+            </div>
+          </template>
+
+          <!-- Expired Trial -->
+          <template x-if="subscription.status === 'expired'">
+            <div class="bg-red-100 border border-red-300 rounded-lg p-3 flex items-center gap-2">
+              <i class="fa-solid fa-times-circle text-red-600"></i>
+              <p class="text-sm text-red-800">
+                Seu período de teste expirou. Assine um plano para continuar usando.
+              </p>
+            </div>
+          </template>
+        </div>
+
+        <!-- Features List -->
+        <div class="border-2 border-gray-200 rounded-xl p-5 mb-6">
+          <h3 class="font-semibold text-gray-800 mb-3 flex items-center gap-2">
+            <i class="fa-solid fa-list-check text-primary"></i>
+            Recursos do Plano
+          </h3>
+          <ul class="space-y-2">
+            <template x-for="feature in subscription.plan.features || []" :key="feature">
+              <li class="flex items-center gap-2 text-gray-700">
+                <i class="fa-solid fa-check text-emerald-500"></i>
+                <span x-text="feature"></span>
+              </li>
+            </template>
+          </ul>
+        </div>
+
+        <!-- Subscription Details -->
+        <div class="border-2 border-gray-200 rounded-xl p-5">
+          <h3 class="font-semibold text-gray-800 mb-3 flex items-center gap-2">
+            <i class="fa-solid fa-info-circle text-primary"></i>
+            Detalhes da Assinatura
+          </h3>
+          <div class="space-y-2 text-sm">
+            <div class="flex justify-between">
+              <span class="text-gray-500">Início</span>
+              <span class="text-gray-800" x-text="formatDate(subscription.startDate)"></span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-gray-500">Período Atual</span>
+              <span class="text-gray-800" x-text="`${formatDate(subscription.currentPeriodStart)} - ${formatDate(subscription.currentPeriodEnd)}`"></span>
+            </div>
+            <template x-if="subscription.nextBillingDate">
+              <div class="flex justify-between">
+                <span class="text-gray-500">Próxima Cobrança</span>
+                <span class="text-gray-800" x-text="formatDate(subscription.nextBillingDate)"></span>
+              </div>
+            </template>
+          </div>
+        </div>
+      </div>
+    </template>
+
+    <!-- Toast Notification -->
+    <div class="fixed bottom-[100px] left-1/2 -translate-x-1/2 px-6 py-3 rounded-3xl text-sm z-[1000] text-white transition-all duration-300"
+      :class="{
+        'translate-y-[100px] opacity-0': !toast.visible,
+        'translate-y-0 opacity-100': toast.visible,
+        'bg-gray-800': !toast.type || (toast.type !== 'success' && toast.type !== 'error'),
+        'bg-emerald-500': toast.type === 'success',
+        'bg-red-500': toast.type === 'error'
+      }"
+      x-text="toast.message">
+    </div>
+  </div>
+
+  <script>
+    function subscription() {
+      return {
+        // State
+        loading: true,
+        errorMessage: null,
+        subscription: null,
+        plans: [],
+        trialUsed: false,
+        startingTrial: false,
+
+        // Toast
+        toast: { visible: false, message: '', type: 'success' },
+
+        // Computed
+        get token() {
+          const parts = window.location.pathname.split('/');
+          return parts[parts.length - 1];
+        },
+
+        // Initialization
+        async init() {
+          try {
+            // Validate token
+            const tokenRes = await fetch(`/subscription/${this.token}/data`);
+            const tokenData = await tokenRes.json();
+
+            if (!tokenData.success) {
+              if (tokenData.error === 'token_not_found' || tokenData.error === 'token_expired') {
+                this.errorMessage = 'Este link expirou ou é inválido. Por favor, solicite um novo link no bot ou dashboard.';
+              } else {
+                this.errorMessage = tokenData.error || 'Erro desconhecido';
+              }
+              return;
+            }
+
+            this.subscription = tokenData.data.subscription;
+            this.trialUsed = this.subscription?.trialUsed ?? false;
+
+            // Fetch available plans
+            await this.fetchPlans();
+
+            this.loading = false;
+          } catch (error) {
+            console.error('Initialization error:', error);
+            this.errorMessage = 'Erro ao carregar dados. Tente novamente.';
+          }
+        },
+
+        async fetchPlans() {
+          try {
+            const res = await fetch(`/subscription/${this.token}/plans`);
+            const data = await res.json();
+            if (data.success) {
+              this.plans = data.data.plans;
+            }
+          } catch (error) {
+            console.warn('Failed to fetch plans:', error);
+          }
+        },
+
+        async startTrial() {
+          if (this.startingTrial || this.trialUsed) return;
+
+          this.startingTrial = true;
+          try {
+            const res = await fetch(`/subscription/${this.token}/trial`, {
+              method: 'POST',
+            });
+            const data = await res.json();
+
+            if (data.success) {
+              this.showToast('Período de teste iniciado!', 'success');
+              // Reload subscription data
+              await this.init();
+            } else {
+              this.showToast(data.error || 'Erro ao iniciar teste', 'error');
+              if (data.code === 'trial_already_used') {
+                this.trialUsed = true;
+              }
+            }
+          } catch (error) {
+            console.error('Error starting trial:', error);
+            this.showToast('Erro ao iniciar teste. Tente novamente.', 'error');
+          } finally {
+            this.startingTrial = false;
+          }
+        },
+
+        // Helpers
+        getStatusLabel(status) {
+          const labels = {
+            'active': 'Ativo',
+            'trialing': 'Período de Teste',
+            'past_due': 'Pagamento Pendente',
+            'canceled': 'Cancelado',
+            'expired': 'Expirado',
+          };
+          return labels[status] || status;
+        },
+
+        formatDate(dateStr) {
+          if (!dateStr) return '-';
+          const date = new Date(dateStr);
+          return date.toLocaleDateString('pt-BR', {
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
+          });
+        },
+
+        showToast(message, type = 'success') {
+          this.toast = { visible: true, message, type };
+          setTimeout(() => {
+            this.toast.visible = false;
+          }, 3000);
+        },
+      };
+    }
+  </script>
+</body>
+
+</html>

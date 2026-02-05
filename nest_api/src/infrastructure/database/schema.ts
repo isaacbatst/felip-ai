@@ -269,3 +269,142 @@ export const promptConfigs = pgTable(
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
 );
+
+// ============================================================================
+// Subscription System Tables
+// ============================================================================
+
+/**
+ * Subscription plans table - available subscription tiers
+ * Plans: Trial (7 days free), Starter (R$139), Pro (R$209), Scale (R$349)
+ */
+export const subscriptionPlans = pgTable(
+  'subscription_plans',
+  {
+    id: integer('id').primaryKey().generatedAlwaysAsIdentity(),
+    name: text('name').notNull().unique(), // Internal name: 'trial', 'starter', 'pro', 'scale'
+    displayName: text('display_name').notNull(), // User-facing name: 'Período de Teste', 'Starter', etc.
+    priceInCents: integer('price_in_cents').notNull(), // Price in cents (0 for trial)
+    groupLimit: integer('group_limit').notNull(), // Max groups allowed
+    durationDays: integer('duration_days'), // NULL for recurring plans, number for fixed-term (e.g., 7 for trial)
+    features: jsonb('features'), // JSON array of feature strings
+    isActive: boolean('is_active').default(true).notNull(), // Whether plan is available for new subscriptions
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => [
+    index('subscription_plans_name_idx').on(table.name),
+    index('subscription_plans_is_active_idx').on(table.isActive),
+  ],
+);
+
+/**
+ * Subscriptions table - user subscription records
+ * Tracks active subscriptions, trials, and payment status
+ */
+export const subscriptions = pgTable(
+  'subscriptions',
+  {
+    id: integer('id').primaryKey().generatedAlwaysAsIdentity(),
+    userId: text('user_id').notNull(), // Telegram user ID (loggedInUserId)
+    planId: integer('plan_id').notNull(), // References subscription_plans.id
+    status: text('status').notNull(), // 'trialing' | 'active' | 'past_due' | 'canceled' | 'expired'
+    // Cielo payment fields (null for trial)
+    cieloRecurrentPaymentId: text('cielo_recurrent_payment_id'),
+    cieloCardToken: text('cielo_card_token'),
+    cardLastFourDigits: text('card_last_four_digits'),
+    cardBrand: text('card_brand'),
+    // Subscription dates
+    startDate: timestamp('start_date').defaultNow().notNull(),
+    currentPeriodStart: timestamp('current_period_start').defaultNow().notNull(),
+    currentPeriodEnd: timestamp('current_period_end').notNull(),
+    nextBillingDate: timestamp('next_billing_date'),
+    // Cancellation
+    canceledAt: timestamp('canceled_at'),
+    cancelReason: text('cancel_reason'),
+    // Trial tracking
+    trialUsed: boolean('trial_used').default(false).notNull(),
+    // Extra groups add-on
+    extraGroups: integer('extra_groups').default(0).notNull(),
+    // Timestamps
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => [
+    index('subscriptions_user_id_idx').on(table.userId),
+    index('subscriptions_plan_id_idx').on(table.planId),
+    index('subscriptions_status_idx').on(table.status),
+    index('subscriptions_current_period_end_idx').on(table.currentPeriodEnd),
+    unique('subscriptions_user_id_unique').on(table.userId), // One subscription per user
+  ],
+);
+
+/**
+ * Subscription payments table - payment history for subscriptions
+ * Tracks all payment attempts and their status
+ */
+export const subscriptionPayments = pgTable(
+  'subscription_payments',
+  {
+    id: integer('id').primaryKey().generatedAlwaysAsIdentity(),
+    subscriptionId: integer('subscription_id').notNull(), // References subscriptions.id
+    cieloPaymentId: text('cielo_payment_id'),
+    amountInCents: integer('amount_in_cents').notNull(),
+    status: text('status').notNull(), // 'pending' | 'paid' | 'failed' | 'refunded'
+    // Cielo response data
+    cieloReturnCode: text('cielo_return_code'),
+    cieloReturnMessage: text('cielo_return_message'),
+    authorizationCode: text('authorization_code'),
+    // Timestamps
+    paidAt: timestamp('paid_at'),
+    failedAt: timestamp('failed_at'),
+    retryCount: integer('retry_count').default(0).notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => [
+    index('subscription_payments_subscription_id_idx').on(table.subscriptionId),
+    index('subscription_payments_status_idx').on(table.status),
+    index('subscription_payments_created_at_idx').on(table.createdAt),
+  ],
+);
+
+/**
+ * Cielo webhook events table - audit log for webhook processing
+ * Stores raw webhook payloads for debugging and retry handling
+ */
+export const cieloWebhookEvents = pgTable(
+  'cielo_webhook_events',
+  {
+    id: integer('id').primaryKey().generatedAlwaysAsIdentity(),
+    paymentId: text('payment_id'),
+    recurrentPaymentId: text('recurrent_payment_id'),
+    changeType: integer('change_type').notNull(), // 1: Payment, 2: Recurrence created, 4: Recurrence status
+    rawPayload: jsonb('raw_payload').notNull(),
+    processedAt: timestamp('processed_at'),
+    processingError: text('processing_error'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => [
+    index('cielo_webhook_events_payment_id_idx').on(table.paymentId),
+    index('cielo_webhook_events_recurrent_payment_id_idx').on(table.recurrentPaymentId),
+    index('cielo_webhook_events_created_at_idx').on(table.createdAt),
+  ],
+);
+
+/**
+ * Subscription tokens table - tokens for accessing subscription management page
+ * Similar to dashboard tokens but specifically for subscription management
+ */
+export const subscriptionTokens = pgTable(
+  'subscription_tokens',
+  {
+    token: text('token').primaryKey(), // Secure random token (48 chars hex)
+    userId: text('user_id').notNull(), // Telegram user ID
+    expiresAt: timestamp('expires_at').notNull(), // Token expiration
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => [
+    index('subscription_tokens_user_id_idx').on(table.userId),
+    index('subscription_tokens_expires_at_idx').on(table.expiresAt),
+  ],
+);

@@ -7,6 +7,8 @@ import { TelegramUserClientProxyService } from '../../tdlib/telegram-user-client
 import { ActiveGroupsRepository } from '@/infrastructure/persistence/active-groups.repository';
 import { BotStatusRepository } from '@/infrastructure/persistence/bot-status.repository';
 import { DashboardTokenRepository } from '@/infrastructure/persistence/dashboard-token.repository';
+import { SubscriptionTokenRepository } from '@/infrastructure/persistence/subscription-token.repository';
+import { SubscriptionService, SubscriptionError } from '@/infrastructure/subscription/subscription.service';
 import { AppConfigService } from '@/config/app.config';
 import type {
   CommandContext,
@@ -28,6 +30,8 @@ export class TelegramCommandHandler {
     private readonly activeGroupsRepository: ActiveGroupsRepository,
     private readonly botStatusRepository: BotStatusRepository,
     private readonly dashboardTokenRepository: DashboardTokenRepository,
+    private readonly subscriptionTokenRepository: SubscriptionTokenRepository,
+    private readonly subscriptionService: SubscriptionService,
     private readonly appConfig: AppConfigService,
   ) {}
 
@@ -736,7 +740,7 @@ export class TelegramCommandHandler {
       // Format expiration time
       const expiresInMinutes = Math.round((expiresAt.getTime() - Date.now()) / 60000);
 
-      const message = 
+      const message =
         `⚙️ *Dashboard de Configurações*\n\n` +
         `Acesse o link abaixo para gerenciar suas configurações de milhas:\n\n` +
         `🔗 [Abrir Dashboard](${dashboardUrl})\n\n` +
@@ -746,7 +750,7 @@ export class TelegramCommandHandler {
         `• Preços máximos (PREÇO TETO)\n` +
         `• Estoque de milhas disponíveis`;
 
-      await ctx.reply(message, { 
+      await ctx.reply(message, {
         parse_mode: 'Markdown',
         link_preview_options: { is_disabled: true }
       });
@@ -755,6 +759,173 @@ export class TelegramCommandHandler {
     } catch (error) {
       this.logger.error('Error handling /dashboard command', { error });
       await ctx.reply('❌ Erro ao gerar link do dashboard. Tente novamente.');
+    }
+  }
+
+  async handleTrial(ctx: Context): Promise<void> {
+    try {
+      const telegramUserId = ctx.from?.id;
+      if (!telegramUserId) {
+        await ctx.reply('❌ Não foi possível identificar seu usuário.');
+        return;
+      }
+
+      // Check if user is logged in
+      const loggedInUserId = await this.conversationRepository.isLoggedIn(telegramUserId);
+      if (!loggedInUserId) {
+        await ctx.reply('❌ Você precisa estar logado para usar este comando.\n\nUse /login para fazer login.');
+        return;
+      }
+
+      const loggedInUserIdStr = loggedInUserId.toString();
+
+      // Start trial
+      const result = await this.subscriptionService.startTrial(loggedInUserIdStr);
+      const daysRemaining = await this.subscriptionService.getDaysRemaining(loggedInUserIdStr) ?? 0;
+
+      // Format expiration date
+      const expirationDate = result.subscription.currentPeriodEnd.toLocaleDateString('pt-BR', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+      });
+
+      const message =
+        `✅ *Seu período de teste de ${daysRemaining} dias começou!*\n\n` +
+        `Aproveite todos os recursos até *${expirationDate}*.\n\n` +
+        `_Recursos disponíveis:_\n` +
+        `• ${result.subscription.plan.groupLimit} grupos ativos\n` +
+        `• Todas as funcionalidades do bot\n` +
+        `• Configuração via dashboard\n\n` +
+        `Use /dashboard para acessar suas configurações.\n` +
+        `Use /assinatura para ver o status da sua assinatura.`;
+
+      await ctx.reply(message, { parse_mode: 'Markdown' });
+
+      this.logger.log(`Trial started for user ${loggedInUserIdStr}`);
+    } catch (error) {
+      if (error instanceof SubscriptionError) {
+        await ctx.reply(`❌ ${error.message}`);
+        return;
+      }
+
+      this.logger.error('Error handling /trial command', { error });
+      await ctx.reply('❌ Erro ao iniciar período de teste. Tente novamente.');
+    }
+  }
+
+  async handleAssinatura(ctx: Context): Promise<void> {
+    try {
+      const telegramUserId = ctx.from?.id;
+      if (!telegramUserId) {
+        await ctx.reply('❌ Não foi possível identificar seu usuário.');
+        return;
+      }
+
+      // Check if user is logged in
+      const loggedInUserId = await this.conversationRepository.isLoggedIn(telegramUserId);
+      if (!loggedInUserId) {
+        await ctx.reply('❌ Você precisa estar logado para usar este comando.\n\nUse /login para fazer login.');
+        return;
+      }
+
+      const loggedInUserIdStr = loggedInUserId.toString();
+
+      // Get subscription
+      const subscription = await this.subscriptionService.getSubscription(loggedInUserIdStr);
+
+      if (!subscription) {
+        // No subscription - offer trial or paid plans
+        const message =
+          `📋 *Você não possui uma assinatura ativa.*\n\n` +
+          `Comece agora com um período de teste gratuito de 7 dias!\n\n` +
+          `Use /trial para começar seu teste gratuito.`;
+
+        await ctx.reply(message, { parse_mode: 'Markdown' });
+        return;
+      }
+
+      // Get days remaining
+      const daysRemaining = await this.subscriptionService.getDaysRemaining(loggedInUserIdStr) ?? 0;
+
+      // Get active groups count
+      const activeGroups = await this.activeGroupsRepository.getActiveGroups(loggedInUserIdStr);
+      const activeGroupsCount = activeGroups?.length ?? 0;
+      const totalGroupLimit = subscription.plan.groupLimit + subscription.extraGroups;
+
+      // Format dates
+      const expirationDate = subscription.currentPeriodEnd.toLocaleDateString('pt-BR', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+      });
+
+      // Build status message based on subscription status
+      let statusEmoji: string;
+      let statusText: string;
+
+      switch (subscription.status) {
+        case 'active':
+          statusEmoji = '✅';
+          statusText = 'Ativo';
+          break;
+        case 'trialing':
+          statusEmoji = '🎁';
+          statusText = 'Período de Teste';
+          break;
+        case 'past_due':
+          statusEmoji = '⚠️';
+          statusText = 'Pagamento Pendente';
+          break;
+        case 'canceled':
+          statusEmoji = '❌';
+          statusText = 'Cancelado';
+          break;
+        case 'expired':
+          statusEmoji = '⏰';
+          statusText = 'Expirado';
+          break;
+        default:
+          statusEmoji = '❓';
+          statusText = subscription.status;
+      }
+
+      let message =
+        `${statusEmoji} *Assinatura ${statusText}*\n\n` +
+        `*Plano:* ${subscription.plan.displayName}\n` +
+        `*Grupos:* ${activeGroupsCount}/${totalGroupLimit} utilizados\n`;
+
+      if (subscription.status === 'trialing') {
+        message += `*Dias restantes:* ${daysRemaining}\n`;
+        message += `*Expira em:* ${expirationDate}\n`;
+      } else if (subscription.status === 'active' && subscription.nextBillingDate) {
+        const nextBillingDate = subscription.nextBillingDate.toLocaleDateString('pt-BR', {
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric',
+        });
+        message += `*Próxima cobrança:* ${nextBillingDate}\n`;
+      } else if (subscription.status === 'canceled' && subscription.canceledAt) {
+        message += `*Acesso até:* ${expirationDate}\n`;
+      }
+
+      // Generate subscription management link
+      const ttlMinutes = this.appConfig.getSubscriptionTokenTtlMinutes();
+      const { token: subscriptionToken } = await this.subscriptionTokenRepository.createToken(loggedInUserIdStr, ttlMinutes);
+      const baseUrl = this.appConfig.getAppBaseUrl();
+      const subscriptionUrl = `${baseUrl}/subscription/${subscriptionToken}`;
+
+      message += `\n🔗 [Gerenciar Assinatura](${subscriptionUrl})`;
+
+      await ctx.reply(message, {
+        parse_mode: 'Markdown',
+        link_preview_options: { is_disabled: true }
+      });
+
+      this.logger.log(`Subscription status shown for user ${loggedInUserIdStr}`);
+    } catch (error) {
+      this.logger.error('Error handling /assinatura command', { error });
+      await ctx.reply('❌ Erro ao obter status da assinatura. Tente novamente.');
     }
   }
 }

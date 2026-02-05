@@ -88,6 +88,9 @@
       <button class="px-5 py-3 border-none bg-transparent cursor-pointer text-sm font-medium border-b-3 -mb-0.5 transition-all flex flex-col gap-1 hover:text-primary max-md:px-3 max-md:py-2 max-md:flex-row max-md:items-center max-md:rounded-full max-md:border-0 max-md:mb-0" :class="activeSection === 'groups' ? 'text-primary border-b-primary max-md:bg-primary/10' : 'text-gray-500 border-transparent max-md:bg-gray-100'" @click="activeSection = 'groups'; fetchGroupsIfNeeded()">
         <i class="fa-solid fa-users"></i> Grupos
       </button>
+      <button class="px-5 py-3 border-none bg-transparent cursor-pointer text-sm font-medium border-b-3 -mb-0.5 transition-all flex flex-col gap-1 hover:text-primary max-md:px-3 max-md:py-2 max-md:flex-row max-md:items-center max-md:rounded-full max-md:border-0 max-md:mb-0" :class="activeSection === 'subscription' ? 'text-primary border-b-primary max-md:bg-primary/10' : 'text-gray-500 border-transparent max-md:bg-gray-100'" @click="activeSection = 'subscription'; fetchSubscriptionIfNeeded()">
+        <i class="fa-solid fa-credit-card"></i> Assinatura
+      </button>
     </div>
 
     <!-- Price Tables Section -->
@@ -530,6 +533,154 @@
       </div>
     </div>
 
+    <!-- Subscription Section -->
+    <div class="section mb-8 p-5 bg-gray-50 rounded-xl max-md:p-0 max-md:mb-6" x-show="activeSection === 'subscription'">
+      <div class="section-header flex justify-between items-center mb-4 max-md:mx-3 max-md:py-3 max-md:border-b max-md:border-gray-200">
+        <h2 class="text-gray-800 text-lg font-semibold flex items-center gap-1 max-md:text-base"><i class="fa-solid fa-credit-card"></i> Assinatura</h2>
+      </div>
+      <p class="section-description text-gray-500 text-sm mb-4">
+        Gerencie sua assinatura e acesse a página de planos
+      </p>
+
+      <!-- Loading State -->
+      <div x-show="loadingSubscription" class="text-center p-8">
+        <div class="spinner mx-auto mb-4" style="width: 32px; height: 32px; border-width: 3px;"></div>
+        <p class="text-gray-500">Carregando dados da assinatura...</p>
+      </div>
+
+      <!-- Subscription Content -->
+      <div x-show="!loadingSubscription" class="flex flex-col gap-4">
+        <!-- Current Subscription Status -->
+        <div class="bg-white border-2 rounded-xl p-5"
+          :class="{
+            'border-emerald-200': subscriptionData?.status === 'active',
+            'border-amber-200': subscriptionData?.status === 'trialing',
+            'border-red-200': subscriptionData?.status === 'canceled' || subscriptionData?.status === 'expired',
+            'border-gray-200': !subscriptionData
+          }">
+
+          <!-- No Subscription -->
+          <template x-if="!subscriptionData">
+            <div class="text-center py-4">
+              <div class="w-16 h-16 mx-auto mb-4 rounded-full bg-gray-100 flex items-center justify-center">
+                <i class="fa-solid fa-gift text-gray-400 text-2xl"></i>
+              </div>
+              <h3 class="text-lg font-semibold text-gray-800 mb-2">Sem assinatura ativa</h3>
+              <p class="text-gray-500 text-sm mb-4">Comece um período de teste gratuito de 7 dias ou assine um plano.</p>
+            </div>
+          </template>
+
+          <!-- Has Subscription -->
+          <template x-if="subscriptionData">
+            <div>
+              <div class="flex items-start justify-between mb-4">
+                <div>
+                  <div class="flex items-center gap-2 mb-1">
+                    <span class="text-lg font-bold text-gray-800" x-text="subscriptionData.plan?.displayName || 'Plano'"></span>
+                    <span class="px-2 py-0.5 rounded-full text-xs font-semibold"
+                      :class="{
+                        'bg-emerald-200 text-emerald-800': subscriptionData.status === 'active',
+                        'bg-amber-200 text-amber-800': subscriptionData.status === 'trialing',
+                        'bg-red-200 text-red-800': subscriptionData.status === 'canceled' || subscriptionData.status === 'expired',
+                        'bg-orange-200 text-orange-800': subscriptionData.status === 'past_due'
+                      }"
+                      x-text="getSubscriptionStatusLabel(subscriptionData.status)">
+                    </span>
+                  </div>
+                  <p class="text-gray-600 text-sm" x-text="subscriptionData.plan?.priceInCents === 0 ? 'Gratuito' : `R$ ${(subscriptionData.plan?.priceInCents / 100).toFixed(2)}/mês`"></p>
+                </div>
+                <div class="w-12 h-12 rounded-full flex items-center justify-center"
+                  :class="{
+                    'bg-emerald-100 text-emerald-600': subscriptionData.status === 'active',
+                    'bg-amber-100 text-amber-600': subscriptionData.status === 'trialing',
+                    'bg-red-100 text-red-600': subscriptionData.status === 'canceled' || subscriptionData.status === 'expired',
+                    'bg-orange-100 text-orange-600': subscriptionData.status === 'past_due'
+                  }">
+                  <i class="fa-solid text-xl"
+                    :class="{
+                      'fa-check': subscriptionData.status === 'active',
+                      'fa-clock': subscriptionData.status === 'trialing',
+                      'fa-times': subscriptionData.status === 'canceled' || subscriptionData.status === 'expired',
+                      'fa-exclamation': subscriptionData.status === 'past_due'
+                    }"></i>
+                </div>
+              </div>
+
+              <!-- Usage Stats -->
+              <div class="grid grid-cols-2 gap-4">
+                <div class="bg-gray-50 rounded-xl p-3">
+                  <p class="text-xs text-gray-500 mb-1">Grupos Ativos</p>
+                  <p class="text-lg font-bold text-gray-800">
+                    <span x-text="subscriptionData.activeGroupsCount || 0"></span>
+                    <span class="text-gray-400 font-normal">/</span>
+                    <span x-text="subscriptionData.totalGroupLimit || 0"></span>
+                  </p>
+                </div>
+                <div class="bg-gray-50 rounded-xl p-3">
+                  <p class="text-xs text-gray-500 mb-1" x-text="subscriptionData.status === 'trialing' ? 'Dias Restantes' : 'Próxima Cobrança'"></p>
+                  <p class="text-lg font-bold text-gray-800" x-text="subscriptionData.status === 'trialing' ? (subscriptionData.daysRemaining || 0) + ' dias' : formatSubscriptionDate(subscriptionData.nextBillingDate)"></p>
+                </div>
+              </div>
+
+              <!-- Trial Warning -->
+              <template x-if="subscriptionData.status === 'trialing' && subscriptionData.daysRemaining <= 3">
+                <div class="mt-4 bg-amber-100 border border-amber-300 rounded-lg p-3 flex items-center gap-2">
+                  <i class="fa-solid fa-exclamation-triangle text-amber-600"></i>
+                  <p class="text-sm text-amber-800">
+                    Seu período de teste expira em <strong x-text="subscriptionData.daysRemaining"></strong> dias.
+                  </p>
+                </div>
+              </template>
+            </div>
+          </template>
+        </div>
+
+        <!-- Actions -->
+        <div class="flex flex-col gap-3">
+          <!-- Manage Subscription Link -->
+          <a :href="subscriptionPageUrl"
+            x-show="subscriptionPageUrl"
+            target="_blank"
+            class="w-full px-6 py-4 bg-gradient-to-r from-primary to-secondary text-white font-semibold rounded-xl transition-all hover:shadow-lg hover:-translate-y-0.5 text-center no-underline flex items-center justify-center gap-2">
+            <i class="fa-solid fa-external-link-alt"></i>
+            Gerenciar Assinatura
+          </a>
+
+          <!-- Generate Subscription Link Button -->
+          <button
+            @click="generateSubscriptionLink()"
+            :disabled="generatingSubscriptionLink"
+            class="w-full px-6 py-4 border-2 border-primary text-primary font-semibold rounded-xl transition-all hover:bg-primary/5 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
+            <span x-show="generatingSubscriptionLink" class="spinner" style="width: 16px; height: 16px;"></span>
+            <span x-show="!generatingSubscriptionLink">
+              <i class="fa-solid fa-link"></i>
+              Gerar Link da Assinatura
+            </span>
+          </button>
+
+          <!-- Generated Link Display -->
+          <div x-show="generatedSubscriptionLink" class="bg-emerald-50 border border-emerald-200 rounded-xl p-4">
+            <p class="text-sm text-emerald-800 mb-2 font-medium">
+              <i class="fa-solid fa-check-circle mr-1"></i>
+              Link gerado com sucesso!
+            </p>
+            <div class="flex gap-2">
+              <input type="text"
+                :value="generatedSubscriptionLink"
+                readonly
+                class="flex-1 p-2 border border-emerald-300 rounded-lg text-sm bg-white text-gray-700">
+              <button
+                @click="copySubscriptionLink()"
+                class="px-4 py-2 bg-emerald-500 text-white rounded-lg text-sm font-medium hover:bg-emerald-600 transition-all">
+                <i class="fa-solid fa-copy"></i>
+              </button>
+            </div>
+            <p class="text-xs text-emerald-600 mt-2">Este link expira em 30 minutos.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Bottom Sheet Overlay -->
     <div class="fixed inset-0 bg-black/50 z-[1000] transition-opacity duration-300 md:hidden"
       :class="bottomSheetOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'"
@@ -656,6 +807,14 @@
         // Bot status state
         botStatus: { isEnabled: true },
         savingBotStatus: false,
+
+        // Subscription state
+        subscriptionData: null,
+        subscriptionPageUrl: null,
+        loadingSubscription: false,
+        subscriptionFetched: false,
+        generatingSubscriptionLink: false,
+        generatedSubscriptionLink: null,
 
         // ============================================================================
         // Computed Properties (as getters)
@@ -844,6 +1003,91 @@
           if (!this.groupsFetched) {
             await this.fetchAvailableGroups();
           }
+        },
+
+        async fetchSubscriptionIfNeeded() {
+          if (!this.subscriptionFetched) {
+            await this.fetchSubscription();
+          }
+        },
+
+        async fetchSubscription() {
+          this.loadingSubscription = true;
+          try {
+            const res = await fetch(`/dashboard/${this.token}/subscription`);
+            const data = await res.json();
+            if (data.success) {
+              this.subscriptionData = data.data.subscription;
+              this.subscriptionPageUrl = data.data.subscriptionPageUrl;
+              this.subscriptionFetched = true;
+            } else {
+              console.warn('Failed to fetch subscription:', data.error);
+            }
+          } catch (error) {
+            console.error('Error fetching subscription:', error);
+          } finally {
+            this.loadingSubscription = false;
+          }
+        },
+
+        async generateSubscriptionLink() {
+          if (this.generatingSubscriptionLink) return;
+
+          this.generatingSubscriptionLink = true;
+          this.generatedSubscriptionLink = null;
+
+          try {
+            const res = await fetch(`/dashboard/${this.token}/subscription/generate-link`, {
+              method: 'POST',
+            });
+            const data = await res.json();
+
+            if (data.success) {
+              this.generatedSubscriptionLink = data.data.url;
+              this.subscriptionPageUrl = data.data.url;
+              this.showToast('Link gerado com sucesso!', 'success');
+            } else {
+              this.showToast(data.error || 'Erro ao gerar link', 'error');
+            }
+          } catch (error) {
+            console.error('Error generating subscription link:', error);
+            this.showToast('Erro ao gerar link', 'error');
+          } finally {
+            this.generatingSubscriptionLink = false;
+          }
+        },
+
+        async copySubscriptionLink() {
+          if (!this.generatedSubscriptionLink) return;
+
+          try {
+            await navigator.clipboard.writeText(this.generatedSubscriptionLink);
+            this.showToast('Link copiado!', 'success');
+          } catch (error) {
+            console.error('Error copying link:', error);
+            this.showToast('Erro ao copiar link', 'error');
+          }
+        },
+
+        getSubscriptionStatusLabel(status) {
+          const labels = {
+            'active': 'Ativo',
+            'trialing': 'Período de Teste',
+            'past_due': 'Pagamento Pendente',
+            'canceled': 'Cancelado',
+            'expired': 'Expirado',
+          };
+          return labels[status] || status;
+        },
+
+        formatSubscriptionDate(dateStr) {
+          if (!dateStr) return '-';
+          const date = new Date(dateStr);
+          return date.toLocaleDateString('pt-BR', {
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
+          });
         },
 
         async fetchAvailableGroups() {
