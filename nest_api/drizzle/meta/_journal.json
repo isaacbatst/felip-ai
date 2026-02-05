@@ -64,6 +64,20 @@
       "when": 1770150474307,
       "tag": "0008_marvelous_grey_gargoyle",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1770330616378,
+      "tag": "0009_pink_echo",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1770330638194,
+      "tag": "0010_mysterious_puppet_master",
+      "breakpoints": true
     }
   ]
 }

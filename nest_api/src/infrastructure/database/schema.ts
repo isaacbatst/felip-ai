@@ -8,9 +8,10 @@ export const sessions = pgTable(
   {
     requestId: text('request_id').primaryKey(),
     loggedInUserId: bigint('logged_in_user_id', { mode: 'number' }).notNull(),
-    telegramUserId: bigint('telegram_user_id', { mode: 'number' }).notNull(),
+    telegramUserId: bigint('telegram_user_id', { mode: 'number' }),
     phoneNumber: text('phone_number'),
-    chatId: bigint('chat_id', { mode: 'number' }).notNull(),
+    chatId: bigint('chat_id', { mode: 'number' }),
+    source: text('source').notNull().default('telegram'), // 'web' | 'telegram'
     state: text('state').notNull(), // 'idle' | 'waitingPhone' | 'waitingCode' | 'waitingPassword' | 'completed' | 'failed'
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
@@ -406,5 +407,30 @@ export const subscriptionTokens = pgTable(
   (table) => [
     index('subscription_tokens_user_id_idx').on(table.userId),
     index('subscription_tokens_expires_at_idx').on(table.expiresAt),
+  ],
+);
+
+// ============================================================================
+// Web Sessions Table
+// ============================================================================
+
+/**
+ * Web sessions table - stores cookie-based web sessions
+ * 30-day TTL with sliding expiration (reset on each authenticated request)
+ */
+export const webSessions = pgTable(
+  'web_sessions',
+  {
+    id: text('id').primaryKey(), // UUID
+    userId: text('user_id').notNull(), // TDLib user ID (loggedInUserId)
+    token: text('token').notNull().unique(), // cookie value (48-char hex)
+    expiresAt: timestamp('expires_at').notNull(), // 30 days from creation/last activity
+    createdAt: timestamp('created_at').defaultNow(),
+    updatedAt: timestamp('updated_at').defaultNow(),
+  },
+  (table) => [
+    index('web_sessions_token_idx').on(table.token),
+    index('web_sessions_user_id_idx').on(table.userId),
+    index('web_sessions_expires_at_idx').on(table.expiresAt),
   ],
 );
