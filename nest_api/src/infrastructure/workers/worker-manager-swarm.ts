@@ -179,7 +179,7 @@ export class WorkerManagerSwarm extends WorkerManager implements OnModuleDestroy
           },
           Placement: {
             Constraints: [],
-          },
+          },  
         },
         Mode: {
           Replicated: {
