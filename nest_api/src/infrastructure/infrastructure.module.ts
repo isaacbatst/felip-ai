@@ -25,6 +25,7 @@ import { TelegramBotQueueProcessorRabbitMQ } from '@/infrastructure/queue/rabbit
 import { TelegramUserQueueProcessorRabbitMQ } from '@/infrastructure/queue/rabbitmq/telegram-user-queue-processor-rabbitmq.service';
 import { TdlibUpdatesWorkerRabbitMQ } from '@/infrastructure/queue/rabbitmq/tdlib-updates-worker-rabbitmq.service';
 import { AuthCodeDeduplicationService } from './telegram/auth-code-deduplication.service';
+import { OtpService } from './auth/otp.service';
 import { AuthController } from './http/auth.controller';
 import { DashboardController } from './http/dashboard.controller';
 import { LandingController } from './http/landing.controller';
@@ -66,6 +67,7 @@ import { LoginController } from './http/login.controller';
     PhoneWhitelistService,
     TdlibCommandResponseHandler,
     AuthCodeDeduplicationService,
+    OtpService,
     TelegramUserQueueProcessorRabbitMQ,
     TelegramBotQueueProcessorRabbitMQ,
     TdlibUpdatesWorkerRabbitMQ,
