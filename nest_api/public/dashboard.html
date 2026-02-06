@@ -73,10 +73,10 @@
             class="flex-1 p-3 border border-gray-200 rounded-lg text-base text-center tracking-widest font-mono transition-all focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none"
             :disabled="submittingAuth">
           <button type="submit"
-            class="px-5 py-3 bg-primary text-white font-semibold rounded-lg transition-all hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
+            class="flex items-center gap-2 px-5 py-3 bg-primary text-white font-semibold rounded-lg transition-all hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
             :disabled="submittingAuth || authCode.length < 4">
-            <span x-show="submittingAuth" class="spinner" style="width: 16px; height: 16px;"></span>
-            <span x-show="!submittingAuth">Enviar</span>
+            <span x-show="submittingAuth" class="spinner" style="width: 16px; height: 16px; border-width: 2px;"></span>
+            <span x-text="submittingAuth ? 'Enviando...' : 'Enviar'"></span>
           </button>
         </form>
       </div>
@@ -93,10 +93,10 @@
             class="flex-1 p-3 border border-gray-200 rounded-lg text-base transition-all focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none"
             :disabled="submittingAuth">
           <button type="submit"
-            class="px-5 py-3 bg-primary text-white font-semibold rounded-lg transition-all hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
+            class="flex items-center gap-2 px-5 py-3 bg-primary text-white font-semibold rounded-lg transition-all hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
             :disabled="submittingAuth || authPassword.length === 0">
-            <span x-show="submittingAuth" class="spinner" style="width: 16px; height: 16px;"></span>
-            <span x-show="!submittingAuth">Enviar</span>
+            <span x-show="submittingAuth" class="spinner" style="width: 16px; height: 16px; border-width: 2px;"></span>
+            <span x-text="submittingAuth ? 'Enviando...' : 'Enviar'"></span>
           </button>
         </form>
       </div>
@@ -121,10 +121,10 @@
           <span class="text-sm font-medium">A conexão com o Telegram foi perdida</span>
         </div>
         <button @click="reconnectWorker()"
-          class="px-4 py-2 text-sm font-medium rounded-lg bg-red-100 text-red-600 hover:bg-red-200 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+          class="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg bg-red-100 text-red-600 hover:bg-red-200 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           :disabled="reconnecting">
-          <span x-show="reconnecting" class="spinner inline-block" style="width: 14px; height: 14px; border-width: 2px;"></span>
-          <i x-show="!reconnecting" class="fa-solid fa-plug mr-1"></i>
+          <span x-show="reconnecting" class="spinner" style="width: 14px; height: 14px; border-width: 2px;"></span>
+          <i x-show="!reconnecting" class="fa-solid fa-plug"></i>
           <span x-text="reconnecting ? 'Reconectando...' : 'Reconectar'"></span>
         </button>
       </div>
