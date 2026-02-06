@@ -107,6 +107,8 @@ export const botStatus = pgTable(
   {
     userId: text('user_id').primaryKey(),
     isEnabled: boolean('is_enabled').default(true).notNull(),
+    workerStartingAt: timestamp('worker_starting_at'),
+    lastAuthError: text('last_auth_error'),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
   (table) => [

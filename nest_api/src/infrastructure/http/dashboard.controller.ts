@@ -150,6 +150,8 @@ interface UpdateBotStatusDto {
 interface WorkerStatusResponse {
   workerRunning: boolean;
   authState: 'idle' | 'waitingCode' | 'waitingPassword' | 'completed' | 'failed' | null;
+  workerStarting: boolean;
+  lastAuthError: string | null;
 }
 
 interface SubmitAuthCodeDto {
@@ -916,38 +918,41 @@ export class DashboardController {
       // Check if worker is already running
       const status = await this.workerManager.getStatus(userId);
       if (!status || status.state !== 'running') {
-        try {
-          // Get user's phone number
-          const telegramUserId = parseInt(userId, 10);
-          const user = await this.userRepository.findByTelegramUserId(telegramUserId);
-          if (!user) {
-            this.logger.error(`User not found for telegramUserId: ${telegramUserId}`);
-            res.status(HttpStatus.OK).json({ success: true } satisfies ApiResponse);
-            return;
-          }
-
-          // Create a session for the login flow
-          const requestId = randomUUID();
-          await this.conversationRepository.setConversation({
-            requestId,
-            loggedInUserId: telegramUserId,
-            phoneNumber: user.phone,
-            state: 'idle',
-            source: 'web',
-          });
-
-          // Start the worker
-          await this.workerManager.run(userId);
-
-          // Dispatch login command
-          await this.telegramUserClient.login(userId, user.phone, requestId);
-
-          this.logger.log(`Worker started and login initiated for user ${userId}`);
-        } catch (error) {
-          this.logger.error(`Error starting worker for user ${userId}`, { error });
-          // Bot status is already set to enabled, worker will be retried on next poll
+        // Get user's phone number
+        const telegramUserId = parseInt(userId, 10);
+        const user = await this.userRepository.findByTelegramUserId(telegramUserId);
+        if (!user) {
+          this.logger.error(`User not found for telegramUserId: ${telegramUserId}`);
+          res.status(HttpStatus.OK).json({ success: true } satisfies ApiResponse);
+          return;
         }
+
+        // Create a session for the login flow
+        const requestId = randomUUID();
+        await this.conversationRepository.setConversation({
+          requestId,
+          loggedInUserId: telegramUserId,
+          phoneNumber: user.phone,
+          state: 'idle',
+          source: 'web',
+        });
+
+        // Set starting flag before firing off async work
+        await this.botStatusRepository.setWorkerStartingAt(userId);
+
+        // Fire-and-forget: start worker, then login when healthy
+        this.workerManager.run(userId).then(async () => {
+          await this.telegramUserClient.login(userId, user.phone, requestId);
+          this.logger.log(`Worker started and login initiated for user ${userId}`);
+          await this.botStatusRepository.clearWorkerStartingAt(userId);
+        }).catch(async (error) => {
+          this.logger.error(`Error starting worker for user ${userId}`, { error });
+          await this.botStatusRepository.clearWorkerStartingAt(userId);
+        });
       }
+    } else {
+      // Clear workerStartingAt when disabling
+      await this.botStatusRepository.clearWorkerStartingAt(userId);
     }
 
     this.logger.log(`Updated bot status for user ${userId}: enabled=${body.isEnabled}`);
@@ -981,20 +986,32 @@ export class DashboardController {
       if (session) {
         authState = session.state as WorkerStatusResponse['authState'];
       } else {
-        // Check for completed session — means TDLib is authenticated
-        const completedSession = await this.conversationRepository.getCompletedSessionByLoggedInUserId(telegramUserId);
-        if (completedSession) {
-          authState = 'completed';
-        } else {
-          // Worker running but no session — assume authenticated (existing TDLib session)
-          authState = 'completed';
+        // Session says completed or absent — verify with a real TDLib call
+        try {
+          const me = await this.telegramUserClient.getMe(userId);
+          authState = me ? 'completed' : 'failed';
+        } catch {
+          authState = 'failed';
         }
       }
     }
 
+    // Compute workerStarting from DB timestamp (auto-expires after 2 minutes)
+    const workerStartingAt = await this.botStatusRepository.getWorkerStartingAt(userId);
+    let workerStarting = workerStartingAt !== null
+      && (Date.now() - workerStartingAt.getTime()) < 120_000;
+
+    // If expired, clean up stale flag
+    if (workerStartingAt !== null && !workerStarting) {
+      await this.botStatusRepository.clearWorkerStartingAt(userId);
+      workerStarting = false;
+    }
+
+    const lastAuthError = await this.botStatusRepository.getLastAuthError(userId);
+
     return {
       success: true,
-      data: { workerRunning, authState },
+      data: { workerRunning, authState, workerStarting, lastAuthError },
     };
   }
 
@@ -1036,6 +1053,7 @@ export class DashboardController {
     }
 
     try {
+      await this.botStatusRepository.clearLastAuthError(userId);
       await this.telegramUserClient.provideAuthCode(userId, session.requestId, body.code, {
         userId: telegramUserId,
         chatId: 0, // No bot messages
@@ -1091,6 +1109,7 @@ export class DashboardController {
     }
 
     try {
+      await this.botStatusRepository.clearLastAuthError(userId);
       await this.telegramUserClient.providePassword(userId, session.requestId, body.password, {
         userId: telegramUserId,
         chatId: 0, // No bot messages

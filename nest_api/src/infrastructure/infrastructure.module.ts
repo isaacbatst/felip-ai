@@ -29,6 +29,7 @@ import { SubscriptionAuthorizationService } from './subscription/subscription-au
 import { HybridAuthorizationService } from './subscription/hybrid-authorization.service';
 import { SessionGuard } from './http/guards/session.guard';
 import { LoginController } from './http/login.controller';
+import { RegisterController } from './http/register.controller';
 
 /**
  * Module responsável por serviços de infraestrutura
@@ -36,7 +37,7 @@ import { LoginController } from './http/login.controller';
  */
 @Module({
   imports: [DomainModule, PersistenceModule, QueueModule, WorkersModule],
-  controllers: [LandingController, DashboardController, SubscriptionController, LoginController],
+  controllers: [LandingController, DashboardController, SubscriptionController, LoginController, RegisterController],
   providers: [
     AppConfigService,
     OpenAIService,

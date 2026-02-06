@@ -60,4 +60,82 @@ export class BotStatusDrizzleStore extends BotStatusRepository {
         },
       });
   }
+
+  async setWorkerStartingAt(userId: string): Promise<void> {
+    await this.db
+      .insert(botStatus)
+      .values({
+        userId,
+        isEnabled: true,
+        workerStartingAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .onConflictDoUpdate({
+        target: botStatus.userId,
+        set: {
+          workerStartingAt: new Date(),
+          updatedAt: new Date(),
+        },
+      });
+  }
+
+  async clearWorkerStartingAt(userId: string): Promise<void> {
+    await this.db
+      .update(botStatus)
+      .set({ workerStartingAt: null, updatedAt: new Date() })
+      .where(eq(botStatus.userId, userId));
+  }
+
+  async getWorkerStartingAt(userId: string): Promise<Date | null> {
+    const result = await this.db
+      .select({ workerStartingAt: botStatus.workerStartingAt })
+      .from(botStatus)
+      .where(eq(botStatus.userId, userId))
+      .limit(1);
+
+    if (result.length === 0) {
+      return null;
+    }
+
+    return result[0].workerStartingAt;
+  }
+
+  async setLastAuthError(userId: string, error: string): Promise<void> {
+    await this.db
+      .insert(botStatus)
+      .values({
+        userId,
+        isEnabled: true,
+        lastAuthError: error,
+        updatedAt: new Date(),
+      })
+      .onConflictDoUpdate({
+        target: botStatus.userId,
+        set: {
+          lastAuthError: error,
+          updatedAt: new Date(),
+        },
+      });
+  }
+
+  async clearLastAuthError(userId: string): Promise<void> {
+    await this.db
+      .update(botStatus)
+      .set({ lastAuthError: null, updatedAt: new Date() })
+      .where(eq(botStatus.userId, userId));
+  }
+
+  async getLastAuthError(userId: string): Promise<string | null> {
+    const result = await this.db
+      .select({ lastAuthError: botStatus.lastAuthError })
+      .from(botStatus)
+      .where(eq(botStatus.userId, userId))
+      .limit(1);
+
+    if (result.length === 0) {
+      return null;
+    }
+
+    return result[0].lastAuthError;
+  }
 }

@@ -92,6 +92,20 @@
       "when": 1770399573904,
       "tag": "0012_even_speedball",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1770486000000,
+      "tag": "0013_add_worker_starting_at",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1770572400000,
+      "tag": "0014_add_last_auth_error",
+      "breakpoints": true
     }
   ]
 }

@@ -52,11 +52,11 @@
             <p class="text-xs text-gray-500" x-text="getWorkerStatusText()"></p>
           </div>
         </div>
-        <label class="relative inline-flex items-center cursor-pointer" x-show="!isWorkerTransitional()">
+        <label class="relative inline-flex items-center cursor-pointer" x-show="!isWorkerTransitional() && !isWorkerStartingUp()">
           <input type="checkbox" class="sr-only peer" x-model="botStatus.isEnabled" @change="saveBotStatus()" :disabled="savingBotStatus">
           <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500 peer-disabled:opacity-50"></div>
         </label>
-        <div x-show="isWorkerTransitional() && workerStatus.authState !== 'waitingCode' && workerStatus.authState !== 'waitingPassword'" class="flex items-center gap-2 text-gray-400">
+        <div x-show="(isWorkerTransitional() || isWorkerStartingUp()) && workerStatus.authState !== 'waitingCode' && workerStatus.authState !== 'waitingPassword'" class="flex items-center gap-2 text-gray-400">
           <div class="spinner" style="width: 18px; height: 18px; border-width: 2px;"></div>
         </div>
       </div>
@@ -102,19 +102,7 @@
       </div>
 
       <!-- Failed State -->
-      <div x-show="workerStatus.authState === 'failed'" class="mt-4 pt-4 border-t border-gray-100">
-        <div class="flex items-center gap-2 text-red-600 mb-3">
-          <i class="fa-solid fa-triangle-exclamation"></i>
-          <span class="text-sm font-medium">Falha na conexão</span>
-        </div>
-        <button @click="retryWorkerConnection()"
-          class="px-4 py-2 text-sm font-medium rounded-lg bg-red-100 text-red-600 hover:bg-red-200 transition-all"
-          :disabled="savingBotStatus">
-          <i class="fa-solid fa-redo mr-1"></i> Tentar novamente
-        </button>
-      </div>
-
-      <!-- Disconnected State -->
+      <!-- Disconnected / Failed State -->
       <div x-show="isWorkerDisconnected()" class="mt-4 pt-4 border-t border-gray-100">
         <div class="flex items-center gap-2 text-red-600 mb-3">
           <i class="fa-solid fa-plug-circle-xmark"></i>
@@ -827,8 +815,52 @@
         savingBotStatus: false,
 
         // Worker status state
-        workerStatus: { workerRunning: false, authState: null },
+        workerStatus: { workerRunning: false, authState: null, workerStarting: false, lastAuthError: null },
+        workerStatusLoaded: false,
         workerPollingInterval: null,
+        startingPhraseIndex: 0,
+        startingPhrases: [
+          'Iniciando o serviço...',
+          'Preparando a conexão...',
+          'Carregando componentes...',
+          'Isso pode levar até um minuto...',
+          'Configurando o ambiente...',
+          'Aguarde um momento...',
+          'Inicializando o worker...',
+          'Verificando dependências...',
+          'Conectando aos servidores...',
+          'Preparando tudo pra você...',
+          'Só mais um instante...',
+          'Carregando configurações...',
+          'Estabelecendo conexão segura...',
+          'Quase pronto...',
+          'Ainda trabalhando nisso...',
+          'Organizando os dados...',
+          'Validando credenciais...',
+          'Sincronizando informações...',
+          'Aguarde só mais um pouco...',
+          'Estamos progredindo...',
+          'Montando o ambiente...',
+          'Alocando recursos...',
+          'Processando a inicialização...',
+          'Falta pouco agora...',
+          'Realizando verificações...',
+          'Preparando a autenticação...',
+          'Estamos quase lá...',
+          'Conectando ao Telegram...',
+          'Finalizando configuração...',
+          'Já já fica pronto...',
+          'Últimos ajustes...',
+          'Iniciando comunicação...',
+          'Tudo certo por aqui, aguarde...',
+          'Estabelecendo canal seguro...',
+          'Carregando módulos...',
+          'Otimizando a conexão...',
+          'Ativando serviços...',
+          'Finalizando preparativos...',
+          'Quase tudo pronto...',
+          'Só mais alguns segundos...',
+        ],
         authCode: '',
         authPassword: '',
         submittingAuth: false,
@@ -1017,11 +1049,13 @@
             if (data.success) {
               this.showToast(this.botStatus.isEnabled ? 'Bot ativado!' : 'Bot desativado!', 'success');
               if (this.botStatus.isEnabled) {
+                // Optimistically show "Iniciando..." until first poll response
+                this.workerStatus = { workerRunning: false, authState: null, workerStarting: true, lastAuthError: null };
                 // Start polling worker status
                 this.startWorkerPolling();
               } else {
                 this.stopWorkerPolling();
-                this.workerStatus = { workerRunning: false, authState: null };
+                this.workerStatus = { workerRunning: false, authState: null, workerStarting: false, lastAuthError: null };
               }
             } else {
               // Revert on error
@@ -1046,11 +1080,35 @@
             const res = await this.authFetch('/dashboard/worker/status');
             const data = await res.json();
             if (data.success) {
+              const prevAuthState = this.workerStatus.authState;
               this.workerStatus = data.data;
-              // Stop polling when in stable state
-              if (this.workerStatus.authState === 'completed'
-                  || !this.botStatus.isEnabled
-                  || (!this.workerStatus.workerRunning && this.workerStatus.authState === null)) {
+              this.workerStatusLoaded = true;
+
+              // Clear form loading and notify user on auth errors
+              if (this.submittingAuth) {
+                if (this.workerStatus.lastAuthError) {
+                  this.submittingAuth = false;
+                  this.showAuthErrorToast(this.workerStatus.lastAuthError);
+                } else if (this.workerStatus.authState !== prevAuthState) {
+                  this.submittingAuth = false;
+                }
+                // else: keep polling, result not back yet
+              }
+
+              // Advance starting phrase while worker is starting
+              if (this.isWorkerStartingUp()) {
+                this.startingPhraseIndex = (this.startingPhraseIndex + 1) % this.startingPhrases.length;
+              } else {
+                this.startingPhraseIndex = 0;
+              }
+
+              // Keep polling only while background work is in progress
+              // Note: 'idle' means TDLib is actively connecting, not actually idle
+              const needsPolling = this.isWorkerStartingUp()
+                || this.workerStatus.authState === 'idle'
+                || this.submittingAuth;
+
+              if (!needsPolling) {
                 this.stopWorkerPolling();
               }
             }
@@ -1078,10 +1136,19 @@
           return this.botStatus.isEnabled && this.workerStatus.authState !== 'completed' && this.workerStatus.authState !== null;
         },
 
+        isWorkerStartingUp() {
+          return this.workerStatus.workerStarting
+            && (this.workerStatus.authState === null || this.workerStatus.authState === 'idle');
+        },
+
         isWorkerDisconnected() {
-          return this.botStatus.isEnabled
-            && !this.workerStatus.workerRunning
-            && this.workerStatus.authState === null;
+          return this.workerStatusLoaded
+            && this.botStatus.isEnabled
+            && !this.workerStatus.workerStarting
+            && (
+              (!this.workerStatus.workerRunning && this.workerStatus.authState === null)
+              || this.workerStatus.authState === 'failed'
+            );
         },
 
         async reconnectWorker() {
@@ -1094,6 +1161,7 @@
             });
             const data = await res.json();
             if (data.success) {
+              this.workerStatus = { workerRunning: false, authState: null, workerStarting: true, lastAuthError: null };
               this.showToast('Reconectando...', 'success');
               this.startWorkerPolling();
             } else {
@@ -1109,10 +1177,10 @@
 
         getWorkerIndicatorClass() {
           if (!this.botStatus.isEnabled) return 'bg-gray-100 text-gray-400';
+          if (this.isWorkerStartingUp()) return 'bg-blue-100 text-blue-600';
           if (this.isWorkerDisconnected()) return 'bg-red-100 text-red-600';
           switch (this.workerStatus.authState) {
             case 'completed': return 'bg-emerald-100 text-emerald-600';
-            case 'failed': return 'bg-red-100 text-red-600';
             case 'waitingCode':
             case 'waitingPassword': return 'bg-amber-100 text-amber-600';
             case 'idle': return 'bg-blue-100 text-blue-600';
@@ -1122,10 +1190,10 @@
 
         getWorkerIndicatorIcon() {
           if (!this.botStatus.isEnabled) return 'fa-pause';
+          if (this.isWorkerStartingUp()) return 'fa-spinner fa-spin';
           if (this.isWorkerDisconnected()) return 'fa-plug-circle-xmark';
           switch (this.workerStatus.authState) {
             case 'completed': return 'fa-play';
-            case 'failed': return 'fa-exclamation';
             case 'waitingCode': return 'fa-shield-halved';
             case 'waitingPassword': return 'fa-lock';
             case 'idle': return 'fa-spinner fa-spin';
@@ -1135,14 +1203,30 @@
 
         getWorkerStatusText() {
           if (!this.botStatus.isEnabled) return 'Quando desativado, o bot ignora mensagens dos grupos';
+          if (this.isWorkerStartingUp()) return this.startingPhrases[this.startingPhraseIndex];
           if (this.isWorkerDisconnected()) return 'Conexão perdida — clique em Reconectar';
           switch (this.workerStatus.authState) {
             case 'completed': return 'Conectado e processando mensagens';
-            case 'failed': return 'Falha na conexão com o Telegram';
             case 'waitingCode': return 'Aguardando código de autenticação';
             case 'waitingPassword': return 'Aguardando senha de dois fatores';
             case 'idle': return 'Conectando...';
             default: return 'Verificando status da conexão...';
+          }
+        },
+
+        showAuthErrorToast(errorCode) {
+          if (errorCode.startsWith('FLOOD_WAIT:')) {
+            const seconds = parseInt(errorCode.split(':')[1], 10);
+            const minutes = Math.ceil(seconds / 60);
+            this.showToast(`Muitas tentativas. Aguarde ~${minutes} minuto(s).`, 'error');
+          } else if (errorCode === 'PASSWORD_INVALID') {
+            this.showToast('Senha incorreta. Tente novamente.', 'error');
+          } else if (errorCode === 'CODE_INVALID') {
+            this.showToast('Código incorreto. Tente novamente.', 'error');
+          } else if (errorCode === 'CODE_EXPIRED') {
+            this.showToast('Código expirado.', 'error');
+          } else {
+            this.showToast('Erro desconhecido.', 'error');
           }
         },
 
@@ -1159,15 +1243,16 @@
             if (data.success) {
               this.authCode = '';
               this.showToast('Código enviado!', 'success');
-              // Resume polling to track state change
+              // Keep submittingAuth=true so form stays in loading state
+              // Poll will update authState and clear it
               this.startWorkerPolling();
             } else {
               this.showToast('Erro ao enviar código: ' + (data.error || 'Erro desconhecido'), 'error');
+              this.submittingAuth = false;
             }
           } catch (error) {
             console.error('Error submitting auth code:', error);
             this.showToast('Erro ao enviar código', 'error');
-          } finally {
             this.submittingAuth = false;
           }
         },
@@ -1185,47 +1270,17 @@
             if (data.success) {
               this.authPassword = '';
               this.showToast('Senha enviada!', 'success');
-              // Resume polling to track state change
+              // Keep submittingAuth=true so form stays in loading state
+              // Poll will update authState and clear it
               this.startWorkerPolling();
             } else {
               this.showToast('Erro ao enviar senha: ' + (data.error || 'Erro desconhecido'), 'error');
+              this.submittingAuth = false;
             }
           } catch (error) {
             console.error('Error submitting password:', error);
             this.showToast('Erro ao enviar senha', 'error');
-          } finally {
             this.submittingAuth = false;
-          }
-        },
-
-        async retryWorkerConnection() {
-          // Disable then re-enable the bot to restart the worker
-          this.savingBotStatus = true;
-          try {
-            await this.authFetch('/dashboard/bot-status', {
-              method: 'PUT',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ isEnabled: false }),
-            });
-            // Brief pause
-            await new Promise(r => setTimeout(r, 500));
-            const res = await this.authFetch('/dashboard/bot-status', {
-              method: 'PUT',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ isEnabled: true }),
-            });
-            const data = await res.json();
-            if (data.success) {
-              this.botStatus.isEnabled = true;
-              this.workerStatus = { workerRunning: false, authState: 'idle' };
-              this.startWorkerPolling();
-              this.showToast('Reconectando...', 'success');
-            }
-          } catch (error) {
-            console.error('Error retrying worker connection:', error);
-            this.showToast('Erro ao reconectar', 'error');
-          } finally {
-            this.savingBotStatus = false;
           }
         },
 

@@ -3,6 +3,7 @@ import { TelegramBotService } from '../telegram/telegram-bot-service';
 import { TelegramUserClientProxyService } from './telegram-user-client-proxy.service';
 import { ActiveGroupsRepository } from '../persistence/active-groups.repository';
 import { ConversationRepository } from '../persistence/conversation.repository';
+import { BotStatusRepository } from '../persistence/bot-status.repository';
 import type {
   CommandContext,
   GetChatCommandContext,
@@ -64,6 +65,7 @@ export class TdlibCommandResponseHandler {
     private readonly telegramUserClient: TelegramUserClientProxyService,
     private readonly activeGroupsRepository: ActiveGroupsRepository,
     private readonly conversationRepository: ConversationRepository,
+    private readonly botStatusRepository: BotStatusRepository,
   ) {
     // Start cleanup interval
     setInterval(() => this.cleanupOldErrors(), this.errorCleanupInterval);
@@ -128,8 +130,38 @@ export class TdlibCommandResponseHandler {
   }
 
   private async handleError(commandType: string, error: string, context: CommandContext, requestId: string): Promise<void> {
-    this.logger.error(`dcommandType} failed: ${error}`, { context, requestId });
-    
+    this.logger.error(`${commandType} failed: ${error}`, { context, requestId });
+
+    // Store auth errors in bot_status for web logins (where chatId is 0)
+    if (context.userId && (commandType === 'providePassword' || commandType === 'provideAuthCode')) {
+      const isRateLimit = error.includes('Too Many Requests') || error.includes('retry after') || error.toLowerCase().includes('rate limit') || error.includes('PHONE_PASSWORD_FLOOD');
+      const isPasswordInvalid = error.includes('PASSWORD_HASH_INVALID') || error.includes('password invalid') || error.toLowerCase().includes('invalid password');
+      const isCodeInvalid = error.includes('PHONE_CODE_INVALID') || error.includes('phone code invalid') || error.toLowerCase().includes('invalid code');
+      const isCodeExpired = error.includes('PHONE_CODE_EXPIRED') || error.includes('phone code expired') || error.includes('code expired') || (error.includes('expired') && error.includes('code'));
+
+      let authError: string | null = null;
+
+      if (isRateLimit) {
+        const retryMatch = error.match(/retry after (\d+)/i);
+        const retrySeconds = retryMatch ? retryMatch[1] : '0';
+        authError = `FLOOD_WAIT:${retrySeconds}`;
+      } else if (commandType === 'providePassword' && isPasswordInvalid) {
+        authError = 'PASSWORD_INVALID';
+      } else if (commandType === 'provideAuthCode' && isCodeInvalid) {
+        authError = 'CODE_INVALID';
+      } else if (commandType === 'provideAuthCode' && isCodeExpired) {
+        authError = 'CODE_EXPIRED';
+      }
+
+      if (authError) {
+        try {
+          await this.botStatusRepository.setLastAuthError(context.userId.toString(), authError);
+        } catch (err) {
+          this.logger.error(`Failed to store auth error for user ${context.userId}:`, err);
+        }
+      }
+    }
+
     if (!context.chatId) {
       return;
     }
@@ -255,12 +287,13 @@ export class TdlibCommandResponseHandler {
     }
 
     // Check if this is a rate limit error and provide a more helpful message
-    const isRateLimitError = error.includes('Too Many Requests') || 
+    const isRateLimitError = error.includes('Too Many Requests') ||
                              error.includes('retry after') ||
-                             error.toLowerCase().includes('rate limit');
+                             error.toLowerCase().includes('rate limit') ||
+                             error.includes('PHONE_PASSWORD_FLOOD');
     
     let errorMessage: string;
-    if (isRateLimitError && commandType === 'provideAuthCode') {
+    if (isRateLimitError && (commandType === 'provideAuthCode' || commandType === 'providePassword')) {
       // Extract retry after time if available
       const retryMatch = error.match(/retry after (\d+)/i);
       const retrySeconds = retryMatch ? parseInt(retryMatch[1], 10) : null;
