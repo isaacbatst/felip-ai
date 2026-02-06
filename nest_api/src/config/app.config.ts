@@ -37,6 +37,10 @@ export class AppConfigService {
     return value;
   }
 
+  getTelegramBotUsername(): string {
+    return this.configService.get<string>('TELEGRAM_BOT_USERNAME', '');
+  }
+
   getTelegramPhones(): string[] {
     return this.configService.get<string>('TELEGRAM_PHONE', '+5584987287398,+5584994531473').split(',');
   }

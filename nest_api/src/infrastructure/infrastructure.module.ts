@@ -11,6 +11,7 @@ import { OpenAIService } from './openai/openai.service';
 import { QueueModule } from './queue/queue.module';
 import { TelegramAuthCodeHandler } from './telegram/handlers/telegram-bot-auth-code.handler';
 import { TelegramCommandHandler } from './telegram/handlers/telegram-bot-command.handler';
+import { TelegramBotRegistrationHandler } from './telegram/handlers/telegram-bot-registration.handler';
 import { TelegramBotLoginResultHandler } from './telegram/handlers/telegram-bot-login-result.handler';
 import { TelegramBotMessageHandler } from './telegram/handlers/telegram-bot-message.handler';
 import { TelegramPhoneNumberHandler } from './telegram/handlers/telegram-bot-phone-number.handler';
@@ -59,6 +60,7 @@ import { LoginController } from './http/login.controller';
     TelegramPhoneNumberHandler,
     TelegramAuthCodeHandler,
     TelegramCommandHandler,
+    TelegramBotRegistrationHandler,
     TelegramBotLoginResultHandler,
     TelegramBotController,
     TelegramBotService,

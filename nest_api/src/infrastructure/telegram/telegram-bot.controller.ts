@@ -4,6 +4,7 @@ import { Injectable, Logger, type OnModuleDestroy, type OnModuleInit } from '@ne
 import { type Context } from 'grammy';
 import { TelegramBotQueueProcessorRabbitMQ } from '../queue/rabbitmq/telegram-bot-queue-processor-rabbitmq.service';
 import { TelegramCommandHandler } from './handlers/telegram-bot-command.handler';
+import { TelegramBotRegistrationHandler } from './handlers/telegram-bot-registration.handler';
 
 /**
  * Service responsável por gerenciar o bot do Telegram
@@ -17,6 +18,7 @@ export class TelegramBotController implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(TelegramBotController.name);
   constructor(
     private readonly commandHandler: TelegramCommandHandler,
+    private readonly registrationHandler: TelegramBotRegistrationHandler,
     private readonly messageQueueProcessor: TelegramBotQueueProcessorRabbitMQ,
     private readonly botService: TelegramBotService,
   ) {}
@@ -47,9 +49,9 @@ export class TelegramBotController implements OnModuleInit, OnModuleDestroy {
   }
 
   private setupHandlers(): void {
-    // Register /start command handler
+    // Register /start command handler (registration flow)
     this.botService.bot.command('start', async (ctx: Context) => {
-      await this.commandHandler.handleStart(ctx);
+      await this.registrationHandler.handleStart(ctx);
     });
 
     // Register /login command handler
@@ -105,6 +107,11 @@ export class TelegramBotController implements OnModuleInit, OnModuleDestroy {
     // Register /assinatura command handler
     this.botService.bot.command('assinatura', async (ctx: Context) => {
       await this.commandHandler.handleAssinatura(ctx);
+    });
+
+    // Register message:contact handler for registration flow
+    this.botService.bot.on('message:contact', async (ctx: Context) => {
+      await this.registrationHandler.handleContact(ctx);
     });
 
     // Register message:text handler with sequentialization (only for login flow now)
