@@ -1081,8 +1081,12 @@
             const data = await res.json();
             if (data.success) {
               const prevAuthState = this.workerStatus.authState;
+              const prevAuthError = this.workerStatus.lastAuthError;
               this.workerStatus = data.data;
               this.workerStatusLoaded = true;
+
+              // Detect newly appeared errors
+              const isNewError = this.workerStatus.lastAuthError && this.workerStatus.lastAuthError !== prevAuthError;
 
               // Clear form loading and notify user on auth errors
               if (this.submittingAuth) {
@@ -1095,6 +1099,13 @@
                 // else: keep polling, result not back yet
               }
 
+              // Show startup errors when newly detected (not during auth submission)
+              if (!this.submittingAuth && isNewError
+                && (this.workerStatus.lastAuthError === 'WORKER_STARTUP_FAILED'
+                  || this.workerStatus.lastAuthError === 'WORKER_STARTUP_ERROR')) {
+                this.showAuthErrorToast(this.workerStatus.lastAuthError);
+              }
+
               // Advance starting phrase while worker is starting
               if (this.isWorkerStartingUp()) {
                 this.startingPhraseIndex = (this.startingPhraseIndex + 1) % this.startingPhrases.length;
@@ -1104,9 +1115,15 @@
 
               // Keep polling only while background work is in progress
               // Note: 'idle' means TDLib is actively connecting, not actually idle
+              const isTransitionalStartup = this.botStatus.isEnabled
+                && !this.workerStatus.workerRunning
+                && this.workerStatus.authState !== 'completed'
+                && !this.workerStatus.lastAuthError;
+
               const needsPolling = this.isWorkerStartingUp()
                 || this.workerStatus.authState === 'idle'
-                || this.submittingAuth;
+                || this.submittingAuth
+                || isTransitionalStartup;
 
               if (!needsPolling) {
                 this.stopWorkerPolling();
@@ -1225,6 +1242,10 @@
             this.showToast('Código incorreto. Tente novamente.', 'error');
           } else if (errorCode === 'CODE_EXPIRED') {
             this.showToast('Código expirado.', 'error');
+          } else if (errorCode === 'WORKER_STARTUP_FAILED') {
+            this.showToast('Falha ao iniciar o worker. Tente reconectar.', 'error');
+          } else if (errorCode === 'WORKER_STARTUP_ERROR') {
+            this.showToast('Erro ao iniciar o worker. Tente reconectar.', 'error');
           } else {
             this.showToast('Erro desconhecido.', 'error');
           }

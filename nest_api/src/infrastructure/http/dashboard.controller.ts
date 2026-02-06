@@ -956,12 +956,19 @@ export class DashboardController {
         await this.botStatusRepository.setWorkerStartingAt(userId);
 
         // Fire-and-forget: start worker, then login when healthy
-        this.workerManager.run(userId).then(async () => {
+        this.workerManager.run(userId).then(async (started) => {
+          if (!started) {
+            this.logger.error(`Worker failed to start for user ${userId}`);
+            await this.botStatusRepository.setLastAuthError(userId, 'WORKER_STARTUP_FAILED');
+            await this.botStatusRepository.clearWorkerStartingAt(userId);
+            return;
+          }
           await this.telegramUserClient.login(userId, user.phone, requestId);
           this.logger.log(`Worker started and login initiated for user ${userId}`);
           await this.botStatusRepository.clearWorkerStartingAt(userId);
         }).catch(async (error) => {
           this.logger.error(`Error starting worker for user ${userId}`, { error });
+          await this.botStatusRepository.setLastAuthError(userId, 'WORKER_STARTUP_ERROR');
           await this.botStatusRepository.clearWorkerStartingAt(userId);
         });
       }
