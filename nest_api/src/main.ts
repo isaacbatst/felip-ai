@@ -7,6 +7,7 @@ import type { NestExpressApplication } from '@nestjs/platform-express';
 import { join } from 'node:path';
 import cookieParser from 'cookie-parser';
 import { UnauthorizedRedirectFilter } from '@/infrastructure/http/filters/unauthorized-redirect.filter';
+import { NotFoundFilter } from '@/infrastructure/http/filters/not-found.filter';
 
 async function bootstrap() {
   const logger = new ConsoleLogger();
@@ -21,7 +22,7 @@ async function bootstrap() {
   app.use(cookieParser());
 
   // Redirect unauthorized browser requests to /login
-  app.useGlobalFilters(new UnauthorizedRedirectFilter());
+  app.useGlobalFilters(new UnauthorizedRedirectFilter(), new NotFoundFilter());
 
   // Enable CORS for the auth page
   app.enableCors({
