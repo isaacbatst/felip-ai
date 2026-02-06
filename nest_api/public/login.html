@@ -37,9 +37,13 @@
       <div>
         <div class="text-5xl mb-2.5">📱</div>
         <h1 class="text-gray-800 text-2xl mb-2 font-semibold max-sm:text-xl">Login</h1>
-        <p class="text-gray-500 text-sm mb-8 leading-relaxed">
-          Digite seu número de telefone em formato internacional para iniciar o login.
+        <p class="text-gray-500 text-sm mb-5 leading-relaxed">
+          Digite seu número de telefone em formato internacional para receber o código de acesso.
         </p>
+
+        <div class="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-5 text-sm text-amber-800 text-left">
+          Ainda não iniciou o bot? Procure por <strong x-text="botUsername"></strong> no Telegram e envie <strong>/start</strong> antes de continuar.
+        </div>
 
         <form @submit.prevent="submitPhone()">
           <div class="mb-5">
@@ -60,7 +64,7 @@
             class="bg-primary hover:opacity-90 w-full py-4 text-base font-semibold text-white border-none rounded-xl cursor-pointer transition-all disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
           >
             <span x-show="loading" class="spinner spinner-white"></span>
-            <span x-text="loading ? 'Iniciando...' : 'Continuar'"></span>
+            <span x-text="loading ? 'Enviando...' : 'Enviar Código'"></span>
           </button>
         </form>
 
@@ -70,33 +74,16 @@
       </div>
     </template>
 
-    <!-- Step 2: Waiting for code request -->
-    <template x-if="step === 'waitingCodeRequest'">
-      <div>
-        <div class="text-5xl mb-2.5">⏳</div>
-        <h1 class="text-gray-800 text-2xl mb-2 font-semibold max-sm:text-xl">Aguardando...</h1>
-        <p class="text-gray-500 text-sm mb-8 leading-relaxed">
-          Aguardando código de autenticação do Telegram...
-        </p>
-        <div class="flex justify-center mb-5">
-          <span class="spinner" style="width:32px;height:32px;border-width:3px;"></span>
-        </div>
-        <div class="timer py-3 px-5 bg-gray-50 rounded-xl text-sm text-gray-500">
-          ⏱️ Expira em: <span x-text="countdownText"></span>
-        </div>
-      </div>
-    </template>
-
-    <!-- Step 3: Auth Code Input -->
-    <template x-if="step === 'code'">
+    <!-- Step 2: OTP Code Input -->
+    <template x-if="step === 'otp'">
       <div>
         <div class="text-5xl mb-2.5">🔐</div>
-        <h1 class="text-gray-800 text-2xl mb-2 font-semibold max-sm:text-xl">Código de Autenticação</h1>
+        <h1 class="text-gray-800 text-2xl mb-2 font-semibold max-sm:text-xl">Código de Acesso</h1>
         <p class="text-gray-500 text-sm mb-8 leading-relaxed">
-          Digite o código que você recebeu no Telegram.
+          Digite o código de 6 dígitos enviado para seu Telegram.
         </p>
 
-        <form @submit.prevent="submitCode()">
+        <form @submit.prevent="submitOtp()">
           <div class="mb-5">
             <input
               type="text"
@@ -106,7 +93,7 @@
               inputmode="numeric"
               pattern="[0-9]*"
               maxlength="6"
-              placeholder="12345"
+              placeholder="000000"
               autocomplete="one-time-code"
               autofocus
               required
@@ -119,7 +106,7 @@
             class="bg-primary hover:opacity-90 w-full py-4 text-base font-semibold text-white border-none rounded-xl cursor-pointer transition-all disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
           >
             <span x-show="loading" class="spinner spinner-white"></span>
-            <span x-text="loading ? 'Enviando...' : 'Enviar Código'"></span>
+            <span x-text="loading ? 'Verificando...' : 'Verificar Código'"></span>
           </button>
         </form>
 
@@ -133,78 +120,7 @@
       </div>
     </template>
 
-    <!-- Step 4: Password Input (2FA) -->
-    <template x-if="step === 'password'">
-      <div>
-        <div class="text-5xl mb-2.5">🔒</div>
-        <h1 class="text-gray-800 text-2xl mb-2 font-semibold max-sm:text-xl">Autenticação de Dois Fatores</h1>
-        <p class="text-gray-500 text-sm mb-8 leading-relaxed">
-          Sua conta possui verificação em duas etapas. Digite sua senha para completar o login.
-        </p>
-
-        <div class="bg-blue-50 border border-blue-200 rounded-xl p-3 mb-5 text-sm text-blue-800 text-left">
-          <strong class="block mb-1">O que é isso?</strong>
-          Esta é a senha que você configurou nas configurações de segurança do Telegram (Two-Step Verification).
-        </div>
-
-        <form @submit.prevent="submitPassword()">
-          <div class="mb-5 relative">
-            <input
-              :type="showPassword ? 'text' : 'password'"
-              x-model="passwordValue"
-              class="w-full py-4 pl-5 pr-14 text-base border-2 border-gray-200 rounded-xl outline-none transition-all focus:border-primary focus:shadow-[0_0_0_4px_rgba(102,126,234,0.1)]"
-              placeholder="Digite sua senha 2FA"
-              autocomplete="current-password"
-              autofocus
-              required
-            >
-            <button
-              type="button"
-              @click="showPassword = !showPassword"
-              class="absolute right-4 top-1/2 -translate-y-1/2 bg-transparent border-none cursor-pointer text-xl p-1 opacity-60 hover:opacity-100 transition-opacity"
-              aria-label="Mostrar/esconder senha"
-              x-text="showPassword ? '🙈' : '👁️'"
-            ></button>
-          </div>
-
-          <button
-            type="submit"
-            :disabled="loading"
-            class="bg-primary hover:opacity-90 w-full py-4 text-base font-semibold text-white border-none rounded-xl cursor-pointer transition-all disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-          >
-            <span x-show="loading" class="spinner spinner-white"></span>
-            <span x-text="loading ? 'Enviando...' : 'Enviar Senha'"></span>
-          </button>
-        </form>
-
-        <div class="timer mt-5 py-3 px-5 bg-gray-50 rounded-xl text-sm text-gray-500">
-          ⏱️ Expira em: <span x-text="countdownText"></span>
-        </div>
-
-        <template x-if="errorMsg">
-          <div class="mt-5 p-4 rounded-xl text-sm bg-red-100 text-red-800" x-text="errorMsg"></div>
-        </template>
-      </div>
-    </template>
-
-    <!-- Step 5: Waiting for completion after code/password submit -->
-    <template x-if="step === 'waitingCompletion'">
-      <div>
-        <div class="text-5xl mb-2.5">⏳</div>
-        <h1 class="text-gray-800 text-2xl mb-2 font-semibold max-sm:text-xl">Processando...</h1>
-        <p class="text-gray-500 text-sm mb-8 leading-relaxed">
-          Aguardando confirmação do login...
-        </p>
-        <div class="flex justify-center mb-5">
-          <span class="spinner" style="width:32px;height:32px;border-width:3px;"></span>
-        </div>
-        <div class="timer py-3 px-5 bg-gray-50 rounded-xl text-sm text-gray-500">
-          ⏱️ Expira em: <span x-text="countdownText"></span>
-        </div>
-      </div>
-    </template>
-
-    <!-- Step 6: Error / Failure -->
+    <!-- Step 3: Error / Failure -->
     <template x-if="step === 'failed'">
       <div>
         <div class="text-5xl mb-2.5">❌</div>
@@ -234,20 +150,14 @@
         step: 'phone',
         phone: '',
         code: '',
-        passwordValue: '',
-        showPassword: false,
-        requestId: null,
         loading: false,
         errorMsg: '',
-        countdownText: '30:00',
-        pollInterval: null,
+        countdownText: '05:00',
         countdownInterval: null,
         expiresAt: null,
+        botUsername: document.querySelector('meta[name="bot-username"]')?.content || '@FelipAIBot',
 
-        init() {
-          // Set expiration to 30 minutes from now (will be reset on phone submit)
-          this.expiresAt = Date.now() + 30 * 60 * 1000;
-        },
+        init() {},
 
         startCountdown() {
           if (this.countdownInterval) clearInterval(this.countdownInterval);
@@ -259,61 +169,10 @@
             this.countdownText = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
             if (remaining <= 0) {
               clearInterval(this.countdownInterval);
-              this.stopPolling();
-              this.errorMsg = 'Sessão expirada. Por favor, tente novamente.';
+              this.errorMsg = 'Código expirado. Por favor, tente novamente.';
               this.step = 'failed';
             }
           }, 1000);
-        },
-
-        startPolling() {
-          if (this.pollInterval) clearInterval(this.pollInterval);
-          this.pollInterval = setInterval(() => this.pollStatus(), 2000);
-        },
-
-        stopPolling() {
-          if (this.pollInterval) {
-            clearInterval(this.pollInterval);
-            this.pollInterval = null;
-          }
-        },
-
-        async pollStatus() {
-          if (!this.requestId) return;
-          try {
-            const res = await fetch(`/login/status/${this.requestId}`, { credentials: 'same-origin' });
-            if (!res.ok) return;
-            const data = await res.json();
-
-            if (data.state === 'completed') {
-              this.stopPolling();
-              if (this.countdownInterval) clearInterval(this.countdownInterval);
-              window.location.href = '/dashboard';
-              return;
-            }
-
-            if (data.state === 'failed') {
-              this.stopPolling();
-              if (this.countdownInterval) clearInterval(this.countdownInterval);
-              this.errorMsg = data.error || 'Login falhou';
-              this.step = 'failed';
-              return;
-            }
-
-            if (data.state === 'waitingCode' && this.step === 'waitingCodeRequest') {
-              this.step = 'code';
-              return;
-            }
-
-            if (data.state === 'waitingPassword') {
-              if (this.step === 'code' || this.step === 'waitingCompletion' || this.step === 'waitingCodeRequest') {
-                this.step = 'password';
-              }
-              return;
-            }
-          } catch (e) {
-            // Network error, keep polling
-          }
         },
 
         async submitPhone() {
@@ -338,83 +197,51 @@
             const data = await res.json();
 
             if (!res.ok) {
-              this.errorMsg = data.message || 'Erro ao iniciar login.';
-              this.loading = false;
-              return;
-            }
-
-            this.requestId = data.requestId;
-            this.expiresAt = Date.now() + 30 * 60 * 1000;
-            this.step = 'waitingCodeRequest';
-            this.loading = false;
-            this.startCountdown();
-            this.startPolling();
-          } catch (e) {
-            this.errorMsg = 'Erro de conexão. Verifique sua internet.';
-            this.loading = false;
-          }
-        },
-
-        async submitCode() {
-          this.errorMsg = '';
-          const trimmed = this.code.trim();
-
-          if (!/^\d+$/.test(trimmed)) {
-            this.errorMsg = 'Por favor, digite apenas números.';
-            return;
-          }
-
-          this.loading = true;
-          try {
-            const res = await fetch('/login/code', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ requestId: this.requestId, code: trimmed }),
-            });
-
-            const data = await res.json();
-
-            if (!res.ok) {
               this.errorMsg = data.message || 'Erro ao enviar código.';
               this.loading = false;
               return;
             }
 
-            this.step = 'waitingCompletion';
+            this.expiresAt = new Date(data.expiresAt).getTime();
+            this.step = 'otp';
             this.loading = false;
+            this.startCountdown();
           } catch (e) {
             this.errorMsg = 'Erro de conexão. Verifique sua internet.';
             this.loading = false;
           }
         },
 
-        async submitPassword() {
+        async submitOtp() {
           this.errorMsg = '';
-          const pwd = this.passwordValue.trim();
+          const trimmed = this.code.trim();
 
-          if (!pwd) {
-            this.errorMsg = 'Por favor, digite sua senha.';
+          if (!/^\d{6}$/.test(trimmed)) {
+            this.errorMsg = 'Por favor, digite o código de 6 dígitos.';
             return;
           }
 
+          const digits = this.phone.replace(/\D/g, '');
+          const phoneNumber = '+' + digits;
+
           this.loading = true;
           try {
-            const res = await fetch('/login/password', {
+            const res = await fetch('/login/verify', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ requestId: this.requestId, password: pwd }),
+              body: JSON.stringify({ phone: phoneNumber, code: trimmed }),
+              credentials: 'same-origin',
             });
 
             const data = await res.json();
 
             if (!res.ok) {
-              this.errorMsg = data.message || 'Erro ao enviar senha.';
+              this.errorMsg = data.message || 'Código inválido.';
               this.loading = false;
               return;
             }
 
-            this.step = 'waitingCompletion';
-            this.loading = false;
+            window.location.href = '/dashboard';
           } catch (e) {
             this.errorMsg = 'Erro de conexão. Verifique sua internet.';
             this.loading = false;
@@ -422,17 +249,14 @@
         },
 
         retry() {
-          this.stopPolling();
           if (this.countdownInterval) clearInterval(this.countdownInterval);
           this.step = 'phone';
           this.phone = '';
           this.code = '';
-          this.passwordValue = '';
-          this.requestId = null;
           this.loading = false;
           this.errorMsg = '';
-          this.countdownText = '30:00';
-          this.expiresAt = Date.now() + 30 * 60 * 1000;
+          this.countdownText = '05:00';
+          this.expiresAt = null;
         },
       };
     }
