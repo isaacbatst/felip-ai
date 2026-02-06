@@ -109,11 +109,6 @@ export class TelegramBotController implements OnModuleInit, OnModuleDestroy {
       await this.commandHandler.handleAssinatura(ctx);
     });
 
-    // Register message:contact handler for registration flow
-    this.botService.bot.on('message:contact', async (ctx: Context) => {
-      await this.registrationHandler.handleContact(ctx);
-    });
-
     // Register message:text handler with sequentialization (only for login flow now)
     this.botService.bot.on(
       'message:text',

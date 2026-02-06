@@ -16,6 +16,7 @@ import { WebSessionRepository } from '@/infrastructure/persistence/web-session.r
 import { UserRepository } from '@/infrastructure/persistence/user.repository';
 import { PhoneWhitelistService } from '@/infrastructure/telegram/phone-whitelist.service';
 import { OtpService } from '@/infrastructure/auth/otp.service';
+import { RegistrationTokenService } from '@/infrastructure/auth/registration-token.service';
 
 @Controller('login')
 export class LoginController {
@@ -26,6 +27,7 @@ export class LoginController {
     private readonly phoneWhitelistService: PhoneWhitelistService,
     private readonly otpService: OtpService,
     private readonly userRepository: UserRepository,
+    private readonly registrationTokenService: RegistrationTokenService,
   ) {}
 
   @Get()
@@ -43,8 +45,10 @@ export class LoginController {
 
   @Post('phone')
   @HttpCode(200)
-  async submitPhone(@Body() body: { phone: string }): Promise<{ success: boolean; expiresAt: Date }> {
-    const { phone } = body;
+  async submitPhone(
+    @Body() body: { phone: string; registrationToken?: string },
+  ): Promise<{ success: boolean; expiresAt: Date }> {
+    const { phone, registrationToken } = body;
 
     if (!phone || !phone.startsWith('+')) {
       throw new HttpException('Número de telefone deve começar com +', HttpStatus.BAD_REQUEST);
@@ -54,9 +58,23 @@ export class LoginController {
       throw new HttpException('Número não autorizado', HttpStatus.BAD_REQUEST);
     }
 
-    const user = await this.userRepository.findByPhone(phone);
+    let user = await this.userRepository.findByPhone(phone);
+
+    if (!user && registrationToken) {
+      const tokenData = this.registrationTokenService.consume(registrationToken);
+      if (!tokenData) {
+        throw new HttpException('Token de registro inválido ou expirado. Envie /start no bot novamente.', HttpStatus.BAD_REQUEST);
+      }
+      user = await this.userRepository.createUser({
+        phone,
+        telegramUserId: tokenData.telegramUserId,
+        chatId: tokenData.chatId,
+      });
+      this.logger.log(`User registered via token: telegramUserId=${tokenData.telegramUserId}, phone=${phone}`);
+    }
+
     if (!user) {
-      throw new HttpException('Inicie o bot primeiro', HttpStatus.BAD_REQUEST);
+      throw new HttpException('Registre-se com /start no bot @lfviagenschatbot', HttpStatus.BAD_REQUEST);
     }
 
     const { expiresAt } = await this.otpService.generateAndSend(phone);

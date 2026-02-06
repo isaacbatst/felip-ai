@@ -41,10 +41,6 @@
           Digite seu número de telefone em formato internacional para receber o código de acesso.
         </p>
 
-        <div class="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-5 text-sm text-amber-800 text-left">
-          Ainda não iniciou o bot? Procure por <strong x-text="botUsername"></strong> no Telegram e envie <strong>/start</strong> antes de continuar.
-        </div>
-
         <form @submit.prevent="submitPhone()">
           <div class="mb-5">
             <input
@@ -155,9 +151,20 @@
         countdownText: '05:00',
         countdownInterval: null,
         expiresAt: null,
+        registrationToken: null,
         botUsername: document.querySelector('meta[name="bot-username"]')?.content || '@FelipAIBot',
 
-        init() {},
+        init() {
+          const params = new URLSearchParams(window.location.search);
+          const phoneParam = params.get('phone');
+          const tokenParam = params.get('token');
+          if (phoneParam) {
+            this.phone = phoneParam;
+          }
+          if (tokenParam) {
+            this.registrationToken = tokenParam;
+          }
+        },
 
         startCountdown() {
           if (this.countdownInterval) clearInterval(this.countdownInterval);
@@ -191,7 +198,7 @@
             const res = await fetch('/login/phone', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ phone: phoneNumber }),
+              body: JSON.stringify({ phone: phoneNumber, ...(this.registrationToken && { registrationToken: this.registrationToken }) }),
             });
 
             const data = await res.json();
