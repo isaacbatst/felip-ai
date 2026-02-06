@@ -113,6 +113,21 @@
           <i class="fa-solid fa-redo mr-1"></i> Tentar novamente
         </button>
       </div>
+
+      <!-- Disconnected State -->
+      <div x-show="isWorkerDisconnected()" class="mt-4 pt-4 border-t border-gray-100">
+        <div class="flex items-center gap-2 text-red-600 mb-3">
+          <i class="fa-solid fa-plug-circle-xmark"></i>
+          <span class="text-sm font-medium">A conexão com o Telegram foi perdida</span>
+        </div>
+        <button @click="reconnectWorker()"
+          class="px-4 py-2 text-sm font-medium rounded-lg bg-red-100 text-red-600 hover:bg-red-200 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+          :disabled="reconnecting">
+          <span x-show="reconnecting" class="spinner inline-block" style="width: 14px; height: 14px; border-width: 2px;"></span>
+          <i x-show="!reconnecting" class="fa-solid fa-plug mr-1"></i>
+          <span x-text="reconnecting ? 'Reconectando...' : 'Reconectar'"></span>
+        </button>
+      </div>
     </div>
 
     <!-- Section Tabs -->
@@ -817,6 +832,7 @@
         authCode: '',
         authPassword: '',
         submittingAuth: false,
+        reconnecting: false,
 
         // Subscription state
         subscriptionData: null,
@@ -1032,7 +1048,9 @@
             if (data.success) {
               this.workerStatus = data.data;
               // Stop polling when in stable state
-              if (this.workerStatus.authState === 'completed' || !this.botStatus.isEnabled) {
+              if (this.workerStatus.authState === 'completed'
+                  || !this.botStatus.isEnabled
+                  || (!this.workerStatus.workerRunning && this.workerStatus.authState === null)) {
                 this.stopWorkerPolling();
               }
             }
@@ -1060,8 +1078,38 @@
           return this.botStatus.isEnabled && this.workerStatus.authState !== 'completed' && this.workerStatus.authState !== null;
         },
 
+        isWorkerDisconnected() {
+          return this.botStatus.isEnabled
+            && !this.workerStatus.workerRunning
+            && this.workerStatus.authState === null;
+        },
+
+        async reconnectWorker() {
+          this.reconnecting = true;
+          try {
+            const res = await this.authFetch('/dashboard/bot-status', {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ isEnabled: true }),
+            });
+            const data = await res.json();
+            if (data.success) {
+              this.showToast('Reconectando...', 'success');
+              this.startWorkerPolling();
+            } else {
+              this.showToast('Erro ao reconectar: ' + (data.error || 'Erro desconhecido'), 'error');
+            }
+          } catch (error) {
+            console.error('Error reconnecting worker:', error);
+            this.showToast('Erro ao reconectar', 'error');
+          } finally {
+            this.reconnecting = false;
+          }
+        },
+
         getWorkerIndicatorClass() {
           if (!this.botStatus.isEnabled) return 'bg-gray-100 text-gray-400';
+          if (this.isWorkerDisconnected()) return 'bg-red-100 text-red-600';
           switch (this.workerStatus.authState) {
             case 'completed': return 'bg-emerald-100 text-emerald-600';
             case 'failed': return 'bg-red-100 text-red-600';
@@ -1074,6 +1122,7 @@
 
         getWorkerIndicatorIcon() {
           if (!this.botStatus.isEnabled) return 'fa-pause';
+          if (this.isWorkerDisconnected()) return 'fa-plug-circle-xmark';
           switch (this.workerStatus.authState) {
             case 'completed': return 'fa-play';
             case 'failed': return 'fa-exclamation';
@@ -1086,6 +1135,7 @@
 
         getWorkerStatusText() {
           if (!this.botStatus.isEnabled) return 'Quando desativado, o bot ignora mensagens dos grupos';
+          if (this.isWorkerDisconnected()) return 'Conexão perdida — clique em Reconectar';
           switch (this.workerStatus.authState) {
             case 'completed': return 'Conectado e processando mensagens';
             case 'failed': return 'Falha na conexão com o Telegram';

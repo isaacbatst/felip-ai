@@ -33,8 +33,8 @@ export class BotStatusDrizzleStore extends BotStatusRepository {
       .limit(1);
 
     if (result.length === 0) {
-      // Default is on (true) if no record exists
-      return true;
+      // Default is off (false) if no record exists
+      return false;
     }
 
     return result[0].isEnabled;
