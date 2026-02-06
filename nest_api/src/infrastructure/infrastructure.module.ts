@@ -30,6 +30,9 @@ import { HybridAuthorizationService } from './subscription/hybrid-authorization.
 import { SessionGuard } from './http/guards/session.guard';
 import { LoginController } from './http/login.controller';
 import { RegisterController } from './http/register.controller';
+import { CieloWebhookController } from './http/cielo-webhook.controller';
+import { CieloService } from './cielo/cielo.service';
+import { TelegramBotSubscriptionHandler } from './telegram/handlers/telegram-bot-subscription.handler';
 
 /**
  * Module responsável por serviços de infraestrutura
@@ -37,7 +40,7 @@ import { RegisterController } from './http/register.controller';
  */
 @Module({
   imports: [DomainModule, PersistenceModule, QueueModule, WorkersModule],
-  controllers: [LandingController, DashboardController, SubscriptionController, LoginController, RegisterController],
+  controllers: [LandingController, DashboardController, SubscriptionController, LoginController, RegisterController, CieloWebhookController],
   providers: [
     AppConfigService,
     OpenAIService,
@@ -61,10 +64,14 @@ import { RegisterController } from './http/register.controller';
     RegistrationTokenService,
     TelegramUserQueueProcessorRabbitMQ,
     TdlibUpdatesWorkerRabbitMQ,
+    // Cielo
+    CieloService,
     // Subscription services
     SubscriptionService,
     SubscriptionAuthorizationService,
     HybridAuthorizationService,
+    // Telegram handlers
+    TelegramBotSubscriptionHandler,
     // Guards
     SessionGuard,
   ],

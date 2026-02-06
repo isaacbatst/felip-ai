@@ -238,4 +238,18 @@ export class SubscriptionDrizzleStore extends SubscriptionRepository {
     await this.db.delete(subscriptions).where(eq(subscriptions.userId, userId));
     this.logger.log(`Deleted subscription for user ${userId}`);
   }
+
+  async getByCieloRecurrentPaymentId(recurrentPaymentId: string): Promise<SubscriptionData | null> {
+    const result = await this.db
+      .select()
+      .from(subscriptions)
+      .where(eq(subscriptions.cieloRecurrentPaymentId, recurrentPaymentId))
+      .limit(1);
+
+    if (result.length === 0) {
+      return null;
+    }
+
+    return this.mapToSubscriptionData(result[0]);
+  }
 }

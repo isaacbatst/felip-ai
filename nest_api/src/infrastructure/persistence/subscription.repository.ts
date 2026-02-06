@@ -147,4 +147,9 @@ export abstract class SubscriptionRepository {
    * Delete a subscription by user ID
    */
   abstract deleteByUserId(userId: string): Promise<void>;
+
+  /**
+   * Get a subscription by Cielo recurrent payment ID
+   */
+  abstract getByCieloRecurrentPaymentId(recurrentPaymentId: string): Promise<SubscriptionData | null>;
 }

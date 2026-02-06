@@ -11,6 +11,7 @@ import {
 import type { Request, Response } from 'express';
 import { join } from 'node:path';
 import { SubscriptionService, SubscriptionError } from '@/infrastructure/subscription/subscription.service';
+import type { CheckoutRequestDto } from '@/infrastructure/cielo/cielo.types';
 import { ActiveGroupsRepository } from '@/infrastructure/persistence/active-groups.repository';
 import { SessionGuard } from '@/infrastructure/http/guards/session.guard';
 
@@ -50,6 +51,9 @@ interface SubscriptionDataResponse {
       durationDays: number | null;
       features: string[] | null;
     };
+    // Card info
+    cardLastFourDigits: string | null;
+    cardBrand: string | null;
     // Calculated fields
     totalGroupLimit: number;
     activeGroupsCount: number;
@@ -153,6 +157,8 @@ export class SubscriptionController {
           durationDays: subscription.plan.durationDays,
           features: subscription.plan.features,
         },
+        cardLastFourDigits: subscription.cardLastFourDigits,
+        cardBrand: subscription.cardBrand,
         totalGroupLimit: subscription.plan.groupLimit + subscription.extraGroups,
         activeGroupsCount,
         daysRemaining,
@@ -240,6 +246,87 @@ export class SubscriptionController {
         success: false,
         error: 'Erro ao iniciar período de teste. Tente novamente.',
         code: 'internal_error',
+      } satisfies ApiResponse);
+    }
+  }
+
+  /**
+   * POST /subscription/checkout - Subscribe to a paid plan via Cielo
+   */
+  @Post('checkout')
+  async checkout(
+    @Req() req: AuthenticatedRequest,
+    @Res() res: Response,
+  ): Promise<void> {
+    const userId = req.user.userId;
+    const body = req.body as Partial<CheckoutRequestDto>;
+
+    // Validate required fields
+    const requiredFields: (keyof CheckoutRequestDto)[] = [
+      'planId', 'cardNumber', 'holder', 'expirationDate', 'securityCode', 'brand', 'customerName',
+    ];
+    const missingFields = requiredFields.filter((f) => !body[f]);
+    if (missingFields.length > 0) {
+      res.status(HttpStatus.BAD_REQUEST).json({
+        success: false,
+        error: `Campos obrigatórios faltando: ${missingFields.join(', ')}`,
+        code: 'missing_fields',
+      } satisfies ApiResponse);
+      return;
+    }
+
+    try {
+      const result = await this.subscriptionService.checkout(userId, body as CheckoutRequestDto);
+      const daysRemaining = await this.subscriptionService.getDaysRemaining(userId) ?? 0;
+      const activeGroups = await this.activeGroupsRepository.getActiveGroups(userId);
+      const activeGroupsCount = activeGroups?.length ?? 0;
+
+      res.status(HttpStatus.OK).json({
+        success: true,
+        data: {
+          subscription: {
+            id: result.subscription.id,
+            status: result.subscription.status,
+            startDate: result.subscription.startDate.toISOString(),
+            currentPeriodStart: result.subscription.currentPeriodStart.toISOString(),
+            currentPeriodEnd: result.subscription.currentPeriodEnd.toISOString(),
+            nextBillingDate: result.subscription.nextBillingDate?.toISOString() ?? null,
+            canceledAt: null,
+            cancelReason: null,
+            trialUsed: result.subscription.trialUsed,
+            extraGroups: result.subscription.extraGroups,
+            plan: {
+              id: result.subscription.plan.id,
+              name: result.subscription.plan.name,
+              displayName: result.subscription.plan.displayName,
+              priceInCents: result.subscription.plan.priceInCents,
+              groupLimit: result.subscription.plan.groupLimit,
+              durationDays: result.subscription.plan.durationDays,
+              features: result.subscription.plan.features,
+            },
+            totalGroupLimit: result.subscription.plan.groupLimit + result.subscription.extraGroups,
+            activeGroupsCount,
+            daysRemaining,
+            cardLastFourDigits: result.subscription.cardLastFourDigits,
+            cardBrand: result.subscription.cardBrand,
+          },
+        },
+      } satisfies ApiResponse);
+    } catch (error) {
+      if (error instanceof SubscriptionError) {
+        res.status(HttpStatus.BAD_REQUEST).json({
+          success: false,
+          error: error.message,
+          code: error.code,
+        } satisfies ApiResponse);
+        return;
+      }
+
+      this.logger.error('Error during checkout', { error, userId });
+      res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
+        success: false,
+        error: 'Erro ao processar pagamento. Tente novamente.',
+        code: 'checkout_failed',
       } satisfies ApiResponse);
     }
   }

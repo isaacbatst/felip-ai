@@ -1,7 +1,11 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { SubscriptionRepository, SubscriptionWithPlan, SubscriptionStatus } from '@/infrastructure/persistence/subscription.repository';
 import { SubscriptionPlanRepository, SubscriptionPlanData } from '@/infrastructure/persistence/subscription-plan.repository';
+import { SubscriptionPaymentRepository } from '@/infrastructure/persistence/subscription-payment.repository';
 import { AppConfigService } from '@/config/app.config';
+import { CieloService } from '@/infrastructure/cielo/cielo.service';
+import type { CheckoutRequestDto, CieloWebhookPayload } from '@/infrastructure/cielo/cielo.types';
+import { CieloTransactionStatus } from '@/infrastructure/cielo/cielo.types';
 
 /**
  * Error types for subscription operations
@@ -25,6 +29,14 @@ export interface StartTrialResult {
 }
 
 /**
+ * Result of checkout operation
+ */
+export interface CheckoutResult {
+  success: true;
+  subscription: SubscriptionWithPlan;
+}
+
+/**
  * Service for managing subscriptions
  */
 @Injectable()
@@ -34,7 +46,9 @@ export class SubscriptionService implements OnModuleInit {
   constructor(
     private readonly subscriptionRepository: SubscriptionRepository,
     private readonly subscriptionPlanRepository: SubscriptionPlanRepository,
+    private readonly subscriptionPaymentRepository: SubscriptionPaymentRepository,
     private readonly appConfig: AppConfigService,
+    private readonly cieloService: CieloService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -197,6 +211,254 @@ export class SubscriptionService implements OnModuleInit {
     const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
 
     return Math.max(0, diffDays);
+  }
+
+  /**
+   * Checkout: create a paid subscription via Cielo recurrent payment
+   */
+  async checkout(userId: string, dto: CheckoutRequestDto): Promise<CheckoutResult> {
+    // Check no active paid subscription exists
+    const existing = await this.subscriptionRepository.getByUserId(userId);
+    if (existing && this.isSubscriptionActive(existing.status)) {
+      throw new SubscriptionError('Você já possui uma assinatura ativa.', 'already_subscribed');
+    }
+
+    // Fetch plan
+    const plan = await this.subscriptionPlanRepository.getPlanById(dto.planId);
+    if (!plan) {
+      throw new SubscriptionError('Plano não encontrado.', 'plan_not_found');
+    }
+    if (plan.name === 'trial') {
+      throw new SubscriptionError('Plano inválido para checkout.', 'plan_not_found');
+    }
+    if (!plan.isActive) {
+      throw new SubscriptionError('Plano não está disponível.', 'plan_not_found');
+    }
+
+    // Build Cielo request
+    const merchantOrderId = `SUB-${userId}-${Date.now()}`;
+    const cieloRequest = {
+      MerchantOrderId: merchantOrderId,
+      Customer: { Name: dto.customerName },
+      Payment: {
+        Type: 'CreditCard' as const,
+        Amount: plan.priceInCents,
+        Installments: 1,
+        SoftDescriptor: 'FelipAI',
+        RecurrentPayment: {
+          AuthorizeNow: true,
+          Interval: 'Monthly' as const,
+        },
+        CreditCard: {
+          CardNumber: dto.cardNumber,
+          Holder: dto.holder,
+          ExpirationDate: dto.expirationDate,
+          SecurityCode: dto.securityCode,
+          Brand: dto.brand,
+          SaveCard: true,
+        },
+      },
+    };
+
+    const cieloResponse = await this.cieloService.createRecurrentPayment(cieloRequest);
+    const paymentStatus = cieloResponse.Payment.Status;
+
+    // Check if authorized or confirmed
+    if (
+      paymentStatus !== CieloTransactionStatus.Authorized &&
+      paymentStatus !== CieloTransactionStatus.Confirmed
+    ) {
+      throw new SubscriptionError(
+        cieloResponse.Payment.ReturnMessage || 'Pagamento recusado',
+        'checkout_failed',
+      );
+    }
+
+    // Delete any existing subscription (expired/canceled) before creating new
+    if (existing) {
+      await this.subscriptionRepository.delete(existing.id);
+    }
+
+    // Create subscription
+    const currentPeriodEnd = new Date();
+    currentPeriodEnd.setDate(currentPeriodEnd.getDate() + 30);
+
+    const cardNumber = dto.cardNumber.replace(/\s/g, '');
+    const last4 = cardNumber.slice(-4);
+
+    const subscription = await this.subscriptionRepository.create({
+      userId,
+      planId: plan.id,
+      status: 'active',
+      currentPeriodEnd,
+      cieloRecurrentPaymentId: cieloResponse.Payment.RecurrentPayment.RecurrentPaymentId,
+      cieloCardToken: cieloResponse.Payment.CreditCard.CardToken ?? undefined,
+      cardLastFourDigits: last4,
+      cardBrand: dto.brand,
+      nextBillingDate: currentPeriodEnd,
+    });
+
+    // Create payment record
+    await this.subscriptionPaymentRepository.create({
+      subscriptionId: subscription.id,
+      cieloPaymentId: cieloResponse.Payment.PaymentId,
+      amountInCents: plan.priceInCents,
+      status: 'paid',
+      cieloReturnCode: cieloResponse.Payment.ReturnCode,
+      cieloReturnMessage: cieloResponse.Payment.ReturnMessage,
+      authorizationCode: cieloResponse.Payment.AuthorizationCode,
+      paidAt: new Date(),
+    });
+
+    // Get subscription with plan details
+    const subscriptionWithPlan = await this.subscriptionRepository.getWithPlanByUserId(userId);
+    if (!subscriptionWithPlan) {
+      throw new SubscriptionError('Erro ao criar assinatura.', 'subscription_creation_failed');
+    }
+
+    this.logger.log(`Checkout completed for user ${userId}, plan ${plan.name}`);
+
+    return { success: true, subscription: subscriptionWithPlan };
+  }
+
+  /**
+   * Process a Cielo webhook event
+   */
+  async processWebhookEvent(payload: CieloWebhookPayload): Promise<void> {
+    switch (payload.ChangeType) {
+      case 1: // Payment status change
+        await this.handlePaymentStatusChange(payload);
+        break;
+      case 2: // Recurrence created
+        this.logger.log(`Recurrence created: ${payload.RecurrentPaymentId}`);
+        break;
+      case 4: // Recurring payment status change
+        await this.handleRecurrenceStatusChange(payload);
+        break;
+      default:
+        this.logger.warn(`Unknown webhook ChangeType: ${payload.ChangeType}`);
+    }
+  }
+
+  private async handlePaymentStatusChange(payload: CieloWebhookPayload): Promise<void> {
+    if (!payload.PaymentId) {
+      this.logger.warn('Payment status change webhook without PaymentId');
+      return;
+    }
+
+    // Query Cielo for payment details
+    const paymentDetails = await this.cieloService.queryPayment(payload.PaymentId);
+    const status = paymentDetails.Payment.Status;
+
+    // Find or create payment record
+    let payment = await this.subscriptionPaymentRepository.getByCieloPaymentId(payload.PaymentId);
+
+    if (payment) {
+      // Update existing payment
+      if (status === CieloTransactionStatus.Authorized || status === CieloTransactionStatus.Confirmed) {
+        await this.subscriptionPaymentRepository.update(payment.id, {
+          status: 'paid',
+          cieloReturnCode: paymentDetails.Payment.ReturnCode,
+          cieloReturnMessage: paymentDetails.Payment.ReturnMessage,
+          paidAt: new Date(),
+        });
+
+        // Extend subscription period
+        const subscription = await this.subscriptionRepository.getById(payment.subscriptionId);
+        if (subscription) {
+          const newEnd = new Date();
+          newEnd.setDate(newEnd.getDate() + 30);
+          await this.subscriptionRepository.update(subscription.id, {
+            status: 'active',
+            currentPeriodEnd: newEnd,
+            currentPeriodStart: new Date(),
+            nextBillingDate: newEnd,
+          });
+          this.logger.log(`Extended subscription ${subscription.id} to ${newEnd.toISOString()}`);
+        }
+      } else if (status === CieloTransactionStatus.Denied) {
+        const newRetryCount = payment.retryCount + 1;
+        await this.subscriptionPaymentRepository.update(payment.id, {
+          status: 'failed',
+          cieloReturnCode: paymentDetails.Payment.ReturnCode,
+          cieloReturnMessage: paymentDetails.Payment.ReturnMessage,
+          failedAt: new Date(),
+          retryCount: newRetryCount,
+        });
+
+        // Set past_due after 3 failures
+        if (newRetryCount >= 3) {
+          const subscription = await this.subscriptionRepository.getById(payment.subscriptionId);
+          if (subscription) {
+            await this.subscriptionRepository.update(subscription.id, {
+              status: 'past_due',
+            });
+            this.logger.warn(`Subscription ${subscription.id} set to past_due after ${newRetryCount} failures`);
+          }
+        }
+      }
+    } else {
+      // New payment from recurrence — find subscription by recurrentPaymentId
+      const recurrentId = payload.RecurrentPaymentId || paymentDetails.Payment.RecurrentPayment?.RecurrentPaymentId;
+      if (!recurrentId) {
+        this.logger.warn(`Cannot find subscription for payment ${payload.PaymentId}`);
+        return;
+      }
+
+      const subscription = await this.subscriptionRepository.getByCieloRecurrentPaymentId(recurrentId);
+      if (!subscription) {
+        this.logger.warn(`No subscription found for recurrentPaymentId ${recurrentId}`);
+        return;
+      }
+
+      const isPaid = status === CieloTransactionStatus.Authorized || status === CieloTransactionStatus.Confirmed;
+
+      // Create payment record
+      await this.subscriptionPaymentRepository.create({
+        subscriptionId: subscription.id,
+        cieloPaymentId: payload.PaymentId,
+        amountInCents: paymentDetails.Payment.Amount,
+        status: isPaid ? 'paid' : 'failed',
+        cieloReturnCode: paymentDetails.Payment.ReturnCode,
+        cieloReturnMessage: paymentDetails.Payment.ReturnMessage,
+        authorizationCode: paymentDetails.Payment.AuthorizationCode,
+        paidAt: isPaid ? new Date() : undefined,
+        failedAt: isPaid ? undefined : new Date(),
+      });
+
+      if (isPaid) {
+        const newEnd = new Date();
+        newEnd.setDate(newEnd.getDate() + 30);
+        await this.subscriptionRepository.update(subscription.id, {
+          status: 'active',
+          currentPeriodEnd: newEnd,
+          currentPeriodStart: new Date(),
+          nextBillingDate: newEnd,
+        });
+        this.logger.log(`Renewed subscription ${subscription.id} to ${newEnd.toISOString()}`);
+      }
+    }
+  }
+
+  private async handleRecurrenceStatusChange(payload: CieloWebhookPayload): Promise<void> {
+    if (!payload.RecurrentPaymentId) {
+      this.logger.warn('Recurrence status change webhook without RecurrentPaymentId');
+      return;
+    }
+
+    const subscription = await this.subscriptionRepository.getByCieloRecurrentPaymentId(payload.RecurrentPaymentId);
+    if (!subscription) {
+      this.logger.warn(`No subscription found for recurrentPaymentId ${payload.RecurrentPaymentId}`);
+      return;
+    }
+
+    // ChangeType 4 = recurrence deactivated, mark subscription as canceled
+    await this.subscriptionRepository.update(subscription.id, {
+      status: 'canceled',
+      canceledAt: new Date(),
+      cancelReason: 'Recorrência desativada pela Cielo',
+    });
+    this.logger.log(`Subscription ${subscription.id} canceled due to recurrence deactivation`);
   }
 
   /**
