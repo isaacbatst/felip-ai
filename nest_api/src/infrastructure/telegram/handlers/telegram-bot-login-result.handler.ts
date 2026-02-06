@@ -22,9 +22,9 @@ export class TelegramBotLoginResultHandler {
   ) {}
 
   async handleLoginSuccess(input: {
-    telegramUserId: number;
+    telegramUserId?: number;
     loggedInUserId: number;
-    chatId: number;
+    chatId?: number;
     userInfo: TelegramUserInfo | null;
     error?: string;
   }): Promise<void> {
@@ -34,23 +34,26 @@ export class TelegramBotLoginResultHandler {
 
     // CRITICAL: Find conversation by telegramUserId first (primary constraint - one conversation per telegram user)
     // This ensures we're updating the correct conversation for the telegram user
-    let session = await this.conversationRepository.getSessionByTelegramUserId(telegramUserId);
-    
-    // If not found, try to find by loggedInUserId (fallback for edge cases)
+    // Skip telegramUserId lookup for web conversations (telegramUserId is undefined)
+    let session = telegramUserId !== undefined
+      ? await this.conversationRepository.getSessionByTelegramUserId(telegramUserId)
+      : null;
+
+    // If not found, try to find by loggedInUserId (fallback for edge cases and web conversations)
     if (!session) {
       this.logger.debug('Conversation not found by telegramUserId, trying loggedInUserId', { telegramUserId, loggedInUserId });
       session = await this.conversationRepository.getActiveSessionByLoggedInUserId(loggedInUserId);
     }
-    
+
     if (session) {
       this.logger.log('Conversation found for login success', { requestId: session.requestId, state: session.state, chatId: session.chatId, telegramUserId: session.telegramUserId, loggedInUserId: session.loggedInUserId });
-      
-      // Ensure we're updating the conversation for the correct telegram user
-      if (session.telegramUserId !== telegramUserId) {
-        this.logger.warn('Conversation telegramUserId mismatch, this should not happen', { 
-          sessionTelegramUserId: session.telegramUserId, 
+
+      // Ensure we're updating the conversation for the correct telegram user (skip check for web conversations)
+      if (telegramUserId !== undefined && session.telegramUserId !== undefined && session.telegramUserId !== telegramUserId) {
+        this.logger.warn('Conversation telegramUserId mismatch, this should not happen', {
+          sessionTelegramUserId: session.telegramUserId,
           inputTelegramUserId: telegramUserId,
-          requestId: session.requestId 
+          requestId: session.requestId
         });
       }
       
@@ -82,7 +85,7 @@ export class TelegramBotLoginResultHandler {
     // Use chatId from session if available, otherwise use chatId from input
     const finalChatId = session?.chatId ?? chatId;
     if (!finalChatId) {
-      this.logger.error('No chatId available to send success message', { telegramUserId, loggedInUserId, sessionChatId: session?.chatId, inputChatId: chatId });
+      this.logger.debug('No chatId available to send success message (web login)', { telegramUserId, loggedInUserId, sessionChatId: session?.chatId, inputChatId: chatId });
       return;
     }
 
@@ -126,18 +129,22 @@ export class TelegramBotLoginResultHandler {
   }
 
   async handleLoginFailure(input: {
-    telegramUserId: number;
+    telegramUserId?: number;
     loggedInUserId: number;
-    chatId: number;
+    chatId?: number;
     error?: string;
+    source?: 'web' | 'telegram';
   }): Promise<void> {
-    const { telegramUserId, loggedInUserId, chatId, error } = input;
+    const { telegramUserId, loggedInUserId, chatId, error, source } = input;
 
     this.logger.error('Login failed', { error, telegramUserId, loggedInUserId });
-    
+
     // CRITICAL: Find conversation by telegramUserId first (primary constraint)
-    let session = await this.conversationRepository.getSessionByTelegramUserId(telegramUserId);
-    
+    // Skip telegramUserId lookup for web conversations
+    let session = telegramUserId !== undefined
+      ? await this.conversationRepository.getSessionByTelegramUserId(telegramUserId)
+      : null;
+
     // If not found, try to find by loggedInUserId (fallback)
     if (!session) {
       session = await this.conversationRepository.getActiveSessionByLoggedInUserId(loggedInUserId);
@@ -163,12 +170,14 @@ export class TelegramBotLoginResultHandler {
       try {
         // Restart login with the same phone number to get a new code
         await this.client.login(loggedInUserId.toString(), session.phoneNumber, session.requestId);
-        
-        await this.botService.bot.api.sendMessage(
-          chatId,
-          '⏰ O código expirou. Um novo código está sendo gerado automaticamente...\n\n' +
-          'Por favor, aguarde alguns segundos e envie o novo código que você receberá no Telegram.',
-        );
+
+        if (chatId) {
+          await this.botService.bot.api.sendMessage(
+            chatId,
+            '⏰ O código expirou. Um novo código está sendo gerado automaticamente...\n\n' +
+            'Por favor, aguarde alguns segundos e envie o novo código que você receberá no Telegram.',
+          );
+        }
         return;
       } catch (restartError) {
         this.logger.error(`Failed to restart login for new code: ${restartError}`, { requestId: session.requestId });
@@ -187,6 +196,12 @@ export class TelegramBotLoginResultHandler {
       this.authCodeDedup.delete(session.requestId);
     } else {
       this.logger.warn('Conversation not found when handling login failure', { telegramUserId, loggedInUserId });
+    }
+
+    // Skip bot message for web-originated conversations (no chatId)
+    if (!chatId) {
+      this.logger.debug('No chatId available to send failure message (web login)', { telegramUserId, loggedInUserId });
+      return;
     }
 
     const failureMessage = isPhoneCodeExpired

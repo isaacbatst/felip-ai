@@ -31,19 +31,22 @@ export class ConversationDrizzleStore extends ConversationRepository {
   async setConversation(conversation: ConversationData): Promise<void> {
     // CRITICAL: Cancel any existing active conversations for this telegramUserId to ensure uniqueness per telegram user
     // This is the primary constraint - a telegram user must have only one conversation at a time
-    const existingConversationByTelegramUserId = await this.getConversationByTelegramUserId(conversation.telegramUserId);
-    if (existingConversationByTelegramUserId && 
-        existingConversationByTelegramUserId.requestId !== conversation.requestId &&
-        existingConversationByTelegramUserId.state !== 'completed' &&
-        existingConversationByTelegramUserId.state !== 'failed') {
-      // Mark existing conversation as failed since a new one is being created for the same telegram user
-      await this.db
-        .update(sessions)
-        .set({
-          state: 'failed',
-          updatedAt: new Date(),
-        })
-        .where(eq(sessions.requestId, existingConversationByTelegramUserId.requestId));
+    // Skip this check for web conversations (no telegramUserId)
+    if (conversation.telegramUserId !== undefined) {
+      const existingConversationByTelegramUserId = await this.getConversationByTelegramUserId(conversation.telegramUserId);
+      if (existingConversationByTelegramUserId &&
+          existingConversationByTelegramUserId.requestId !== conversation.requestId &&
+          existingConversationByTelegramUserId.state !== 'completed' &&
+          existingConversationByTelegramUserId.state !== 'failed') {
+        // Mark existing conversation as failed since a new one is being created for the same telegram user
+        await this.db
+          .update(sessions)
+          .set({
+            state: 'failed',
+            updatedAt: new Date(),
+          })
+          .where(eq(sessions.requestId, existingConversationByTelegramUserId.requestId));
+      }
     }
 
     // Also cancel any existing active conversations for this loggedInUserId (in case user logs in as different user)
@@ -73,6 +76,7 @@ export class ConversationDrizzleStore extends ConversationRepository {
         telegramUserId: conversation.telegramUserId,
         phoneNumber: conversation.phoneNumber,
         chatId: conversation.chatId,
+        source: conversation.source ?? 'telegram',
         state: conversation.state,
         expiresAt,
       })
@@ -83,6 +87,7 @@ export class ConversationDrizzleStore extends ConversationRepository {
           telegramUserId: conversation.telegramUserId,
           phoneNumber: conversation.phoneNumber,
           chatId: conversation.chatId,
+          source: conversation.source ?? 'telegram',
           state: conversation.state,
           updatedAt: new Date(),
           expiresAt,
@@ -343,9 +348,10 @@ export class ConversationDrizzleStore extends ConversationRepository {
     return {
       requestId: row.requestId,
       loggedInUserId: row.loggedInUserId,
-      telegramUserId: row.telegramUserId!,
+      telegramUserId: row.telegramUserId ?? undefined,
       phoneNumber: row.phoneNumber ?? undefined,
-      chatId: row.chatId!,
+      chatId: row.chatId ?? undefined,
+      source: (row.source as 'web' | 'telegram') ?? undefined,
       state: row.state as ConversationState,
     };
   }

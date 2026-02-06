@@ -106,8 +106,8 @@ export class TelegramAuthCodeHandler {
         requestId,
         normalizedCode,
         {
-          userId: session.telegramUserId,
-          chatId: session.chatId,
+          userId: session.telegramUserId!,
+          chatId: session.chatId!,
           phoneNumber: session.phoneNumber,
           state: session.state,
         },

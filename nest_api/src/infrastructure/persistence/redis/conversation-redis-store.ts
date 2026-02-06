@@ -28,7 +28,7 @@ export class ConversationRedisStore extends ConversationRepository {
     try {
       // CRITICAL: Cancel any existing active conversations for this telegramUserId to ensure uniqueness per telegram user
       // This is the primary constraint - a telegram user must have only one conversation at a time
-      const existingConversationByTelegramUserId = await this.getConversationByTelegramUserId(conversation.telegramUserId);
+      const existingConversationByTelegramUserId = conversation.telegramUserId !== undefined ? await this.getConversationByTelegramUserId(conversation.telegramUserId) : null;
       if (existingConversationByTelegramUserId && 
           existingConversationByTelegramUserId.requestId !== conversation.requestId &&
           existingConversationByTelegramUserId.state !== 'completed' &&

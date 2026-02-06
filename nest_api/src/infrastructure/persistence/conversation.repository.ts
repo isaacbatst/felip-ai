@@ -17,14 +17,17 @@ export interface ConversationData {
   // Identifiers
   requestId: string;                    // Unique conversation identifier
   loggedInUserId: number;                // The Telegram user ID that is logged in (impersonated user) - the user the worker is configured to impersonate
-  telegramUserId: number;                // Telegram user ID (number) - the user interacting with the bot (from ctx.from.id)
-  
+  telegramUserId?: number;               // Telegram user ID (number) - the user interacting with the bot (from ctx.from.id). Optional for web logins.
+
   // Login information (only present during login flow)
   phoneNumber?: string;                  // Phone number being used for login
-  
+
   // Conversation context
-  chatId: number;                        // Chat ID where the conversation is happening
-  
+  chatId?: number;                       // Chat ID where the conversation is happening. Optional for web logins.
+
+  // Source of the conversation
+  source?: 'web' | 'telegram';           // Where the login was initiated from
+
   // Conversation state
   state: ConversationState;                   // Current state of the conversation
 }

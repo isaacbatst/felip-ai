@@ -631,7 +631,7 @@ export class DashboardController {
       `⏱️ Expira em ${expiresInMinutes} minutos.`;
 
     try {
-      await this.telegramBotService.bot.api.sendMessage(conversation.chatId, message, {
+      await this.telegramBotService.bot.api.sendMessage(conversation.chatId!, message, {
         parse_mode: 'Markdown',
         link_preview_options: { is_disabled: true },
       });

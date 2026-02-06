@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Login - Felip AI</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/public/output.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/@alpinejs/mask@3.x.x/dist/cdn.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <style>
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spinner {
+      display: inline-block;
+      width: 18px;
+      height: 18px;
+      border: 2px solid rgba(102, 126, 234, 0.3);
+      border-top-color: rgba(102, 126, 234, 1);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      vertical-align: middle;
+    }
+    .spinner-white {
+      border-color: rgba(255,255,255,0.3);
+      border-top-color: #fff;
+    }
+  </style>
+</head>
+<body class="font-sans bg-gradient-to-br from-primary to-secondary min-h-screen flex items-center justify-center p-5">
+
+  <div x-data="loginApp()" x-init="init()" class="bg-white px-8 py-10 rounded-2xl shadow-2xl text-center max-w-md w-full max-sm:px-5 max-sm:py-8">
+
+    <!-- Step 1: Phone Input -->
+    <template x-if="step === 'phone'">
+      <div>
+        <div class="text-5xl mb-2.5">📱</div>
+        <h1 class="text-gray-800 text-2xl mb-2 font-semibold max-sm:text-xl">Login</h1>
+        <p class="text-gray-500 text-sm mb-8 leading-relaxed">
+          Digite seu número de telefone em formato internacional para iniciar o login.
+        </p>
+
+        <form @submit.prevent="submitPhone()">
+          <div class="mb-5">
+            <input
+              type="tel"
+              x-model="phone"
+              x-mask="+99 (99) 99999-9999"
+              class="w-full py-4 px-5 text-lg text-center border-2 border-gray-200 rounded-xl outline-none transition-all focus:border-primary focus:shadow-[0_0_0_4px_rgba(102,126,234,0.1)]"
+              placeholder="+55 (11) 99999-9999"
+              autofocus
+              required
+            >
+          </div>
+
+          <button
+            type="submit"
+            :disabled="loading"
+            class="bg-primary hover:opacity-90 w-full py-4 text-base font-semibold text-white border-none rounded-xl cursor-pointer transition-all disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          >
+            <span x-show="loading" class="spinner spinner-white"></span>
+            <span x-text="loading ? 'Iniciando...' : 'Continuar'"></span>
+          </button>
+        </form>
+
+        <template x-if="errorMsg">
+          <div class="mt-5 p-4 rounded-xl text-sm bg-red-100 text-red-800" x-text="errorMsg"></div>
+        </template>
+      </div>
+    </template>
+
+    <!-- Step 2: Waiting for code request -->
+    <template x-if="step === 'waitingCodeRequest'">
+      <div>
+        <div class="text-5xl mb-2.5">⏳</div>
+        <h1 class="text-gray-800 text-2xl mb-2 font-semibold max-sm:text-xl">Aguardando...</h1>
+        <p class="text-gray-500 text-sm mb-8 leading-relaxed">
+          Aguardando código de autenticação do Telegram...
+        </p>
+        <div class="flex justify-center mb-5">
+          <span class="spinner" style="width:32px;height:32px;border-width:3px;"></span>
+        </div>
+        <div class="timer py-3 px-5 bg-gray-50 rounded-xl text-sm text-gray-500">
+          ⏱️ Expira em: <span x-text="countdownText"></span>
+        </div>
+      </div>
+    </template>
+
+    <!-- Step 3: Auth Code Input -->
+    <template x-if="step === 'code'">
+      <div>
+        <div class="text-5xl mb-2.5">🔐</div>
+        <h1 class="text-gray-800 text-2xl mb-2 font-semibold max-sm:text-xl">Código de Autenticação</h1>
+        <p class="text-gray-500 text-sm mb-8 leading-relaxed">
+          Digite o código que você recebeu no Telegram.
+        </p>
+
+        <form @submit.prevent="submitCode()">
+          <div class="mb-5">
+            <input
+              type="text"
+              x-model="code"
+              @input="code = $event.target.value.replace(/\D/g, '')"
+              class="code-input w-full py-4 px-5 text-2xl text-center tracking-[8px] border-2 border-gray-200 rounded-xl outline-none transition-all font-mono focus:border-primary focus:shadow-[0_0_0_4px_rgba(102,126,234,0.1)] max-sm:text-xl max-sm:tracking-[6px] max-sm:py-3.5 max-sm:px-4"
+              inputmode="numeric"
+              pattern="[0-9]*"
+              maxlength="6"
+              placeholder="12345"
+              autocomplete="one-time-code"
+              autofocus
+              required
+            >
+          </div>
+
+          <button
+            type="submit"
+            :disabled="loading"
+            class="bg-primary hover:opacity-90 w-full py-4 text-base font-semibold text-white border-none rounded-xl cursor-pointer transition-all disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          >
+            <span x-show="loading" class="spinner spinner-white"></span>
+            <span x-text="loading ? 'Enviando...' : 'Enviar Código'"></span>
+          </button>
+        </form>
+
+        <div class="timer mt-5 py-3 px-5 bg-gray-50 rounded-xl text-sm text-gray-500">
+          ⏱️ Expira em: <span x-text="countdownText"></span>
+        </div>
+
+        <template x-if="errorMsg">
+          <div class="mt-5 p-4 rounded-xl text-sm bg-red-100 text-red-800" x-text="errorMsg"></div>
+        </template>
+      </div>
+    </template>
+
+    <!-- Step 4: Password Input (2FA) -->
+    <template x-if="step === 'password'">
+      <div>
+        <div class="text-5xl mb-2.5">🔒</div>
+        <h1 class="text-gray-800 text-2xl mb-2 font-semibold max-sm:text-xl">Autenticação de Dois Fatores</h1>
+        <p class="text-gray-500 text-sm mb-8 leading-relaxed">
+          Sua conta possui verificação em duas etapas. Digite sua senha para completar o login.
+        </p>
+
+        <div class="bg-blue-50 border border-blue-200 rounded-xl p-3 mb-5 text-sm text-blue-800 text-left">
+          <strong class="block mb-1">O que é isso?</strong>
+          Esta é a senha que você configurou nas configurações de segurança do Telegram (Two-Step Verification).
+        </div>
+
+        <form @submit.prevent="submitPassword()">
+          <div class="mb-5 relative">
+            <input
+              :type="showPassword ? 'text' : 'password'"
+              x-model="passwordValue"
+              class="w-full py-4 pl-5 pr-14 text-base border-2 border-gray-200 rounded-xl outline-none transition-all focus:border-primary focus:shadow-[0_0_0_4px_rgba(102,126,234,0.1)]"
+              placeholder="Digite sua senha 2FA"
+              autocomplete="current-password"
+              autofocus
+              required
+            >
+            <button
+              type="button"
+              @click="showPassword = !showPassword"
+              class="absolute right-4 top-1/2 -translate-y-1/2 bg-transparent border-none cursor-pointer text-xl p-1 opacity-60 hover:opacity-100 transition-opacity"
+              aria-label="Mostrar/esconder senha"
+              x-text="showPassword ? '🙈' : '👁️'"
+            ></button>
+          </div>
+
+          <button
+            type="submit"
+            :disabled="loading"
+            class="bg-primary hover:opacity-90 w-full py-4 text-base font-semibold text-white border-none rounded-xl cursor-pointer transition-all disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          >
+            <span x-show="loading" class="spinner spinner-white"></span>
+            <span x-text="loading ? 'Enviando...' : 'Enviar Senha'"></span>
+          </button>
+        </form>
+
+        <div class="timer mt-5 py-3 px-5 bg-gray-50 rounded-xl text-sm text-gray-500">
+          ⏱️ Expira em: <span x-text="countdownText"></span>
+        </div>
+
+        <template x-if="errorMsg">
+          <div class="mt-5 p-4 rounded-xl text-sm bg-red-100 text-red-800" x-text="errorMsg"></div>
+        </template>
+      </div>
+    </template>
+
+    <!-- Step 5: Waiting for completion after code/password submit -->
+    <template x-if="step === 'waitingCompletion'">
+      <div>
+        <div class="text-5xl mb-2.5">⏳</div>
+        <h1 class="text-gray-800 text-2xl mb-2 font-semibold max-sm:text-xl">Processando...</h1>
+        <p class="text-gray-500 text-sm mb-8 leading-relaxed">
+          Aguardando confirmação do login...
+        </p>
+        <div class="flex justify-center mb-5">
+          <span class="spinner" style="width:32px;height:32px;border-width:3px;"></span>
+        </div>
+        <div class="timer py-3 px-5 bg-gray-50 rounded-xl text-sm text-gray-500">
+          ⏱️ Expira em: <span x-text="countdownText"></span>
+        </div>
+      </div>
+    </template>
+
+    <!-- Step 6: Error / Failure -->
+    <template x-if="step === 'failed'">
+      <div>
+        <div class="text-5xl mb-2.5">❌</div>
+        <h1 class="text-gray-800 text-2xl mb-2 font-semibold max-sm:text-xl">Erro no Login</h1>
+        <p class="text-gray-500 text-sm mb-8 leading-relaxed">
+          Ocorreu um erro durante o processo de login. Por favor, tente novamente.
+        </p>
+
+        <template x-if="errorMsg">
+          <div class="mb-5 p-4 rounded-xl text-sm bg-red-100 text-red-800" x-text="errorMsg"></div>
+        </template>
+
+        <button
+          @click="retry()"
+          class="bg-primary hover:opacity-90 w-full py-4 text-base font-semibold text-white border-none rounded-xl cursor-pointer transition-all"
+        >
+          Tentar Novamente
+        </button>
+      </div>
+    </template>
+
+  </div>
+
+  <script>
+    function loginApp() {
+      return {
+        step: 'phone',
+        phone: '',
+        code: '',
+        passwordValue: '',
+        showPassword: false,
+        requestId: null,
+        loading: false,
+        errorMsg: '',
+        countdownText: '30:00',
+        pollInterval: null,
+        countdownInterval: null,
+        expiresAt: null,
+
+        init() {
+          // Set expiration to 30 minutes from now (will be reset on phone submit)
+          this.expiresAt = Date.now() + 30 * 60 * 1000;
+        },
+
+        startCountdown() {
+          if (this.countdownInterval) clearInterval(this.countdownInterval);
+          this.countdownInterval = setInterval(() => {
+            if (!this.expiresAt) return;
+            const remaining = Math.max(0, Math.floor((this.expiresAt - Date.now()) / 1000));
+            const mins = Math.floor(remaining / 60);
+            const secs = remaining % 60;
+            this.countdownText = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+            if (remaining <= 0) {
+              clearInterval(this.countdownInterval);
+              this.stopPolling();
+              this.errorMsg = 'Sessão expirada. Por favor, tente novamente.';
+              this.step = 'failed';
+            }
+          }, 1000);
+        },
+
+        startPolling() {
+          if (this.pollInterval) clearInterval(this.pollInterval);
+          this.pollInterval = setInterval(() => this.pollStatus(), 2000);
+        },
+
+        stopPolling() {
+          if (this.pollInterval) {
+            clearInterval(this.pollInterval);
+            this.pollInterval = null;
+          }
+        },
+
+        async pollStatus() {
+          if (!this.requestId) return;
+          try {
+            const res = await fetch(`/login/status/${this.requestId}`, { credentials: 'same-origin' });
+            if (!res.ok) return;
+            const data = await res.json();
+
+            if (data.state === 'completed') {
+              this.stopPolling();
+              if (this.countdownInterval) clearInterval(this.countdownInterval);
+              window.location.href = '/dashboard';
+              return;
+            }
+
+            if (data.state === 'failed') {
+              this.stopPolling();
+              if (this.countdownInterval) clearInterval(this.countdownInterval);
+              this.errorMsg = data.error || 'Login falhou';
+              this.step = 'failed';
+              return;
+            }
+
+            if (data.state === 'waitingCode' && this.step === 'waitingCodeRequest') {
+              this.step = 'code';
+              return;
+            }
+
+            if (data.state === 'waitingPassword') {
+              if (this.step === 'code' || this.step === 'waitingCompletion' || this.step === 'waitingCodeRequest') {
+                this.step = 'password';
+              }
+              return;
+            }
+          } catch (e) {
+            // Network error, keep polling
+          }
+        },
+
+        async submitPhone() {
+          this.errorMsg = '';
+          const digits = this.phone.replace(/\D/g, '');
+
+          if (!digits || digits.length < 12) {
+            this.errorMsg = 'Por favor, preencha o número completo.';
+            return;
+          }
+
+          const phoneNumber = '+' + digits;
+
+          this.loading = true;
+          try {
+            const res = await fetch('/login/phone', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ phone: phoneNumber }),
+            });
+
+            const data = await res.json();
+
+            if (!res.ok) {
+              this.errorMsg = data.message || 'Erro ao iniciar login.';
+              this.loading = false;
+              return;
+            }
+
+            this.requestId = data.requestId;
+            this.expiresAt = Date.now() + 30 * 60 * 1000;
+            this.step = 'waitingCodeRequest';
+            this.loading = false;
+            this.startCountdown();
+            this.startPolling();
+          } catch (e) {
+            this.errorMsg = 'Erro de conexão. Verifique sua internet.';
+            this.loading = false;
+          }
+        },
+
+        async submitCode() {
+          this.errorMsg = '';
+          const trimmed = this.code.trim();
+
+          if (!/^\d+$/.test(trimmed)) {
+            this.errorMsg = 'Por favor, digite apenas números.';
+            return;
+          }
+
+          this.loading = true;
+          try {
+            const res = await fetch('/login/code', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ requestId: this.requestId, code: trimmed }),
+            });
+
+            const data = await res.json();
+
+            if (!res.ok) {
+              this.errorMsg = data.message || 'Erro ao enviar código.';
+              this.loading = false;
+              return;
+            }
+
+            this.step = 'waitingCompletion';
+            this.loading = false;
+          } catch (e) {
+            this.errorMsg = 'Erro de conexão. Verifique sua internet.';
+            this.loading = false;
+          }
+        },
+
+        async submitPassword() {
+          this.errorMsg = '';
+          const pwd = this.passwordValue.trim();
+
+          if (!pwd) {
+            this.errorMsg = 'Por favor, digite sua senha.';
+            return;
+          }
+
+          this.loading = true;
+          try {
+            const res = await fetch('/login/password', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ requestId: this.requestId, password: pwd }),
+            });
+
+            const data = await res.json();
+
+            if (!res.ok) {
+              this.errorMsg = data.message || 'Erro ao enviar senha.';
+              this.loading = false;
+              return;
+            }
+
+            this.step = 'waitingCompletion';
+            this.loading = false;
+          } catch (e) {
+            this.errorMsg = 'Erro de conexão. Verifique sua internet.';
+            this.loading = false;
+          }
+        },
+
+        retry() {
+          this.stopPolling();
+          if (this.countdownInterval) clearInterval(this.countdownInterval);
+          this.step = 'phone';
+          this.phone = '';
+          this.code = '';
+          this.passwordValue = '';
+          this.requestId = null;
+          this.loading = false;
+          this.errorMsg = '';
+          this.countdownText = '30:00';
+          this.expiresAt = Date.now() + 30 * 60 * 1000;
+        },
+      };
+    }
+  </script>
+</body>
+</html>

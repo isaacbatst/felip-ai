@@ -191,27 +191,34 @@ export class TdlibUpdatesWorkerRabbitMQ implements OnModuleInit, OnModuleDestroy
           }
 
           // Update session state to waiting for auth code
-          const telegramUserId = await this.updateSessionToWaitingAuthCode(session);
-          if (!telegramUserId) {
-            console.error(`[ERROR] No telegramUserId found in session for loggedInUserId: ${loggedInUserId}`);
+          await this.updateSessionToWaitingAuthCode(session);
+
+          // Skip bot message and auth token generation for web-originated conversations
+          if (session.source === 'web') {
+            this.logger.debug(`Skipping bot message for web conversation ${session.requestId}`);
             break;
           }
-          
-          console.log(`[DEBUG] 🔐 Auth code requested for loggedInUserId: ${session.loggedInUserId}, telegramUserId: ${telegramUserId}, requestId: ${session.requestId}, retry: ${retry}`);
-          
+
+          if (!session.telegramUserId) {
+            this.logger.error(`[ERROR] No telegramUserId found in session for loggedInUserId: ${loggedInUserId}`);
+            break;
+          }
+
+          console.log(`[DEBUG] 🔐 Auth code requested for loggedInUserId: ${session.loggedInUserId}, telegramUserId: ${session.telegramUserId}, requestId: ${session.requestId}, retry: ${retry}`);
+
           // Generate auth token for web-based code input
           const ttlMinutes = this.configService.get<number>('AUTH_TOKEN_TTL_MINUTES') || 10;
           const { token, expiresAt } = await this.authTokenRepository.createToken(session.requestId, ttlMinutes);
-          
+
           // Build auth URL
           const baseUrl = this.configService.get<string>('APP_BASE_URL') || 'https://chatbot.lfviagens.com';
           const authUrl = `${baseUrl}/auth/${token}`;
-          
+
           this.logger.log(`[DEBUG] Generated auth token for session ${session.requestId}, expires at: ${expiresAt.toISOString()}`);
-          
+
           // Send link to user instead of asking for code directly
           await this.botService.bot.api.sendMessage(
-            session.chatId,
+            session.chatId!,
             `🔐 Para completar o login, clique no link abaixo e digite o código de autenticação que você recebeu:\n\n` +
               `${authUrl}\n\n` +
               `⏱️ Este link expira em ${ttlMinutes} minutos.`,
@@ -237,6 +244,12 @@ export class TdlibUpdatesWorkerRabbitMQ implements OnModuleInit, OnModuleDestroy
           // Update session state to waitingPassword
           await this.conversationRepository.updateSessionState(session.requestId, 'waitingPassword');
 
+          // Skip bot message for web-originated conversations
+          if (session.source === 'web') {
+            this.logger.debug(`Skipping bot message for web conversation ${session.requestId} (password-request)`);
+            break;
+          }
+
           this.logger.log(`[DEBUG] 🔒 Password requested for loggedInUserId: ${session.loggedInUserId}, telegramUserId: ${session.telegramUserId}, requestId: ${session.requestId}`);
 
           // Generate auth token for web-based password input
@@ -251,7 +264,7 @@ export class TdlibUpdatesWorkerRabbitMQ implements OnModuleInit, OnModuleDestroy
 
           // Send link to user for secure password input
           await this.botService.bot.api.sendMessage(
-            session.chatId,
+            session.chatId!,
             `🔐 Sua conta possui autenticação de dois fatores (2FA).\n\n` +
               `Por favor, clique no link abaixo e digite sua senha:\n\n` +
               `${authUrl}\n\n` +
@@ -298,12 +311,13 @@ export class TdlibUpdatesWorkerRabbitMQ implements OnModuleInit, OnModuleDestroy
           }
           
           if (session) {
-            this.logger.log(`[DEBUG] Found session for login success`, { 
-              requestId: session.requestId, 
+            this.logger.log(`[DEBUG] Found session for login success`, {
+              requestId: session.requestId,
               loggedInUserId: session.loggedInUserId,
               telegramUserId: session.telegramUserId,
               chatId: session.chatId,
-              state: session.state 
+              source: session.source,
+              state: session.state
             });
             await this.loginResultHandler.handleLoginSuccess({
               telegramUserId: session.telegramUserId,
@@ -344,6 +358,7 @@ export class TdlibUpdatesWorkerRabbitMQ implements OnModuleInit, OnModuleDestroy
               loggedInUserId: session.loggedInUserId,
               chatId: session.chatId,
               error: error || 'Unknown error',
+              source: session.source,
             });
           } else {
             this.logger.error(`[ERROR] Active session not found for loggedInUserId: ${loggedInUserId} when handling login failure`);
@@ -420,7 +435,7 @@ export class TdlibUpdatesWorkerRabbitMQ implements OnModuleInit, OnModuleDestroy
   /**
    * Updates session state to waiting for auth code
    */
-  private async updateSessionToWaitingAuthCode(session: { requestId: string; telegramUserId: number; loggedInUserId: number }): Promise<number | null> {
+  private async updateSessionToWaitingAuthCode(session: { requestId: string; telegramUserId?: number; loggedInUserId: number }): Promise<number | undefined> {
     await this.conversationRepository.updateSessionState(session.requestId, 'waitingCode');
     return session.telegramUserId;
   }

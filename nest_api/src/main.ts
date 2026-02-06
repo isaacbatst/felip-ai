@@ -5,6 +5,7 @@ import { ConsoleLogger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { join } from 'node:path';
+import cookieParser from 'cookie-parser';
 
 async function bootstrap() {
   const logger = new ConsoleLogger();
@@ -14,6 +15,9 @@ async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     logger,
   });
+
+  // Enable cookie parsing
+  app.use(cookieParser());
 
   // Enable CORS for the auth page
   app.enableCors({
