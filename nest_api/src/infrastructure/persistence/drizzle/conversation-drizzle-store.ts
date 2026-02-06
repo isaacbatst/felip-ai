@@ -343,9 +343,9 @@ export class ConversationDrizzleStore extends ConversationRepository {
     return {
       requestId: row.requestId,
       loggedInUserId: row.loggedInUserId,
-      telegramUserId: row.telegramUserId,
+      telegramUserId: row.telegramUserId!,
       phoneNumber: row.phoneNumber ?? undefined,
-      chatId: row.chatId,
+      chatId: row.chatId!,
       state: row.state as ConversationState,
     };
   }

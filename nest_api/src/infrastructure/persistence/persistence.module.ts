@@ -30,6 +30,8 @@ import { SubscriptionRepository } from "@/infrastructure/persistence/subscriptio
 import { SubscriptionDrizzleStore } from "@/infrastructure/persistence/drizzle/subscription-drizzle-store";
 import { SubscriptionTokenRepository } from "@/infrastructure/persistence/subscription-token.repository";
 import { SubscriptionTokenDrizzleStore } from "@/infrastructure/persistence/drizzle/subscription-token-drizzle-store";
+import { WebSessionRepository } from "@/infrastructure/persistence/web-session.repository";
+import { WebSessionDrizzleStore } from "@/infrastructure/persistence/drizzle/web-session-drizzle-store";
 
 @Module({
   imports: [DatabaseModule],
@@ -94,6 +96,10 @@ import { SubscriptionTokenDrizzleStore } from "@/infrastructure/persistence/driz
       provide: SubscriptionTokenRepository,
       useClass: SubscriptionTokenDrizzleStore,
     },
+    {
+      provide: WebSessionRepository,
+      useClass: WebSessionDrizzleStore,
+    },
   ],
   exports: [
     ConversationRepository,
@@ -111,6 +117,7 @@ import { SubscriptionTokenDrizzleStore } from "@/infrastructure/persistence/driz
     SubscriptionPlanRepository,
     SubscriptionRepository,
     SubscriptionTokenRepository,
+    WebSessionRepository,
   ],
 })
 export class PersistenceModule {}
