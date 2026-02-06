@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { SubscriptionRepository, SubscriptionWithPlan, SubscriptionStatus } from '@/infrastructure/persistence/subscription.repository';
 import { SubscriptionPlanRepository, SubscriptionPlanData } from '@/infrastructure/persistence/subscription-plan.repository';
 import { AppConfigService } from '@/config/app.config';
@@ -28,7 +28,7 @@ export interface StartTrialResult {
  * Service for managing subscriptions
  */
 @Injectable()
-export class SubscriptionService {
+export class SubscriptionService implements OnModuleInit {
   private readonly logger = new Logger(SubscriptionService.name);
 
   constructor(
@@ -36,6 +36,10 @@ export class SubscriptionService {
     private readonly subscriptionPlanRepository: SubscriptionPlanRepository,
     private readonly appConfig: AppConfigService,
   ) {}
+
+  async onModuleInit(): Promise<void> {
+    await this.seedPlans();
+  }
 
   /**
    * Start a free trial for a user

@@ -21,6 +21,7 @@ import { ActiveGroupsRepository } from '@/infrastructure/persistence/active-grou
 import { BotStatusRepository } from '@/infrastructure/persistence/bot-status.repository';
 import { TelegramUserClientProxyService } from '@/infrastructure/tdlib/telegram-user-client-proxy.service';
 import { SubscriptionService } from '@/infrastructure/subscription/subscription.service';
+import { HybridAuthorizationService } from '@/infrastructure/subscription/hybrid-authorization.service';
 import { SessionGuard } from '@/infrastructure/http/guards/session.guard';
 import { WorkerManager } from '@/infrastructure/workers/worker-manager';
 import { ConversationRepository } from '@/infrastructure/persistence/conversation.repository';
@@ -204,6 +205,7 @@ export class DashboardController {
     private readonly botStatusRepository: BotStatusRepository,
     private readonly telegramUserClient: TelegramUserClientProxyService,
     private readonly subscriptionService: SubscriptionService,
+    private readonly hybridAuthorizationService: HybridAuthorizationService,
     private readonly workerManager: WorkerManager,
     private readonly conversationRepository: ConversationRepository,
     private readonly userRepository: UserRepository,
@@ -211,11 +213,24 @@ export class DashboardController {
 
   /**
    * GET /dashboard - Serve the dashboard HTML page
+   * Redirects unauthorized users to /subscription
    */
   @Get()
   async getDashboardPage(
+    @Req() req: AuthenticatedRequest,
     @Res() res: Response,
   ): Promise<void> {
+    const userId = req.user.userId;
+    const telegramUserId = parseInt(userId, 10);
+    const user = await this.userRepository.findByTelegramUserId(telegramUserId);
+    const phone = user?.phone;
+
+    const authorized = await this.hybridAuthorizationService.isAuthorized(userId, phone);
+    if (!authorized) {
+      res.redirect(302, '/subscription');
+      return;
+    }
+
     res.sendFile(join(__dirname, '..', '..', 'public', 'dashboard.html'));
   }
 

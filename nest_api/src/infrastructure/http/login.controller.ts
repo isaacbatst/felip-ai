@@ -17,6 +17,7 @@ import { UserRepository } from '@/infrastructure/persistence/user.repository';
 import { PhoneWhitelistService } from '@/infrastructure/telegram/phone-whitelist.service';
 import { OtpService } from '@/infrastructure/auth/otp.service';
 import { RegistrationTokenService } from '@/infrastructure/auth/registration-token.service';
+import { AppConfigService } from '@/config/app.config';
 
 @Controller('login')
 export class LoginController {
@@ -28,6 +29,7 @@ export class LoginController {
     private readonly otpService: OtpService,
     private readonly userRepository: UserRepository,
     private readonly registrationTokenService: RegistrationTokenService,
+    private readonly appConfig: AppConfigService,
   ) {}
 
   @Get()
@@ -54,7 +56,8 @@ export class LoginController {
       throw new HttpException('Número de telefone deve começar com +', HttpStatus.BAD_REQUEST);
     }
 
-    if (!this.phoneWhitelistService.isAllowed(phone)) {
+    const mode = this.appConfig.getAuthorizationMode();
+    if (mode === 'whitelist' && !this.phoneWhitelistService.isAllowed(phone)) {
       throw new HttpException('Número não autorizado', HttpStatus.BAD_REQUEST);
     }
 
