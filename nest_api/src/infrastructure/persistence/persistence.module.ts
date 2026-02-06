@@ -14,8 +14,6 @@ import { BotStatusRepository } from "@/infrastructure/persistence/bot-status.rep
 import { BotStatusDrizzleStore } from "@/infrastructure/persistence/drizzle/bot-status-drizzle-store";
 import { AuthTokenRepository } from "@/infrastructure/persistence/auth-token.repository";
 import { AuthTokenDrizzleStore } from "@/infrastructure/persistence/drizzle/auth-token-drizzle-store";
-import { DashboardTokenRepository } from "@/infrastructure/persistence/dashboard-token.repository";
-import { DashboardTokenDrizzleStore } from "@/infrastructure/persistence/drizzle/dashboard-token-drizzle-store";
 import { UserDataRepository } from "@/infrastructure/persistence/user-data.repository";
 import { UserDataDrizzleStore } from "@/infrastructure/persistence/drizzle/user-data-drizzle-store";
 import { MilesProgramRepository } from "@/infrastructure/persistence/miles-program.repository";
@@ -28,8 +26,6 @@ import { SubscriptionPlanRepository } from "@/infrastructure/persistence/subscri
 import { SubscriptionPlanDrizzleStore } from "@/infrastructure/persistence/drizzle/subscription-plan-drizzle-store";
 import { SubscriptionRepository } from "@/infrastructure/persistence/subscription.repository";
 import { SubscriptionDrizzleStore } from "@/infrastructure/persistence/drizzle/subscription-drizzle-store";
-import { SubscriptionTokenRepository } from "@/infrastructure/persistence/subscription-token.repository";
-import { SubscriptionTokenDrizzleStore } from "@/infrastructure/persistence/drizzle/subscription-token-drizzle-store";
 import { WebSessionRepository } from "@/infrastructure/persistence/web-session.repository";
 import { WebSessionDrizzleStore } from "@/infrastructure/persistence/drizzle/web-session-drizzle-store";
 import { UserRepository } from "@/infrastructure/persistence/user.repository";
@@ -69,10 +65,6 @@ import { OtpDrizzleStore } from "@/infrastructure/persistence/drizzle/otp-drizzl
       useClass: AuthTokenDrizzleStore,
     },
     {
-      provide: DashboardTokenRepository,
-      useClass: DashboardTokenDrizzleStore,
-    },
-    {
       provide: UserDataRepository,
       useClass: UserDataDrizzleStore,
     },
@@ -97,10 +89,6 @@ import { OtpDrizzleStore } from "@/infrastructure/persistence/drizzle/otp-drizzl
       useClass: SubscriptionDrizzleStore,
     },
     {
-      provide: SubscriptionTokenRepository,
-      useClass: SubscriptionTokenDrizzleStore,
-    },
-    {
       provide: WebSessionRepository,
       useClass: WebSessionDrizzleStore,
     },
@@ -121,14 +109,12 @@ import { OtpDrizzleStore } from "@/infrastructure/persistence/drizzle/otp-drizzl
     MessageEnqueuedLogRepository,
     BotStatusRepository,
     AuthTokenRepository,
-    DashboardTokenRepository,
     UserDataRepository,
     MilesProgramRepository,
     CounterOfferSettingsRepository,
     PromptConfigRepository,
     SubscriptionPlanRepository,
     SubscriptionRepository,
-    SubscriptionTokenRepository,
     WebSessionRepository,
     UserRepository,
     OtpRepository,

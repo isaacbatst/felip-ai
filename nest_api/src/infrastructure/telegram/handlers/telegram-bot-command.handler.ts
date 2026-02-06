@@ -6,8 +6,7 @@ import { ConversationRepository, ConversationData } from '@/infrastructure/persi
 import { TelegramUserClientProxyService } from '../../tdlib/telegram-user-client-proxy.service';
 import { ActiveGroupsRepository } from '@/infrastructure/persistence/active-groups.repository';
 import { BotStatusRepository } from '@/infrastructure/persistence/bot-status.repository';
-import { DashboardTokenRepository } from '@/infrastructure/persistence/dashboard-token.repository';
-import { SubscriptionTokenRepository } from '@/infrastructure/persistence/subscription-token.repository';
+import { UserRepository } from '@/infrastructure/persistence/user.repository';
 import { SubscriptionService, SubscriptionError } from '@/infrastructure/subscription/subscription.service';
 import { AppConfigService } from '@/config/app.config';
 import type {
@@ -29,8 +28,7 @@ export class TelegramCommandHandler {
     private readonly telegramUserClient: TelegramUserClientProxyService,
     private readonly activeGroupsRepository: ActiveGroupsRepository,
     private readonly botStatusRepository: BotStatusRepository,
-    private readonly dashboardTokenRepository: DashboardTokenRepository,
-    private readonly subscriptionTokenRepository: SubscriptionTokenRepository,
+    private readonly userRepository: UserRepository,
     private readonly subscriptionService: SubscriptionService,
     private readonly appConfig: AppConfigService,
   ) {}
@@ -721,30 +719,21 @@ export class TelegramCommandHandler {
         return;
       }
 
-      // Check if user is logged in
-      const loggedInUserId = await this.conversationRepository.isLoggedIn(telegramUserId);
-      if (!loggedInUserId) {
-        await ctx.reply('❌ Você precisa estar logado para usar este comando.\n\nUse /login para fazer login.');
+      // Check if user is registered (OTP-based)
+      const user = await this.userRepository.findByTelegramUserId(telegramUserId);
+      if (!user) {
+        await ctx.reply('❌ Você precisa se registrar primeiro.\n\nUse /start para começar.');
         return;
       }
 
-      // Generate dashboard access token
-      const loggedInUserIdStr = loggedInUserId.toString();
-      const ttlMinutes = this.appConfig.getDashboardTokenTtlMinutes();
-      const { token, expiresAt } = await this.dashboardTokenRepository.createToken(loggedInUserIdStr, ttlMinutes);
-
-      // Build dashboard URL
+      // Build dashboard URL (cookie-based auth — user logs in via /login)
       const baseUrl = this.appConfig.getAppBaseUrl();
-      const dashboardUrl = `${baseUrl}/dashboard/${token}`;
-
-      // Format expiration time
-      const expiresInMinutes = Math.round((expiresAt.getTime() - Date.now()) / 60000);
+      const dashboardUrl = `${baseUrl}/dashboard`;
 
       const message =
         `⚙️ *Dashboard de Configurações*\n\n` +
         `Acesse o link abaixo para gerenciar suas configurações de milhas:\n\n` +
         `🔗 [Abrir Dashboard](${dashboardUrl})\n\n` +
-        `⏱️ Este link expira em ${expiresInMinutes} minutos.\n\n` +
         `_No dashboard você pode configurar:_\n` +
         `• Tabelas de preços por programa\n` +
         `• Preços máximos (PREÇO TETO)\n` +
@@ -754,8 +743,6 @@ export class TelegramCommandHandler {
         parse_mode: 'Markdown',
         link_preview_options: { is_disabled: true }
       });
-
-      this.logger.log(`Dashboard token generated for user ${loggedInUserIdStr}`);
     } catch (error) {
       this.logger.error('Error handling /dashboard command', { error });
       await ctx.reply('❌ Erro ao gerar link do dashboard. Tente novamente.');
@@ -770,18 +757,18 @@ export class TelegramCommandHandler {
         return;
       }
 
-      // Check if user is logged in
-      const loggedInUserId = await this.conversationRepository.isLoggedIn(telegramUserId);
-      if (!loggedInUserId) {
-        await ctx.reply('❌ Você precisa estar logado para usar este comando.\n\nUse /login para fazer login.');
+      // Check if user is registered (OTP-based)
+      const user = await this.userRepository.findByTelegramUserId(telegramUserId);
+      if (!user) {
+        await ctx.reply('❌ Você precisa se registrar primeiro.\n\nUse /start para começar.');
         return;
       }
 
-      const loggedInUserIdStr = loggedInUserId.toString();
+      const userId = telegramUserId.toString();
 
       // Start trial
-      const result = await this.subscriptionService.startTrial(loggedInUserIdStr);
-      const daysRemaining = await this.subscriptionService.getDaysRemaining(loggedInUserIdStr) ?? 0;
+      const result = await this.subscriptionService.startTrial(userId);
+      const daysRemaining = await this.subscriptionService.getDaysRemaining(userId) ?? 0;
 
       // Format expiration date
       const expirationDate = result.subscription.currentPeriodEnd.toLocaleDateString('pt-BR', {
@@ -802,7 +789,7 @@ export class TelegramCommandHandler {
 
       await ctx.reply(message, { parse_mode: 'Markdown' });
 
-      this.logger.log(`Trial started for user ${loggedInUserIdStr}`);
+      this.logger.log(`Trial started for user ${userId}`);
     } catch (error) {
       if (error instanceof SubscriptionError) {
         await ctx.reply(`❌ ${error.message}`);
@@ -822,17 +809,17 @@ export class TelegramCommandHandler {
         return;
       }
 
-      // Check if user is logged in
-      const loggedInUserId = await this.conversationRepository.isLoggedIn(telegramUserId);
-      if (!loggedInUserId) {
-        await ctx.reply('❌ Você precisa estar logado para usar este comando.\n\nUse /login para fazer login.');
+      // Check if user is registered (OTP-based)
+      const user = await this.userRepository.findByTelegramUserId(telegramUserId);
+      if (!user) {
+        await ctx.reply('❌ Você precisa se registrar primeiro.\n\nUse /start para começar.');
         return;
       }
 
-      const loggedInUserIdStr = loggedInUserId.toString();
+      const userId = telegramUserId.toString();
 
       // Get subscription
-      const subscription = await this.subscriptionService.getSubscription(loggedInUserIdStr);
+      const subscription = await this.subscriptionService.getSubscription(userId);
 
       if (!subscription) {
         // No subscription - offer trial or paid plans
@@ -846,10 +833,10 @@ export class TelegramCommandHandler {
       }
 
       // Get days remaining
-      const daysRemaining = await this.subscriptionService.getDaysRemaining(loggedInUserIdStr) ?? 0;
+      const daysRemaining = await this.subscriptionService.getDaysRemaining(userId) ?? 0;
 
       // Get active groups count
-      const activeGroups = await this.activeGroupsRepository.getActiveGroups(loggedInUserIdStr);
+      const activeGroups = await this.activeGroupsRepository.getActiveGroups(userId);
       const activeGroupsCount = activeGroups?.length ?? 0;
       const totalGroupLimit = subscription.plan.groupLimit + subscription.extraGroups;
 
@@ -909,11 +896,9 @@ export class TelegramCommandHandler {
         message += `*Acesso até:* ${expirationDate}\n`;
       }
 
-      // Generate subscription management link
-      const ttlMinutes = this.appConfig.getSubscriptionTokenTtlMinutes();
-      const { token: subscriptionToken } = await this.subscriptionTokenRepository.createToken(loggedInUserIdStr, ttlMinutes);
+      // Direct subscription management link (cookie-based auth)
       const baseUrl = this.appConfig.getAppBaseUrl();
-      const subscriptionUrl = `${baseUrl}/subscription/${subscriptionToken}`;
+      const subscriptionUrl = `${baseUrl}/subscription`;
 
       message += `\n🔗 [Gerenciar Assinatura](${subscriptionUrl})`;
 
@@ -921,8 +906,6 @@ export class TelegramCommandHandler {
         parse_mode: 'Markdown',
         link_preview_options: { is_disabled: true }
       });
-
-      this.logger.log(`Subscription status shown for user ${loggedInUserIdStr}`);
     } catch (error) {
       this.logger.error('Error handling /assinatura command', { error });
       await ctx.reply('❌ Erro ao obter status da assinatura. Tente novamente.');

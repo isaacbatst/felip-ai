@@ -30,24 +30,13 @@
   <div class="bg-white p-8 rounded-2xl shadow-2xl max-w-4xl mx-auto max-md:p-4 max-md:rounded-none max-md:shadow-none" x-show="!loading && !errorMessage">
     <div class="flex justify-between items-center mb-4 pb-5 border-b-2 border-gray-100 max-md:pb-4 max-md:mb-0">
       <h1 class="text-gray-800 text-2xl font-semibold max-md:text-xl">Dashboard</h1>
-      <!-- Expired: Show renew button -->
-      <template x-if="timerExpired && expiresAt">
-        <button @click="requestNewLink()" 
-          :disabled="renewingLink || linkRenewed"
-          class="px-4 py-2 rounded-lg text-sm whitespace-nowrap transition-all"
-          :class="linkRenewed ? 'bg-emerald-100 text-emerald-800 cursor-default' : renewingLink ? 'bg-gray-200 text-gray-500 cursor-wait' : 'bg-primary text-white hover:bg-primary/90 cursor-pointer'">
-          <span x-show="linkRenewed">Link enviado!</span>
-          <span x-show="renewingLink && !linkRenewed">Enviando...</span>
-          <span x-show="!renewingLink && !linkRenewed">Solicitar novo link</span>
-        </button>
-      </template>
-      <!-- Not expired: Show countdown -->
-      <template x-if="!timerExpired && expiresAt">
-        <div class="px-4 py-2 rounded-lg text-sm whitespace-nowrap"
-          :class="timerWarning ? 'bg-amber-100 text-amber-700' : 'bg-gray-50 text-gray-500'">
-          <span x-text="`Expira em: ${countdownDisplay}`"></span>
-        </div>
-      </template>
+      <button @click="logout()"
+        :disabled="loggingOut"
+        class="px-4 py-2 rounded-lg text-sm whitespace-nowrap transition-all bg-gray-100 text-gray-600 hover:bg-gray-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
+        <i class="fa-solid fa-right-from-bracket mr-1"></i>
+        <span x-show="!loggingOut">Sair</span>
+        <span x-show="loggingOut">Saindo...</span>
+      </button>
     </div>
     
     <!-- Bot Status Toggle -->
@@ -638,45 +627,11 @@
         <!-- Actions -->
         <div class="flex flex-col gap-3">
           <!-- Manage Subscription Link -->
-          <a :href="subscriptionPageUrl"
-            x-show="subscriptionPageUrl"
-            target="_blank"
+          <a href="/subscription"
             class="w-full px-6 py-4 bg-gradient-to-r from-primary to-secondary text-white font-semibold rounded-xl transition-all hover:shadow-lg hover:-translate-y-0.5 text-center no-underline flex items-center justify-center gap-2">
             <i class="fa-solid fa-external-link-alt"></i>
             Gerenciar Assinatura
           </a>
-
-          <!-- Generate Subscription Link Button -->
-          <button
-            @click="generateSubscriptionLink()"
-            :disabled="generatingSubscriptionLink"
-            class="w-full px-6 py-4 border-2 border-primary text-primary font-semibold rounded-xl transition-all hover:bg-primary/5 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
-            <span x-show="generatingSubscriptionLink" class="spinner" style="width: 16px; height: 16px;"></span>
-            <span x-show="!generatingSubscriptionLink">
-              <i class="fa-solid fa-link"></i>
-              Gerar Link da Assinatura
-            </span>
-          </button>
-
-          <!-- Generated Link Display -->
-          <div x-show="generatedSubscriptionLink" class="bg-emerald-50 border border-emerald-200 rounded-xl p-4">
-            <p class="text-sm text-emerald-800 mb-2 font-medium">
-              <i class="fa-solid fa-check-circle mr-1"></i>
-              Link gerado com sucesso!
-            </p>
-            <div class="flex gap-2">
-              <input type="text"
-                :value="generatedSubscriptionLink"
-                readonly
-                class="flex-1 p-2 border border-emerald-300 rounded-lg text-sm bg-white text-gray-700">
-              <button
-                @click="copySubscriptionLink()"
-                class="px-4 py-2 bg-emerald-500 text-white rounded-lg text-sm font-medium hover:bg-emerald-600 transition-all">
-                <i class="fa-solid fa-copy"></i>
-              </button>
-            </div>
-            <p class="text-xs text-emerald-600 mt-2">Este link expira em 30 minutos.</p>
-          </div>
         </div>
       </div>
     </div>
@@ -770,16 +725,8 @@
         editingEntry: null,        // Reference to the entry being edited
         editingEntryIndex: null,   // Visual position to keep the entry at (-1 = end)
 
-        // Timer state
-        expiresAt: null,
-        countdownDisplay: '--:--',
-        timerWarning: false,
-        timerExpired: false,
-        countdownInterval: null,
-
-        // Link renewal state
-        renewingLink: false,
-        linkRenewed: false,
+        // Logout state
+        loggingOut: false,
 
         // Counter offer state
         counterOfferSettings: {
@@ -813,17 +760,10 @@
         subscriptionPageUrl: null,
         loadingSubscription: false,
         subscriptionFetched: false,
-        generatingSubscriptionLink: false,
-        generatedSubscriptionLink: null,
 
         // ============================================================================
         // Computed Properties (as getters)
         // ============================================================================
-        get token() {
-          const parts = window.location.pathname.split('/');
-          return parts[parts.length - 1];
-        },
-
         get normalPrograms() {
           return this.programs.filter(p => !p.isLiminar);
         },
@@ -875,22 +815,8 @@
         // ============================================================================
         async init() {
           try {
-            const statusRes = await fetch(`/dashboard/${this.token}/status`);
-            const status = await statusRes.json();
-
-            if (!status.valid) {
-              this.errorMessage = 'Este link expirou ou é inválido. Por favor, solicite um novo link no bot.';
-              return;
-            }
-
-            // Capturar expiresAt e iniciar countdown
-            if (status.expiresAt) {
-              this.expiresAt = new Date(status.expiresAt).getTime();
-              this.startCountdown();
-            }
-
             await Promise.all([
-              this.fetchPrograms(), 
+              this.fetchPrograms(),
               this.fetchUserData(),
               this.fetchCounterOfferSettings(),
               this.fetchCounterOfferTemplates(),
@@ -910,10 +836,32 @@
         },
 
         // ============================================================================
+        // Auth helpers
+        // ============================================================================
+        async authFetch(url, options) {
+          const res = await fetch(url, options);
+          if (res.status === 401) {
+            window.location.href = '/login';
+            throw new Error('Sessão expirada');
+          }
+          return res;
+        },
+
+        async logout() {
+          this.loggingOut = true;
+          try {
+            await fetch('/login/logout', { method: 'POST' });
+          } catch (e) {
+            // ignore
+          }
+          window.location.href = '/login';
+        },
+
+        // ============================================================================
         // API Methods
         // ============================================================================
         async fetchPrograms() {
-          const res = await fetch(`/dashboard/${this.token}/programs`);
+          const res = await this.authFetch('/dashboard/programs');
           const data = await res.json();
           if (data.success) {
             this.programs = data.data;
@@ -923,7 +871,7 @@
         },
 
         async fetchUserData() {
-          const res = await fetch(`/dashboard/${this.token}/data`);
+          const res = await this.authFetch('/dashboard/data');
           const data = await res.json();
           if (data.success) {
             this.userData = data.data;
@@ -933,7 +881,7 @@
         },
 
         async fetchCounterOfferSettings() {
-          const res = await fetch(`/dashboard/${this.token}/counter-offer`);
+          const res = await this.authFetch('/dashboard/counter-offer');
           const data = await res.json();
           if (data.success) {
             this.counterOfferSettings = data.data;
@@ -944,7 +892,7 @@
         },
 
         async fetchCounterOfferTemplates() {
-          const res = await fetch(`/dashboard/${this.token}/counter-offer/templates`);
+          const res = await this.authFetch('/dashboard/counter-offer/templates');
           const data = await res.json();
           if (data.success) {
             this.counterOfferTemplates = data.data.templates;
@@ -954,7 +902,7 @@
         },
 
         async fetchCallToActionTemplates() {
-          const res = await fetch(`/dashboard/${this.token}/call-to-action/templates`);
+          const res = await this.authFetch('/dashboard/call-to-action/templates');
           const data = await res.json();
           if (data.success) {
             this.callToActionTemplates = data.data.templates;
@@ -964,7 +912,7 @@
         },
 
         async fetchBotStatus() {
-          const res = await fetch(`/dashboard/${this.token}/bot-status`);
+          const res = await this.authFetch('/dashboard/bot-status');
           const data = await res.json();
           if (data.success) {
             this.botStatus = data.data;
@@ -976,7 +924,7 @@
         async saveBotStatus() {
           this.savingBotStatus = true;
           try {
-            const res = await fetch(`/dashboard/${this.token}/bot-status`, {
+            const res = await this.authFetch('/dashboard/bot-status', {
               method: 'PUT',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ isEnabled: this.botStatus.isEnabled }),
@@ -1014,7 +962,7 @@
         async fetchSubscription() {
           this.loadingSubscription = true;
           try {
-            const res = await fetch(`/dashboard/${this.token}/subscription`);
+            const res = await this.authFetch('/dashboard/subscription');
             const data = await res.json();
             if (data.success) {
               this.subscriptionData = data.data.subscription;
@@ -1027,45 +975,6 @@
             console.error('Error fetching subscription:', error);
           } finally {
             this.loadingSubscription = false;
-          }
-        },
-
-        async generateSubscriptionLink() {
-          if (this.generatingSubscriptionLink) return;
-
-          this.generatingSubscriptionLink = true;
-          this.generatedSubscriptionLink = null;
-
-          try {
-            const res = await fetch(`/dashboard/${this.token}/subscription/generate-link`, {
-              method: 'POST',
-            });
-            const data = await res.json();
-
-            if (data.success) {
-              this.generatedSubscriptionLink = data.data.url;
-              this.subscriptionPageUrl = data.data.url;
-              this.showToast('Link gerado com sucesso!', 'success');
-            } else {
-              this.showToast(data.error || 'Erro ao gerar link', 'error');
-            }
-          } catch (error) {
-            console.error('Error generating subscription link:', error);
-            this.showToast('Erro ao gerar link', 'error');
-          } finally {
-            this.generatingSubscriptionLink = false;
-          }
-        },
-
-        async copySubscriptionLink() {
-          if (!this.generatedSubscriptionLink) return;
-
-          try {
-            await navigator.clipboard.writeText(this.generatedSubscriptionLink);
-            this.showToast('Link copiado!', 'success');
-          } catch (error) {
-            console.error('Error copying link:', error);
-            this.showToast('Erro ao copiar link', 'error');
           }
         },
 
@@ -1097,7 +1006,7 @@
           this.groupsErrorMessage = '';
 
           try {
-            const res = await fetch(`/dashboard/${this.token}/available-groups`);
+            const res = await this.authFetch('/dashboard/available-groups');
             const data = await res.json();
             
             if (data.success) {
@@ -1127,7 +1036,7 @@
           this.activatingGroupId = groupId;
           
           try {
-            const res = await fetch(`/dashboard/${this.token}/groups/${groupId}`, {
+            const res = await this.authFetch(`/dashboard/groups/${groupId}`, {
               method: 'POST',
             });
             const data = await res.json();
@@ -1160,7 +1069,7 @@
           this.deactivatingGroupId = groupId;
           
           try {
-            const res = await fetch(`/dashboard/${this.token}/groups/${groupId}`, {
+            const res = await this.authFetch(`/dashboard/groups/${groupId}`, {
               method: 'DELETE',
             });
             const data = await res.json();
@@ -1184,7 +1093,7 @@
         },
 
         async saveCounterOfferSettingsApi(settings) {
-          const res = await fetch(`/dashboard/${this.token}/counter-offer`, {
+          const res = await this.authFetch('/dashboard/counter-offer', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(settings),
@@ -1197,7 +1106,7 @@
         },
 
         async savePricesApi(entries) {
-          const res = await fetch(`/dashboard/${this.token}/prices`, {
+          const res = await this.authFetch('/dashboard/prices', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ entries }),
@@ -1210,7 +1119,7 @@
         },
 
         async saveSinglePriceApi(entry) {
-          const res = await fetch(`/dashboard/${this.token}/price`, {
+          const res = await this.authFetch('/dashboard/price', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(entry),
@@ -1223,7 +1132,7 @@
         },
 
         async saveProgramPricesApi(programId, entries) {
-          const res = await fetch(`/dashboard/${this.token}/prices/${programId}`, {
+          const res = await this.authFetch(`/dashboard/prices/${programId}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ entries }),
@@ -1236,7 +1145,7 @@
         },
 
         async saveMaxPricesApi(maxPrices) {
-          const res = await fetch(`/dashboard/${this.token}/max-prices`, {
+          const res = await this.authFetch('/dashboard/max-prices', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ maxPrices }),
@@ -1249,7 +1158,7 @@
         },
 
         async saveMilesApi(miles) {
-          const res = await fetch(`/dashboard/${this.token}/miles`, {
+          const res = await this.authFetch('/dashboard/miles', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ miles }),
@@ -1569,7 +1478,7 @@
             if (entry.id) {
               this.deletingEntryIndex = index;
               try {
-                const res = await fetch(`/dashboard/${this.token}/price/${entry.id}`, {
+                const res = await this.authFetch(`/dashboard/price/${entry.id}`, {
                   method: 'DELETE',
                 });
                 const data = await res.json();
@@ -1716,59 +1625,6 @@
         selectProgramFromSheet(programId) {
           this.selectProgram(programId);
           this.closeBottomSheet();
-        },
-
-        // ============================================================================
-        // Timer / Countdown
-        // ============================================================================
-        formatTime(seconds) {
-          const mins = Math.floor(seconds / 60);
-          const secs = seconds % 60;
-          return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-        },
-
-        updateCountdown() {
-          if (!this.expiresAt) return;
-
-          const now = Date.now();
-          const remaining = Math.max(0, Math.floor((this.expiresAt - now) / 1000));
-
-          this.countdownDisplay = this.formatTime(remaining);
-          this.timerWarning = remaining <= 60 && remaining > 0;
-          this.timerExpired = remaining <= 0;
-
-          if (remaining <= 0 && this.countdownInterval) {
-            clearInterval(this.countdownInterval);
-          }
-        },
-
-        startCountdown() {
-          this.updateCountdown();
-          this.countdownInterval = setInterval(() => this.updateCountdown(), 1000);
-        },
-
-        // ============================================================================
-        // Link Renewal
-        // ============================================================================
-        async requestNewLink() {
-          if (this.renewingLink || this.linkRenewed) return;
-          
-          this.renewingLink = true;
-          try {
-            const res = await fetch(`/dashboard/${this.token}/renew`, { method: 'POST' });
-            const data = await res.json();
-            if (data.success) {
-              this.linkRenewed = true;
-              this.showToast('Novo link enviado para seu Telegram!', 'success');
-            } else {
-              this.showToast(data.error || 'Erro ao solicitar novo link', 'error');
-            }
-          } catch (error) {
-            console.error('Error requesting new link:', error);
-            this.showToast('Erro ao solicitar novo link', 'error');
-          } finally {
-            this.renewingLink = false;
-          }
         },
 
         // ============================================================================

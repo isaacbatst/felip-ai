@@ -7,26 +7,24 @@ import {
   Param,
   Body,
   Res,
+  Req,
   HttpStatus,
   Logger,
+  UseGuards,
 } from '@nestjs/common';
-import type { Response } from 'express';
+import type { Request, Response } from 'express';
 import { join } from 'node:path';
-import { DashboardTokenRepository } from '@/infrastructure/persistence/dashboard-token.repository';
 import { UserDataRepository, PriceEntryInput, MaxPriceInput, AvailableMilesInput } from '@/infrastructure/persistence/user-data.repository';
 import { MilesProgramRepository } from '@/infrastructure/persistence/miles-program.repository';
 import { CounterOfferSettingsRepository, type CounterOfferSettingsInput } from '@/infrastructure/persistence/counter-offer-settings.repository';
 import { ActiveGroupsRepository } from '@/infrastructure/persistence/active-groups.repository';
 import { BotStatusRepository } from '@/infrastructure/persistence/bot-status.repository';
-import { TelegramBotService } from '@/infrastructure/telegram/telegram-bot-service';
 import { TelegramUserClientProxyService } from '@/infrastructure/tdlib/telegram-user-client-proxy.service';
-import { ConversationRepository } from '@/infrastructure/persistence/conversation.repository';
-import { AppConfigService } from '@/config/app.config';
-import { SubscriptionTokenRepository } from '@/infrastructure/persistence/subscription-token.repository';
 import { SubscriptionService } from '@/infrastructure/subscription/subscription.service';
-import { 
-  COUNTER_OFFER_TEMPLATES, 
-  COUNTER_OFFER_TEMPLATE_DESCRIPTIONS, 
+import { SessionGuard } from '@/infrastructure/http/guards/session.guard';
+import {
+  COUNTER_OFFER_TEMPLATES,
+  COUNTER_OFFER_TEMPLATE_DESCRIPTIONS,
   COUNTER_OFFER_TEMPLATE_IDS,
   CALL_TO_ACTION_TEMPLATES,
   CALL_TO_ACTION_TEMPLATE_DESCRIPTIONS,
@@ -37,11 +35,8 @@ import {
 // DTOs for request/response
 // ============================================================================
 
-interface TokenStatusResponse {
-  valid: boolean;
-  error?: string;
-  expiresAt?: string;
-  userId?: string;
+interface AuthenticatedRequest extends Request {
+  user: { userId: string };
 }
 
 interface ProgramResponse {
@@ -148,11 +143,6 @@ interface UpdateBotStatusDto {
   isEnabled: boolean;
 }
 
-interface SubscriptionLinkResponse {
-  url: string;
-  expiresAt: string;
-}
-
 interface SubscriptionStatusResponse {
   subscription: {
     id: number;
@@ -180,92 +170,43 @@ interface SubscriptionStatusResponse {
 
 /**
  * HTTP Controller for web-based dashboard
- * Handles token validation and user data management
+ * Uses cookie-based session auth via SessionGuard
  */
 @Controller('dashboard')
+@UseGuards(SessionGuard)
 export class DashboardController {
   private readonly logger = new Logger(DashboardController.name);
 
   constructor(
-    private readonly dashboardTokenRepository: DashboardTokenRepository,
     private readonly userDataRepository: UserDataRepository,
     private readonly milesProgramRepository: MilesProgramRepository,
     private readonly counterOfferSettingsRepository: CounterOfferSettingsRepository,
     private readonly activeGroupsRepository: ActiveGroupsRepository,
     private readonly botStatusRepository: BotStatusRepository,
-    private readonly telegramBotService: TelegramBotService,
     private readonly telegramUserClient: TelegramUserClientProxyService,
-    private readonly conversationRepository: ConversationRepository,
-    private readonly appConfig: AppConfigService,
-    private readonly subscriptionTokenRepository: SubscriptionTokenRepository,
     private readonly subscriptionService: SubscriptionService,
   ) {}
 
   /**
-   * GET /dashboard/:token - Serve the dashboard HTML page
-   * Validates the token and serves the page if valid
+   * GET /dashboard - Serve the dashboard HTML page
    */
-  @Get(':token')
+  @Get()
   async getDashboardPage(
-    @Param('token') token: string,
     @Res() res: Response,
   ): Promise<void> {
-    this.logger.log(`Dashboard page requested for token: ${token.substring(0, 8)}...`);
-
-    const validation = await this.dashboardTokenRepository.validateToken(token);
-
-    if (!validation.valid) {
-      const errorMessages: Record<string, string> = {
-        not_found: 'Link inválido ou expirado.',
-        expired: 'Este link expirou. Por favor, solicite um novo link no bot.',
-      };
-
-      const errorMessage = validation.error ? errorMessages[validation.error] : 'Erro desconhecido.';
-      res.status(this.getHttpStatusForError(validation.error)).send(this.getErrorHtml(errorMessage));
-      return;
-    }
-
-    // Serve the dashboard page
     res.sendFile(join(__dirname, '..', '..', 'public', 'dashboard.html'));
   }
 
   /**
-   * GET /dashboard/:token/status - Check token validity
+   * GET /dashboard/programs - List all available programs
    */
-  @Get(':token/status')
-  async getTokenStatus(
-    @Param('token') token: string,
-  ): Promise<TokenStatusResponse> {
-    const validation = await this.dashboardTokenRepository.validateToken(token);
-
-    if (!validation.valid) {
-      return {
-        valid: false,
-        error: validation.error,
-      };
-    }
+  @Get('programs')
+  async getPrograms(
+    @Req() req: AuthenticatedRequest,
+  ): Promise<ApiResponse<ProgramResponse[]>> {
+    const programs = await this.milesProgramRepository.getAllPrograms();
 
     return {
-      valid: true,
-      expiresAt: validation.token?.expiresAt.toISOString(),
-      userId: validation.token?.userId,
-    };
-  }
-
-  /**
-   * GET /dashboard/:token/programs - List all available programs
-   */
-  @Get(':token/programs')
-  async getPrograms(
-    @Param('token') token: string,
-    @Res() res: Response,
-  ): Promise<void> {
-    const userId = await this.validateAndGetUserId(token, res);
-    if (!userId) return;
-
-    const programs = await this.milesProgramRepository.getAllPrograms();
-    
-    const response: ApiResponse<ProgramResponse[]> = {
       success: true,
       data: programs.map((p) => ({
         id: p.id,
@@ -274,20 +215,16 @@ export class DashboardController {
         liminarOfId: p.liminarOfId,
       })),
     };
-
-    res.status(HttpStatus.OK).json(response);
   }
 
   /**
-   * GET /dashboard/:token/data - Get user's price tables, max prices, and available miles
+   * GET /dashboard/data - Get user's price tables, max prices, and available miles
    */
-  @Get(':token/data')
+  @Get('data')
   async getUserData(
-    @Param('token') token: string,
-    @Res() res: Response,
-  ): Promise<void> {
-    const userId = await this.validateAndGetUserId(token, res);
-    if (!userId) return;
+    @Req() req: AuthenticatedRequest,
+  ): Promise<ApiResponse<UserDataResponse>> {
+    const userId = req.user.userId;
 
     const programs = await this.milesProgramRepository.getAllPrograms();
     const programMap = new Map(programs.map((p) => [p.id, p.name]));
@@ -296,7 +233,7 @@ export class DashboardController {
     const maxPrices = await this.userDataRepository.getMaxPrices(userId);
     const availableMiles = await this.userDataRepository.getAvailableMiles(userId);
 
-    const response: ApiResponse<UserDataResponse> = {
+    return {
       success: true,
       data: {
         priceEntries: priceEntries.map((e) => ({
@@ -318,21 +255,18 @@ export class DashboardController {
         })),
       },
     };
-
-    res.status(HttpStatus.OK).json(response);
   }
 
   /**
-   * PUT /dashboard/:token/prices - Update user's price entries
+   * PUT /dashboard/prices - Update user's price entries
    */
-  @Put(':token/prices')
+  @Put('prices')
   async updatePrices(
-    @Param('token') token: string,
+    @Req() req: AuthenticatedRequest,
     @Body() body: UpdatePricesDto,
     @Res() res: Response,
   ): Promise<void> {
-    const userId = await this.validateAndGetUserId(token, res);
-    if (!userId) return;
+    const userId = req.user.userId;
 
     if (!body.entries || !Array.isArray(body.entries)) {
       res.status(HttpStatus.BAD_REQUEST).json({
@@ -363,18 +297,17 @@ export class DashboardController {
   }
 
   /**
-   * PUT /dashboard/:token/prices/:programId - Update price entries for a specific program
+   * PUT /dashboard/prices/:programId - Update price entries for a specific program
    * Replaces all price entries for the given program only
    */
-  @Put(':token/prices/:programId')
+  @Put('prices/:programId')
   async updatePricesForProgram(
-    @Param('token') token: string,
+    @Req() req: AuthenticatedRequest,
     @Param('programId') programId: string,
     @Body() body: { entries: Array<{ quantity: number; price: number }> },
     @Res() res: Response,
   ): Promise<void> {
-    const userId = await this.validateAndGetUserId(token, res);
-    if (!userId) return;
+    const userId = req.user.userId;
 
     const programIdNum = parseInt(programId, 10);
     if (Number.isNaN(programIdNum)) {
@@ -418,18 +351,17 @@ export class DashboardController {
   }
 
   /**
-   * PUT /dashboard/:token/price - Update a single price entry
+   * PUT /dashboard/price - Update a single price entry
    * If id is provided, updates the existing entry by id
    * If id is not provided, creates or updates by (userId, programId, quantity)
    */
-  @Put(':token/price')
+  @Put('price')
   async updateSinglePrice(
-    @Param('token') token: string,
+    @Req() req: AuthenticatedRequest,
     @Body() body: UpdateSinglePriceDto,
     @Res() res: Response,
   ): Promise<void> {
-    const userId = await this.validateAndGetUserId(token, res);
-    if (!userId) return;
+    const userId = req.user.userId;
 
     if (typeof body.programId !== 'number' || typeof body.quantity !== 'number' || typeof body.price !== 'number') {
       res.status(HttpStatus.BAD_REQUEST).json({
@@ -467,16 +399,15 @@ export class DashboardController {
   }
 
   /**
-   * DELETE /dashboard/:token/price/:id - Delete a single price entry by ID
+   * DELETE /dashboard/price/:id - Delete a single price entry by ID
    */
-  @Delete(':token/price/:id')
+  @Delete('price/:id')
   async deleteSinglePrice(
-    @Param('token') token: string,
+    @Req() req: AuthenticatedRequest,
     @Param('id') id: string,
     @Res() res: Response,
   ): Promise<void> {
-    const userId = await this.validateAndGetUserId(token, res);
-    if (!userId) return;
+    const userId = req.user.userId;
 
     const entryId = parseInt(id, 10);
     if (Number.isNaN(entryId)) {
@@ -497,16 +428,15 @@ export class DashboardController {
   }
 
   /**
-   * PUT /dashboard/:token/max-prices - Update user's max prices
+   * PUT /dashboard/max-prices - Update user's max prices
    */
-  @Put(':token/max-prices')
+  @Put('max-prices')
   async updateMaxPrices(
-    @Param('token') token: string,
+    @Req() req: AuthenticatedRequest,
     @Body() body: UpdateMaxPricesDto,
     @Res() res: Response,
   ): Promise<void> {
-    const userId = await this.validateAndGetUserId(token, res);
-    if (!userId) return;
+    const userId = req.user.userId;
 
     if (!body.maxPrices || !Array.isArray(body.maxPrices)) {
       res.status(HttpStatus.BAD_REQUEST).json({
@@ -537,16 +467,15 @@ export class DashboardController {
   }
 
   /**
-   * PUT /dashboard/:token/miles - Update user's available miles
+   * PUT /dashboard/miles - Update user's available miles
    */
-  @Put(':token/miles')
+  @Put('miles')
   async updateMiles(
-    @Param('token') token: string,
+    @Req() req: AuthenticatedRequest,
     @Body() body: UpdateMilesDto,
     @Res() res: Response,
   ): Promise<void> {
-    const userId = await this.validateAndGetUserId(token, res);
-    if (!userId) return;
+    const userId = req.user.userId;
 
     if (!body.miles || !Array.isArray(body.miles)) {
       res.status(HttpStatus.BAD_REQUEST).json({
@@ -576,140 +505,56 @@ export class DashboardController {
     } satisfies ApiResponse);
   }
 
-  /**
-   * POST /dashboard/:token/renew - Request a new dashboard link
-   * Works even for expired tokens, sends new link via Telegram
-   */
-  @Post(':token/renew')
-  async renewToken(
-    @Param('token') token: string,
-    @Res() res: Response,
-  ): Promise<void> {
-    this.logger.log(`Token renewal requested for token: ${token.substring(0, 8)}...`);
-
-    // Get the token data (even if expired) to retrieve the userId
-    const tokenData = await this.dashboardTokenRepository.getToken(token);
-
-    if (!tokenData) {
-      res.status(HttpStatus.NOT_FOUND).json({
-        success: false,
-        error: 'Token não encontrado.',
-      } satisfies ApiResponse);
-      return;
-    }
-
-    const userId = tokenData.userId;
-
-    // Get the conversation to find the chatId for sending the message
-    const conversation = await this.conversationRepository.getCompletedConversationByLoggedInUserId(
-      parseInt(userId, 10),
-    );
-
-    if (!conversation) {
-      res.status(HttpStatus.BAD_REQUEST).json({
-        success: false,
-        error: 'Sessão não encontrada. Faça login novamente no bot.',
-      } satisfies ApiResponse);
-      return;
-    }
-
-    // Generate new token
-    const ttlMinutes = this.appConfig.getDashboardTokenTtlMinutes();
-    const { token: newToken, expiresAt } = await this.dashboardTokenRepository.createToken(userId, ttlMinutes);
-
-    // Build dashboard URL
-    const baseUrl = this.appConfig.getAppBaseUrl();
-    const dashboardUrl = `${baseUrl}/dashboard/${newToken}`;
-
-    // Format expiration time
-    const expiresInMinutes = Math.round((expiresAt.getTime() - Date.now()) / 60000);
-
-    // Send summarized message via Telegram
-    const message = 
-      `🔄 *Novo Link do Dashboard*\n\n` +
-      `🔗 [Abrir Dashboard](${dashboardUrl})\n\n` +
-      `⏱️ Expira em ${expiresInMinutes} minutos.`;
-
-    try {
-      await this.telegramBotService.bot.api.sendMessage(conversation.chatId!, message, {
-        parse_mode: 'Markdown',
-        link_preview_options: { is_disabled: true },
-      });
-
-      this.logger.log(`New dashboard token sent to chatId ${conversation.chatId} for user ${userId}`);
-
-      res.status(HttpStatus.OK).json({
-        success: true,
-      } satisfies ApiResponse);
-    } catch (error) {
-      this.logger.error('Failed to send Telegram message', { error, chatId: conversation.chatId });
-      res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
-        success: false,
-        error: 'Erro ao enviar mensagem no Telegram.',
-      } satisfies ApiResponse);
-    }
-  }
-
   // ============================================================================
   // Counter Offer Settings
   // ============================================================================
 
   /**
-   * GET /dashboard/:token/counter-offer/templates - Get available counter offer message templates
+   * GET /dashboard/counter-offer/templates - Get available counter offer message templates
    */
-  @Get(':token/counter-offer/templates')
+  @Get('counter-offer/templates')
   async getCounterOfferTemplates(
-    @Param('token') token: string,
-    @Res() res: Response,
-  ): Promise<void> {
-    const userId = await this.validateAndGetUserId(token, res);
-    if (!userId) return;
-
+    @Req() req: AuthenticatedRequest,
+  ): Promise<ApiResponse<CounterOfferTemplatesResponse>> {
     const templates = COUNTER_OFFER_TEMPLATE_IDS.map((id) => ({
       id,
       description: COUNTER_OFFER_TEMPLATE_DESCRIPTIONS[id],
       preview: COUNTER_OFFER_TEMPLATES[id],
     }));
 
-    res.status(HttpStatus.OK).json({
+    return {
       success: true,
       data: { templates },
-    } satisfies ApiResponse<CounterOfferTemplatesResponse>);
+    };
   }
 
   /**
-   * GET /dashboard/:token/call-to-action/templates - Get available call to action message templates
+   * GET /dashboard/call-to-action/templates - Get available call to action message templates
    */
-  @Get(':token/call-to-action/templates')
+  @Get('call-to-action/templates')
   async getCallToActionTemplates(
-    @Param('token') token: string,
-    @Res() res: Response,
-  ): Promise<void> {
-    const userId = await this.validateAndGetUserId(token, res);
-    if (!userId) return;
-
+    @Req() req: AuthenticatedRequest,
+  ): Promise<ApiResponse<CallToActionTemplatesResponse>> {
     const templates = CALL_TO_ACTION_TEMPLATE_IDS.map((id) => ({
       id,
       description: CALL_TO_ACTION_TEMPLATE_DESCRIPTIONS[id],
       preview: CALL_TO_ACTION_TEMPLATES[id],
     }));
 
-    res.status(HttpStatus.OK).json({
+    return {
       success: true,
       data: { templates },
-    } satisfies ApiResponse<CallToActionTemplatesResponse>);
+    };
   }
 
   /**
-   * GET /dashboard/:token/counter-offer - Get counter offer settings
+   * GET /dashboard/counter-offer - Get counter offer settings
    */
-  @Get(':token/counter-offer')
+  @Get('counter-offer')
   async getCounterOfferSettings(
-    @Param('token') token: string,
-    @Res() res: Response,
-  ): Promise<void> {
-    const userId = await this.validateAndGetUserId(token, res);
-    if (!userId) return;
+    @Req() req: AuthenticatedRequest,
+  ): Promise<ApiResponse<CounterOfferSettingsResponse>> {
+    const userId = req.user.userId;
 
     const settings = await this.counterOfferSettingsRepository.getSettings(userId);
 
@@ -728,23 +573,22 @@ export class DashboardController {
           callToActionTemplateId: 1,
         };
 
-    res.status(HttpStatus.OK).json({
+    return {
       success: true,
       data: response,
-    } satisfies ApiResponse<CounterOfferSettingsResponse>);
+    };
   }
 
   /**
-   * PUT /dashboard/:token/counter-offer - Update counter offer settings
+   * PUT /dashboard/counter-offer - Update counter offer settings
    */
-  @Put(':token/counter-offer')
+  @Put('counter-offer')
   async updateCounterOfferSettings(
-    @Param('token') token: string,
+    @Req() req: AuthenticatedRequest,
     @Body() body: UpdateCounterOfferSettingsDto,
     @Res() res: Response,
   ): Promise<void> {
-    const userId = await this.validateAndGetUserId(token, res);
-    if (!userId) return;
+    const userId = req.user.userId;
 
     // Validate required fields
     if (typeof body.isEnabled !== 'boolean') {
@@ -800,29 +644,19 @@ export class DashboardController {
   // ============================================================================
 
   /**
-   * GET /dashboard/:token/groups - Get user's active groups with titles
+   * GET /dashboard/groups - Get user's active groups with titles
    */
-  @Get(':token/groups')
+  @Get('groups')
   async getActiveGroups(
-    @Param('token') token: string,
+    @Req() req: AuthenticatedRequest,
     @Res() res: Response,
   ): Promise<void> {
-    const userId = await this.validateAndGetUserId(token, res);
-    if (!userId) return;
-
-    // Get telegramUserId for making Telegram API calls
-    const telegramUserId = await this.getTelegramUserIdFromLoggedInUser(userId);
-    if (!telegramUserId) {
-      res.status(HttpStatus.BAD_REQUEST).json({
-        success: false,
-        error: 'user_not_logged_in',
-      } satisfies ApiResponse);
-      return;
-    }
+    const userId = req.user.userId;
+    const telegramUserId = parseInt(userId, 10);
 
     // Get active group IDs from repository
     const activeGroupIds = await this.activeGroupsRepository.getActiveGroups(userId);
-    
+
     if (!activeGroupIds || activeGroupIds.length === 0) {
       res.status(HttpStatus.OK).json({
         success: true,
@@ -865,27 +699,17 @@ export class DashboardController {
   }
 
   /**
-   * GET /dashboard/:token/available-groups - Get all groups the user can activate
+   * GET /dashboard/available-groups - Get all groups the user can activate
    * Returns all groups/supergroups from Telegram with isActive status
    * Uses single HTTP call to TDLib worker for better performance
    */
-  @Get(':token/available-groups')
+  @Get('available-groups')
   async getAvailableGroups(
-    @Param('token') token: string,
+    @Req() req: AuthenticatedRequest,
     @Res() res: Response,
   ): Promise<void> {
-    const userId = await this.validateAndGetUserId(token, res);
-    if (!userId) return;
-
-    // Get telegramUserId for making Telegram API calls
-    const telegramUserId = await this.getTelegramUserIdFromLoggedInUser(userId);
-    if (!telegramUserId) {
-      res.status(HttpStatus.BAD_REQUEST).json({
-        success: false,
-        error: 'user_not_logged_in',
-      } satisfies ApiResponse);
-      return;
-    }
+    const userId = req.user.userId;
+    const telegramUserId = parseInt(userId, 10);
 
     try {
       // Single HTTP call to get all groups (filtering done inside TDLib worker)
@@ -919,33 +743,23 @@ export class DashboardController {
   }
 
   /**
-   * POST /dashboard/:token/groups/:groupId - Activate a group
+   * POST /dashboard/groups/:groupId - Activate a group
    * Validates that the group exists and is a group/supergroup before activating
    */
-  @Post(':token/groups/:groupId')
+  @Post('groups/:groupId')
   async activateGroup(
-    @Param('token') token: string,
+    @Req() req: AuthenticatedRequest,
     @Param('groupId') groupId: string,
     @Res() res: Response,
   ): Promise<void> {
-    const userId = await this.validateAndGetUserId(token, res);
-    if (!userId) return;
+    const userId = req.user.userId;
+    const telegramUserId = parseInt(userId, 10);
 
     const groupIdNum = parseInt(groupId, 10);
     if (Number.isNaN(groupIdNum)) {
       res.status(HttpStatus.BAD_REQUEST).json({
         success: false,
         error: 'invalid_group_id',
-      } satisfies ApiResponse);
-      return;
-    }
-
-    // Get telegramUserId for making Telegram API calls
-    const telegramUserId = await this.getTelegramUserIdFromLoggedInUser(userId);
-    if (!telegramUserId) {
-      res.status(HttpStatus.BAD_REQUEST).json({
-        success: false,
-        error: 'user_not_logged_in',
       } satisfies ApiResponse);
       return;
     }
@@ -1007,16 +821,15 @@ export class DashboardController {
   }
 
   /**
-   * DELETE /dashboard/:token/groups/:groupId - Deactivate a group
+   * DELETE /dashboard/groups/:groupId - Deactivate a group
    */
-  @Delete(':token/groups/:groupId')
+  @Delete('groups/:groupId')
   async deactivateGroup(
-    @Param('token') token: string,
+    @Req() req: AuthenticatedRequest,
     @Param('groupId') groupId: string,
     @Res() res: Response,
   ): Promise<void> {
-    const userId = await this.validateAndGetUserId(token, res);
-    if (!userId) return;
+    const userId = req.user.userId;
 
     const groupIdNum = parseInt(groupId, 10);
     if (Number.isNaN(groupIdNum)) {
@@ -1042,35 +855,31 @@ export class DashboardController {
   // ============================================================================
 
   /**
-   * GET /dashboard/:token/bot-status - Get bot enabled/disabled status
+   * GET /dashboard/bot-status - Get bot enabled/disabled status
    */
-  @Get(':token/bot-status')
+  @Get('bot-status')
   async getBotStatus(
-    @Param('token') token: string,
-    @Res() res: Response,
-  ): Promise<void> {
-    const userId = await this.validateAndGetUserId(token, res);
-    if (!userId) return;
-
+    @Req() req: AuthenticatedRequest,
+  ): Promise<ApiResponse<BotStatusResponse>> {
+    const userId = req.user.userId;
     const isEnabled = await this.botStatusRepository.getBotStatus(userId);
 
-    res.status(HttpStatus.OK).json({
+    return {
       success: true,
       data: { isEnabled },
-    } satisfies ApiResponse<BotStatusResponse>);
+    };
   }
 
   /**
-   * PUT /dashboard/:token/bot-status - Update bot enabled/disabled status
+   * PUT /dashboard/bot-status - Update bot enabled/disabled status
    */
-  @Put(':token/bot-status')
+  @Put('bot-status')
   async updateBotStatus(
-    @Param('token') token: string,
+    @Req() req: AuthenticatedRequest,
     @Body() body: UpdateBotStatusDto,
     @Res() res: Response,
   ): Promise<void> {
-    const userId = await this.validateAndGetUserId(token, res);
-    if (!userId) return;
+    const userId = req.user.userId;
 
     if (typeof body.isEnabled !== 'boolean') {
       res.status(HttpStatus.BAD_REQUEST).json({
@@ -1094,32 +903,19 @@ export class DashboardController {
   // ============================================================================
 
   /**
-   * GET /dashboard/:token/subscription - Get subscription status summary
+   * GET /dashboard/subscription - Get subscription status summary
    */
-  @Get(':token/subscription')
+  @Get('subscription')
   async getSubscriptionStatus(
-    @Param('token') token: string,
+    @Req() req: AuthenticatedRequest,
     @Res() res: Response,
   ): Promise<void> {
-    const userId = await this.validateAndGetUserId(token, res);
-    if (!userId) return;
+    const userId = req.user.userId;
 
     const subscription = await this.subscriptionService.getSubscription(userId);
     const hasUsedTrial = await this.subscriptionService.hasUsedTrial(userId);
 
-    // Generate subscription page URL
-    let subscriptionPageUrl: string | null = null;
-    try {
-      const ttlMinutes = this.appConfig.getSubscriptionTokenTtlMinutes();
-      const { token: subscriptionToken } = await this.subscriptionTokenRepository.createToken(
-        userId,
-        ttlMinutes,
-      );
-      const baseUrl = this.appConfig.getAppBaseUrl();
-      subscriptionPageUrl = `${baseUrl}/subscription/${subscriptionToken}`;
-    } catch (error) {
-      this.logger.warn('Failed to generate subscription page URL', { error, userId });
-    }
+    const subscriptionPageUrl = '/subscription';
 
     if (!subscription) {
       res.status(HttpStatus.OK).json({
@@ -1167,46 +963,14 @@ export class DashboardController {
   }
 
   /**
-   * POST /dashboard/:token/subscription/generate-link - Generate subscription management link
+   * POST /dashboard/subscription/trial - Start a free trial
    */
-  @Post(':token/subscription/generate-link')
-  async generateSubscriptionLink(
-    @Param('token') token: string,
-    @Res() res: Response,
-  ): Promise<void> {
-    const userId = await this.validateAndGetUserId(token, res);
-    if (!userId) return;
-
-    const ttlMinutes = this.appConfig.getSubscriptionTokenTtlMinutes();
-    const { token: subscriptionToken, expiresAt } = await this.subscriptionTokenRepository.createToken(
-      userId,
-      ttlMinutes,
-    );
-
-    const baseUrl = this.appConfig.getAppBaseUrl();
-    const subscriptionUrl = `${baseUrl}/subscription/${subscriptionToken}`;
-
-    this.logger.log(`Generated subscription link for user ${userId}`);
-
-    res.status(HttpStatus.OK).json({
-      success: true,
-      data: {
-        url: subscriptionUrl,
-        expiresAt: expiresAt.toISOString(),
-      },
-    } satisfies ApiResponse<SubscriptionLinkResponse>);
-  }
-
-  /**
-   * POST /dashboard/:token/subscription/trial - Start a free trial
-   */
-  @Post(':token/subscription/trial')
+  @Post('subscription/trial')
   async startTrial(
-    @Param('token') token: string,
+    @Req() req: AuthenticatedRequest,
     @Res() res: Response,
   ): Promise<void> {
-    const userId = await this.validateAndGetUserId(token, res);
-    if (!userId) return;
+    const userId = req.user.userId;
 
     try {
       const result = await this.subscriptionService.startTrial(userId);
@@ -1245,101 +1009,5 @@ export class DashboardController {
         error: 'Erro ao iniciar período de teste. Tente novamente.',
       } satisfies ApiResponse);
     }
-  }
-
-  // ============================================================================
-  // Helper methods
-  // ============================================================================
-
-  /**
-   * Get the telegramUserId from loggedInUserId
-   * The token stores loggedInUserId, but the worker is identified by telegramUserId
-   */
-  private async getTelegramUserIdFromLoggedInUser(loggedInUserId: string): Promise<number | null> {
-    const conversation = await this.conversationRepository.getCompletedConversationByLoggedInUserId(
-      parseInt(loggedInUserId, 10),
-    );
-    return conversation?.telegramUserId ?? null;
-  }
-
-  /**
-   * Validate token and get user ID, or send error response
-   */
-  private async validateAndGetUserId(token: string, res: Response): Promise<string | null> {
-    const validation = await this.dashboardTokenRepository.validateToken(token);
-
-    if (!validation.valid) {
-      const errorMessages: Record<string, string> = {
-        not_found: 'token_not_found',
-        expired: 'token_expired',
-      };
-
-      res.status(this.getHttpStatusForError(validation.error)).json({
-        success: false,
-        error: validation.error ? errorMessages[validation.error] : 'unknown_error',
-      } satisfies ApiResponse);
-      return null;
-    }
-
-    return validation.token?.userId ?? null;
-  }
-
-  /**
-   * Map error type to HTTP status code
-   */
-  private getHttpStatusForError(error?: string): HttpStatus {
-    switch (error) {
-      case 'not_found':
-        return HttpStatus.NOT_FOUND;
-      case 'expired':
-        return HttpStatus.GONE;
-      default:
-        return HttpStatus.INTERNAL_SERVER_ERROR;
-    }
-  }
-
-  /**
-   * Generate error HTML page
-   */
-  private getErrorHtml(message: string): string {
-    return `<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Erro - Dashboard</title>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      min-height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 20px;
-    }
-    .container {
-      background: white;
-      padding: 40px;
-      border-radius: 16px;
-      box-shadow: 0 10px 40px rgba(0,0,0,0.2);
-      text-align: center;
-      max-width: 400px;
-      width: 100%;
-    }
-    .icon { font-size: 48px; margin-bottom: 20px; }
-    h1 { color: #e74c3c; font-size: 24px; margin-bottom: 16px; }
-    p { color: #666; line-height: 1.6; }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <div class="icon">⚠️</div>
-    <h1>Erro</h1>
-    <p>${message}</p>
-  </div>
-</body>
-</html>`;
   }
 }

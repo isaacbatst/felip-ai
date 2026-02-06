@@ -121,15 +121,6 @@ export class AppConfigService {
     return Number.parseInt(value, 10);
   }
 
-  /**
-   * Dashboard token time-to-live in minutes
-   * Determines how long dashboard access tokens are valid before expiring
-   */
-  getDashboardTokenTtlMinutes(): number {
-    const value = this.configService.get<string>('DASHBOARD_TOKEN_TTL_MINUTES', '60');
-    return Number.parseInt(value, 10);
-  }
-
   // ============================================================================
   // Subscription System Configuration
   // ============================================================================
@@ -194,15 +185,6 @@ export class AppConfigService {
    */
   getCieloWebhookSecret(): string {
     return this.configService.get<string>('CIELO_WEBHOOK_SECRET', '');
-  }
-
-  /**
-   * Subscription token time-to-live in minutes
-   * Determines how long subscription page access tokens are valid before expiring
-   */
-  getSubscriptionTokenTtlMinutes(): number {
-    const value = this.configService.get<string>('SUBSCRIPTION_TOKEN_TTL_MINUTES', '60');
-    return Number.parseInt(value, 10);
   }
 
   /**

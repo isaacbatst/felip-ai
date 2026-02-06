@@ -2,22 +2,25 @@ import {
   Controller,
   Get,
   Post,
-  Param,
+  Req,
   Res,
   HttpStatus,
   Logger,
+  UseGuards,
 } from '@nestjs/common';
-import type { Response } from 'express';
+import type { Request, Response } from 'express';
 import { join } from 'node:path';
-import { SubscriptionTokenRepository } from '@/infrastructure/persistence/subscription-token.repository';
 import { SubscriptionService, SubscriptionError } from '@/infrastructure/subscription/subscription.service';
-import { SubscriptionPlanData } from '@/infrastructure/persistence/subscription-plan.repository';
-import { SubscriptionWithPlan } from '@/infrastructure/persistence/subscription.repository';
 import { ActiveGroupsRepository } from '@/infrastructure/persistence/active-groups.repository';
+import { SessionGuard } from '@/infrastructure/http/guards/session.guard';
 
 // ============================================================================
 // DTOs for request/response
 // ============================================================================
+
+interface AuthenticatedRequest extends Request {
+  user: { userId: string };
+}
 
 interface ApiResponse<T = unknown> {
   success: boolean;
@@ -80,56 +83,37 @@ interface TrialResponse {
 
 /**
  * HTTP Controller for subscription management page
- * Handles token validation and subscription operations
+ * Uses cookie-based session auth via SessionGuard
  */
 @Controller('subscription')
+@UseGuards(SessionGuard)
 export class SubscriptionController {
   private readonly logger = new Logger(SubscriptionController.name);
 
   constructor(
-    private readonly subscriptionTokenRepository: SubscriptionTokenRepository,
     private readonly subscriptionService: SubscriptionService,
     private readonly activeGroupsRepository: ActiveGroupsRepository,
   ) {}
 
   /**
-   * GET /subscription/:token - Serve the subscription HTML page
-   * Validates the token and serves the page if valid
+   * GET /subscription - Serve the subscription HTML page
    */
-  @Get(':token')
+  @Get()
   async getSubscriptionPage(
-    @Param('token') token: string,
     @Res() res: Response,
   ): Promise<void> {
-    this.logger.log(`Subscription page requested for token: ${token.substring(0, 8)}...`);
-
-    const validation = await this.subscriptionTokenRepository.validateToken(token);
-
-    if (!validation.valid) {
-      const errorMessages: Record<string, string> = {
-        not_found: 'Link inválido ou expirado.',
-        expired: 'Este link expirou. Por favor, solicite um novo link no bot ou dashboard.',
-      };
-
-      const errorMessage = validation.error ? errorMessages[validation.error] : 'Erro desconhecido.';
-      res.status(this.getHttpStatusForError(validation.error)).send(this.getErrorHtml(errorMessage));
-      return;
-    }
-
-    // Serve the subscription page
     res.sendFile(join(__dirname, '..', '..', 'public', 'assinatura.html'));
   }
 
   /**
-   * GET /subscription/:token/data - Get subscription data
+   * GET /subscription/data - Get subscription data
    */
-  @Get(':token/data')
+  @Get('data')
   async getSubscriptionData(
-    @Param('token') token: string,
+    @Req() req: AuthenticatedRequest,
     @Res() res: Response,
   ): Promise<void> {
-    const userId = await this.validateAndGetUserId(token, res);
-    if (!userId) return;
+    const userId = req.user.userId;
 
     const subscription = await this.subscriptionService.getSubscription(userId);
 
@@ -182,16 +166,13 @@ export class SubscriptionController {
   }
 
   /**
-   * GET /subscription/:token/plans - Get available subscription plans
+   * GET /subscription/plans - Get available subscription plans
    */
-  @Get(':token/plans')
+  @Get('plans')
   async getPlans(
-    @Param('token') token: string,
+    @Req() req: AuthenticatedRequest,
     @Res() res: Response,
   ): Promise<void> {
-    const userId = await this.validateAndGetUserId(token, res);
-    if (!userId) return;
-
     const plans = await this.subscriptionService.getActivePlans();
 
     const response: PlansResponse = {
@@ -212,15 +193,14 @@ export class SubscriptionController {
   }
 
   /**
-   * POST /subscription/:token/trial - Start a free trial
+   * POST /subscription/trial - Start a free trial
    */
-  @Post(':token/trial')
+  @Post('trial')
   async startTrial(
-    @Param('token') token: string,
+    @Req() req: AuthenticatedRequest,
     @Res() res: Response,
   ): Promise<void> {
-    const userId = await this.validateAndGetUserId(token, res);
-    if (!userId) return;
+    const userId = req.user.userId;
 
     try {
       const result = await this.subscriptionService.startTrial(userId);
@@ -262,90 +242,5 @@ export class SubscriptionController {
         code: 'internal_error',
       } satisfies ApiResponse);
     }
-  }
-
-  // ============================================================================
-  // Helper methods
-  // ============================================================================
-
-  /**
-   * Validate token and get user ID, or send error response
-   */
-  private async validateAndGetUserId(token: string, res: Response): Promise<string | null> {
-    const validation = await this.subscriptionTokenRepository.validateToken(token);
-
-    if (!validation.valid) {
-      const errorMessages: Record<string, string> = {
-        not_found: 'token_not_found',
-        expired: 'token_expired',
-      };
-
-      res.status(this.getHttpStatusForError(validation.error)).json({
-        success: false,
-        error: validation.error ? errorMessages[validation.error] : 'unknown_error',
-      } satisfies ApiResponse);
-      return null;
-    }
-
-    return validation.token?.userId ?? null;
-  }
-
-  /**
-   * Map error type to HTTP status code
-   */
-  private getHttpStatusForError(error?: string): HttpStatus {
-    switch (error) {
-      case 'not_found':
-        return HttpStatus.NOT_FOUND;
-      case 'expired':
-        return HttpStatus.GONE;
-      default:
-        return HttpStatus.INTERNAL_SERVER_ERROR;
-    }
-  }
-
-  /**
-   * Generate error HTML page
-   */
-  private getErrorHtml(message: string): string {
-    return `<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Erro - Assinatura</title>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      min-height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 20px;
-    }
-    .container {
-      background: white;
-      padding: 40px;
-      border-radius: 16px;
-      box-shadow: 0 10px 40px rgba(0,0,0,0.2);
-      text-align: center;
-      max-width: 400px;
-      width: 100%;
-    }
-    .icon { font-size: 48px; margin-bottom: 20px; }
-    h1 { color: #e74c3c; font-size: 24px; margin-bottom: 16px; }
-    p { color: #666; line-height: 1.6; }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <div class="icon">⚠️</div>
-    <h1>Erro</h1>
-    <p>${message}</p>
-  </div>
-</body>
-</html>`;
   }
 }

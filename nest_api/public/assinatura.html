@@ -34,6 +34,13 @@
         <i class="fa-solid fa-credit-card mr-2 text-primary"></i>
         Assinatura
       </h1>
+      <button @click="logout()"
+        :disabled="loggingOut"
+        class="px-4 py-2 rounded-lg text-sm whitespace-nowrap transition-all bg-gray-100 text-gray-600 hover:bg-gray-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
+        <i class="fa-solid fa-right-from-bracket mr-1"></i>
+        <span x-show="!loggingOut">Sair</span>
+        <span x-show="loggingOut">Saindo...</span>
+      </button>
     </div>
 
     <!-- No Subscription State -->
@@ -251,29 +258,39 @@
         plans: [],
         trialUsed: false,
         startingTrial: false,
+        loggingOut: false,
 
         // Toast
         toast: { visible: false, message: '', type: 'success' },
 
-        // Computed
-        get token() {
-          const parts = window.location.pathname.split('/');
-          return parts[parts.length - 1];
+        // Auth helpers
+        async authFetch(url, options) {
+          const res = await fetch(url, options);
+          if (res.status === 401) {
+            window.location.href = '/login';
+            throw new Error('Sessão expirada');
+          }
+          return res;
+        },
+
+        async logout() {
+          this.loggingOut = true;
+          try {
+            await fetch('/login/logout', { method: 'POST' });
+          } catch (e) {
+            // ignore
+          }
+          window.location.href = '/login';
         },
 
         // Initialization
         async init() {
           try {
-            // Validate token
-            const tokenRes = await fetch(`/subscription/${this.token}/data`);
+            const tokenRes = await this.authFetch('/subscription/data');
             const tokenData = await tokenRes.json();
 
             if (!tokenData.success) {
-              if (tokenData.error === 'token_not_found' || tokenData.error === 'token_expired') {
-                this.errorMessage = 'Este link expirou ou é inválido. Por favor, solicite um novo link no bot ou dashboard.';
-              } else {
-                this.errorMessage = tokenData.error || 'Erro desconhecido';
-              }
+              this.errorMessage = tokenData.error || 'Erro desconhecido';
               return;
             }
 
@@ -292,7 +309,7 @@
 
         async fetchPlans() {
           try {
-            const res = await fetch(`/subscription/${this.token}/plans`);
+            const res = await this.authFetch('/subscription/plans');
             const data = await res.json();
             if (data.success) {
               this.plans = data.data.plans;
@@ -307,7 +324,7 @@
 
           this.startingTrial = true;
           try {
-            const res = await fetch(`/subscription/${this.token}/trial`, {
+            const res = await this.authFetch('/subscription/trial', {
               method: 'POST',
             });
             const data = await res.json();
