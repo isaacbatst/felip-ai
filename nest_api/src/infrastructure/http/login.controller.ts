@@ -77,11 +77,23 @@ export class LoginController {
       throw new HttpException('Registre-se com /start no bot @lfviagenschatbot', HttpStatus.BAD_REQUEST);
     }
 
-    const { expiresAt } = await this.otpService.generateAndSend(phone);
-
-    this.logger.log(`OTP requested for phone: ${phone}`);
-
-    return { success: true, expiresAt };
+    try {
+      const { expiresAt } = await this.otpService.generateAndSend(phone);
+      this.logger.log(`OTP requested for phone: ${phone}`);
+      return { success: true, expiresAt };
+    } catch (error) {
+      this.logger.error(
+        `Failed to generate/send OTP for phone=${phone}`,
+        error instanceof Error ? error.stack : String(error),
+      );
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw new HttpException(
+        'Erro ao enviar código. Tente novamente.',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
   }
 
   @Post('verify')

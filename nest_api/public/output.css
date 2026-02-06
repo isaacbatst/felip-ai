@@ -826,6 +826,9 @@
   .bg-gray-800 {
     background-color: var(--color-gray-800);
   }
+  .bg-green-100 {
+    background-color: var(--color-green-100);
+  }
   .bg-orange-50 {
     background-color: var(--color-orange-50);
   }
@@ -1176,6 +1179,9 @@
   }
   .text-gray-800 {
     color: var(--color-gray-800);
+  }
+  .text-green-800 {
+    color: var(--color-green-800);
   }
   .text-orange-600 {
     color: var(--color-orange-600);
@@ -1533,6 +1539,13 @@
     &:hover {
       @media (hover: hover) {
         color: var(--color-white);
+      }
+    }
+  }
+  .hover\:underline {
+    &:hover {
+      @media (hover: hover) {
+        text-decoration-line: underline;
       }
     }
   }

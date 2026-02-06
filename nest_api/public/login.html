@@ -110,8 +110,26 @@
           ⏱️ Expira em: <span x-text="countdownText"></span>
         </div>
 
+        <div class="mt-3">
+          <button
+            @click="resendOtp()"
+            :disabled="resendCooldown > 0 || resendLoading"
+            class="text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            :class="resendCooldown > 0 || resendLoading ? 'text-gray-400' : 'text-primary hover:underline cursor-pointer'"
+          >
+            <span x-show="resendLoading" class="spinner" style="width:14px;height:14px;"></span>
+            <span x-show="resendLoading">Reenviando...</span>
+            <span x-show="!resendLoading && resendCooldown > 0" x-text="'Reenviar em ' + resendCooldown + 's'"></span>
+            <span x-show="!resendLoading && resendCooldown <= 0">Reenviar código</span>
+          </button>
+        </div>
+
+        <template x-if="resendSuccess">
+          <div class="mt-3 p-3 rounded-xl text-sm bg-green-100 text-green-800">Código reenviado com sucesso!</div>
+        </template>
+
         <template x-if="errorMsg">
-          <div class="mt-5 p-4 rounded-xl text-sm bg-red-100 text-red-800" x-text="errorMsg"></div>
+          <div class="mt-3 p-4 rounded-xl text-sm bg-red-100 text-red-800" x-text="errorMsg"></div>
         </template>
       </div>
     </template>
@@ -152,6 +170,10 @@
         countdownInterval: null,
         expiresAt: null,
         registrationToken: null,
+        resendCooldown: 0,
+        resendCooldownInterval: null,
+        resendLoading: false,
+        resendSuccess: false,
         botUsername: document.querySelector('meta[name="bot-username"]')?.content || '@FelipAIBot',
 
         init() {
@@ -213,6 +235,7 @@
             this.step = 'otp';
             this.loading = false;
             this.startCountdown();
+            this.startResendCooldown();
           } catch (e) {
             this.errorMsg = 'Erro de conexão. Verifique sua internet.';
             this.loading = false;
@@ -255,8 +278,56 @@
           }
         },
 
+        startResendCooldown() {
+          this.resendCooldown = 30;
+          if (this.resendCooldownInterval) clearInterval(this.resendCooldownInterval);
+          this.resendCooldownInterval = setInterval(() => {
+            this.resendCooldown--;
+            if (this.resendCooldown <= 0) {
+              clearInterval(this.resendCooldownInterval);
+              this.resendCooldownInterval = null;
+            }
+          }, 1000);
+        },
+
+        async resendOtp() {
+          this.errorMsg = '';
+          this.resendSuccess = false;
+          this.resendLoading = true;
+
+          const digits = this.phone.replace(/\D/g, '');
+          const phoneNumber = '+' + digits;
+
+          try {
+            const res = await fetch('/login/phone', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ phone: phoneNumber, ...(this.registrationToken && { registrationToken: this.registrationToken }) }),
+            });
+
+            const data = await res.json();
+
+            if (!res.ok) {
+              this.errorMsg = data.message || 'Erro ao reenviar código.';
+              this.resendLoading = false;
+              return;
+            }
+
+            this.expiresAt = new Date(data.expiresAt).getTime();
+            this.startCountdown();
+            this.startResendCooldown();
+            this.resendLoading = false;
+            this.resendSuccess = true;
+            setTimeout(() => { this.resendSuccess = false; }, 3000);
+          } catch (e) {
+            this.errorMsg = 'Erro de conexão. Verifique sua internet.';
+            this.resendLoading = false;
+          }
+        },
+
         retry() {
           if (this.countdownInterval) clearInterval(this.countdownInterval);
+          if (this.resendCooldownInterval) clearInterval(this.resendCooldownInterval);
           this.step = 'phone';
           this.phone = '';
           this.code = '';
@@ -264,6 +335,10 @@
           this.errorMsg = '';
           this.countdownText = '05:00';
           this.expiresAt = null;
+          this.resendCooldown = 0;
+          this.resendCooldownInterval = null;
+          this.resendLoading = false;
+          this.resendSuccess = false;
         },
       };
     }
