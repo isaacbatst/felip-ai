@@ -32,6 +32,10 @@ import { SubscriptionTokenRepository } from "@/infrastructure/persistence/subscr
 import { SubscriptionTokenDrizzleStore } from "@/infrastructure/persistence/drizzle/subscription-token-drizzle-store";
 import { WebSessionRepository } from "@/infrastructure/persistence/web-session.repository";
 import { WebSessionDrizzleStore } from "@/infrastructure/persistence/drizzle/web-session-drizzle-store";
+import { UserRepository } from "@/infrastructure/persistence/user.repository";
+import { UserDrizzleStore } from "@/infrastructure/persistence/drizzle/user-drizzle-store";
+import { OtpRepository } from "@/infrastructure/persistence/otp.repository";
+import { OtpDrizzleStore } from "@/infrastructure/persistence/drizzle/otp-drizzle-store";
 
 @Module({
   imports: [DatabaseModule],
@@ -100,6 +104,14 @@ import { WebSessionDrizzleStore } from "@/infrastructure/persistence/drizzle/web
       provide: WebSessionRepository,
       useClass: WebSessionDrizzleStore,
     },
+    {
+      provide: UserRepository,
+      useClass: UserDrizzleStore,
+    },
+    {
+      provide: OtpRepository,
+      useClass: OtpDrizzleStore,
+    },
   ],
   exports: [
     ConversationRepository,
@@ -118,6 +130,8 @@ import { WebSessionDrizzleStore } from "@/infrastructure/persistence/drizzle/web
     SubscriptionRepository,
     SubscriptionTokenRepository,
     WebSessionRepository,
+    UserRepository,
+    OtpRepository,
   ],
 })
 export class PersistenceModule {}

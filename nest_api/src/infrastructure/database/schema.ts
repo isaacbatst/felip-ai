@@ -411,6 +411,48 @@ export const subscriptionTokens = pgTable(
 );
 
 // ============================================================================
+// Users & OTP Tables
+// ============================================================================
+
+/**
+ * Users table - stores registered users with phone and Telegram identity
+ */
+export const users = pgTable(
+  'users',
+  {
+    id: integer('id').primaryKey().generatedAlwaysAsIdentity(),
+    phone: text('phone').notNull().unique(),
+    telegramUserId: bigint('telegram_user_id', { mode: 'number' }).notNull().unique(),
+    chatId: bigint('chat_id', { mode: 'number' }).notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => [
+    index('users_phone_idx').on(table.phone),
+    index('users_telegram_user_id_idx').on(table.telegramUserId),
+  ],
+);
+
+/**
+ * OTP codes table - stores one-time password codes for phone verification
+ */
+export const otpCodes = pgTable(
+  'otp_codes',
+  {
+    id: integer('id').primaryKey().generatedAlwaysAsIdentity(),
+    phone: text('phone').notNull(),
+    code: text('code').notNull(),
+    expiresAt: timestamp('expires_at').notNull(),
+    usedAt: timestamp('used_at'),
+    attempts: integer('attempts').default(0).notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => [
+    index('otp_codes_phone_idx').on(table.phone),
+  ],
+);
+
+// ============================================================================
 // Web Sessions Table
 // ============================================================================
 
