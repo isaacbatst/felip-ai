@@ -9,12 +9,7 @@ import { DatabasePriceTableProvider } from './cache/database-price-table-provide
 import { MessageParserService } from './openai/message-parser.service';
 import { OpenAIService } from './openai/openai.service';
 import { QueueModule } from './queue/queue.module';
-import { TelegramAuthCodeHandler } from './telegram/handlers/telegram-bot-auth-code.handler';
-import { TelegramCommandHandler } from './telegram/handlers/telegram-bot-command.handler';
 import { TelegramBotRegistrationHandler } from './telegram/handlers/telegram-bot-registration.handler';
-import { TelegramBotLoginResultHandler } from './telegram/handlers/telegram-bot-login-result.handler';
-import { TelegramBotMessageHandler } from './telegram/handlers/telegram-bot-message.handler';
-import { TelegramPhoneNumberHandler } from './telegram/handlers/telegram-bot-phone-number.handler';
 import { TelegramPurchaseHandler } from './telegram/handlers/telegram-user-purchase.handler';
 import { PhoneWhitelistService } from './telegram/phone-whitelist.service';
 import { TelegramBotController } from './telegram/telegram-bot.controller';
@@ -22,13 +17,10 @@ import { TelegramUserMessageProcessor } from './telegram/telegram-user-message-p
 import { WorkersModule } from '@/infrastructure/workers/workers.module';
 import { TdlibCommandResponseHandler } from '@/infrastructure/tdlib/tdlib-command-response.handler';
 import { TelegramUserClientProxyService } from '@/infrastructure/tdlib/telegram-user-client-proxy.service';
-import { TelegramBotQueueProcessorRabbitMQ } from '@/infrastructure/queue/rabbitmq/telegram-bot-queue-processor-rabbitmq.service';
 import { TelegramUserQueueProcessorRabbitMQ } from '@/infrastructure/queue/rabbitmq/telegram-user-queue-processor-rabbitmq.service';
 import { TdlibUpdatesWorkerRabbitMQ } from '@/infrastructure/queue/rabbitmq/tdlib-updates-worker-rabbitmq.service';
-import { AuthCodeDeduplicationService } from './telegram/auth-code-deduplication.service';
 import { OtpService } from './auth/otp.service';
 import { RegistrationTokenService } from './auth/registration-token.service';
-import { AuthController } from './http/auth.controller';
 import { DashboardController } from './http/dashboard.controller';
 import { LandingController } from './http/landing.controller';
 import { SubscriptionController } from './http/subscription.controller';
@@ -44,7 +36,7 @@ import { LoginController } from './http/login.controller';
  */
 @Module({
   imports: [DomainModule, PersistenceModule, QueueModule, WorkersModule],
-  controllers: [LandingController, AuthController, DashboardController, SubscriptionController, LoginController],
+  controllers: [LandingController, DashboardController, SubscriptionController, LoginController],
   providers: [
     AppConfigService,
     OpenAIService,
@@ -57,23 +49,16 @@ import { LoginController } from './http/login.controller';
       provide: MessageParser,
       useClass: MessageParserService,
     },
-    TelegramBotMessageHandler,
-    TelegramPhoneNumberHandler,
-    TelegramAuthCodeHandler,
-    TelegramCommandHandler,
     TelegramBotRegistrationHandler,
-    TelegramBotLoginResultHandler,
     TelegramBotController,
     TelegramBotService,
     TelegramPurchaseHandler,
     TelegramUserMessageProcessor,
     PhoneWhitelistService,
     TdlibCommandResponseHandler,
-    AuthCodeDeduplicationService,
     OtpService,
     RegistrationTokenService,
     TelegramUserQueueProcessorRabbitMQ,
-    TelegramBotQueueProcessorRabbitMQ,
     TdlibUpdatesWorkerRabbitMQ,
     // Subscription services
     SubscriptionService,
@@ -87,7 +72,6 @@ import { LoginController } from './http/login.controller';
     PriceTableProvider,
     TelegramBotController,
     PhoneWhitelistService,
-    TelegramBotMessageHandler,
     TelegramUserMessageProcessor,
     SubscriptionService,
     SubscriptionAuthorizationService,

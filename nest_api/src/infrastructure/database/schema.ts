@@ -114,26 +114,6 @@ export const botStatus = pgTable(
   ],
 );
 
-/**
- * Auth tokens table - stores time-sensitive tokens for web-based auth code input
- * Tokens are generated when TDLib requests an auth code and sent to users via link
- */
-export const authTokens = pgTable(
-  'auth_tokens',
-  {
-    token: text('token').primaryKey(), // Secure random token (48 chars hex)
-    requestId: text('request_id').notNull(), // FK to sessions.requestId
-    expiresAt: timestamp('expires_at').notNull(), // Token expiration (e.g., 10 minutes)
-    usedAt: timestamp('used_at'), // Null if not used, set on use
-    attempts: integer('attempts').default(0).notNull(), // Number of code submission attempts
-    createdAt: timestamp('created_at').defaultNow().notNull(),
-  },
-  (table) => [
-    index('auth_tokens_request_id_idx').on(table.requestId),
-    index('auth_tokens_expires_at_idx').on(table.expiresAt),
-  ],
-);
-
 // ============================================================================
 // User Data Management Tables (replacing Google Spreadsheet)
 // ============================================================================
@@ -154,24 +134,6 @@ export const milesPrograms = pgTable(
   (table) => [
     index('miles_programs_name_idx').on(table.name),
     index('miles_programs_liminar_of_id_idx').on(table.liminarOfId),
-  ],
-);
-
-/**
- * Dashboard tokens table - stores time-sensitive tokens for web dashboard access
- * Users get a link via bot command to access their dashboard
- */
-export const dashboardTokens = pgTable(
-  'dashboard_tokens',
-  {
-    token: text('token').primaryKey(), // Secure random token (48 chars hex)
-    userId: text('user_id').notNull(), // Telegram user ID
-    expiresAt: timestamp('expires_at').notNull(), // Token expiration
-    createdAt: timestamp('created_at').defaultNow().notNull(),
-  },
-  (table) => [
-    index('dashboard_tokens_user_id_idx').on(table.userId),
-    index('dashboard_tokens_expires_at_idx').on(table.expiresAt),
   ],
 );
 
@@ -389,24 +351,6 @@ export const cieloWebhookEvents = pgTable(
     index('cielo_webhook_events_payment_id_idx').on(table.paymentId),
     index('cielo_webhook_events_recurrent_payment_id_idx').on(table.recurrentPaymentId),
     index('cielo_webhook_events_created_at_idx').on(table.createdAt),
-  ],
-);
-
-/**
- * Subscription tokens table - tokens for accessing subscription management page
- * Similar to dashboard tokens but specifically for subscription management
- */
-export const subscriptionTokens = pgTable(
-  'subscription_tokens',
-  {
-    token: text('token').primaryKey(), // Secure random token (48 chars hex)
-    userId: text('user_id').notNull(), // Telegram user ID
-    expiresAt: timestamp('expires_at').notNull(), // Token expiration
-    createdAt: timestamp('created_at').defaultNow().notNull(),
-  },
-  (table) => [
-    index('subscription_tokens_user_id_idx').on(table.userId),
-    index('subscription_tokens_expires_at_idx').on(table.expiresAt),
   ],
 );
 

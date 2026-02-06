@@ -12,8 +12,6 @@ import { MessageEnqueuedLogRepository } from "@/infrastructure/persistence/messa
 import { MessageEnqueuedLogDrizzleStore } from "@/infrastructure/persistence/drizzle/message-enqueued-log-drizzle-store";
 import { BotStatusRepository } from "@/infrastructure/persistence/bot-status.repository";
 import { BotStatusDrizzleStore } from "@/infrastructure/persistence/drizzle/bot-status-drizzle-store";
-import { AuthTokenRepository } from "@/infrastructure/persistence/auth-token.repository";
-import { AuthTokenDrizzleStore } from "@/infrastructure/persistence/drizzle/auth-token-drizzle-store";
 import { UserDataRepository } from "@/infrastructure/persistence/user-data.repository";
 import { UserDataDrizzleStore } from "@/infrastructure/persistence/drizzle/user-data-drizzle-store";
 import { MilesProgramRepository } from "@/infrastructure/persistence/miles-program.repository";
@@ -61,10 +59,6 @@ import { OtpDrizzleStore } from "@/infrastructure/persistence/drizzle/otp-drizzl
       useClass: BotStatusDrizzleStore,
     },
     {
-      provide: AuthTokenRepository,
-      useClass: AuthTokenDrizzleStore,
-    },
-    {
       provide: UserDataRepository,
       useClass: UserDataDrizzleStore,
     },
@@ -108,7 +102,6 @@ import { OtpDrizzleStore } from "@/infrastructure/persistence/drizzle/otp-drizzl
     MessageProcessedLogRepository,
     MessageEnqueuedLogRepository,
     BotStatusRepository,
-    AuthTokenRepository,
     UserDataRepository,
     MilesProgramRepository,
     CounterOfferSettingsRepository,

@@ -22,6 +22,10 @@ import { BotStatusRepository } from '@/infrastructure/persistence/bot-status.rep
 import { TelegramUserClientProxyService } from '@/infrastructure/tdlib/telegram-user-client-proxy.service';
 import { SubscriptionService } from '@/infrastructure/subscription/subscription.service';
 import { SessionGuard } from '@/infrastructure/http/guards/session.guard';
+import { WorkerManager } from '@/infrastructure/workers/worker-manager';
+import { ConversationRepository } from '@/infrastructure/persistence/conversation.repository';
+import { UserRepository } from '@/infrastructure/persistence/user.repository';
+import { randomUUID } from 'node:crypto';
 import {
   COUNTER_OFFER_TEMPLATES,
   COUNTER_OFFER_TEMPLATE_DESCRIPTIONS,
@@ -143,6 +147,19 @@ interface UpdateBotStatusDto {
   isEnabled: boolean;
 }
 
+interface WorkerStatusResponse {
+  workerRunning: boolean;
+  authState: 'idle' | 'waitingCode' | 'waitingPassword' | 'completed' | 'failed' | null;
+}
+
+interface SubmitAuthCodeDto {
+  code: string;
+}
+
+interface SubmitPasswordDto {
+  password: string;
+}
+
 interface SubscriptionStatusResponse {
   subscription: {
     id: number;
@@ -185,6 +202,9 @@ export class DashboardController {
     private readonly botStatusRepository: BotStatusRepository,
     private readonly telegramUserClient: TelegramUserClientProxyService,
     private readonly subscriptionService: SubscriptionService,
+    private readonly workerManager: WorkerManager,
+    private readonly conversationRepository: ConversationRepository,
+    private readonly userRepository: UserRepository,
   ) {}
 
   /**
@@ -872,6 +892,7 @@ export class DashboardController {
 
   /**
    * PUT /dashboard/bot-status - Update bot enabled/disabled status
+   * When enabling, starts the TDLib worker and initiates login if needed
    */
   @Put('bot-status')
   async updateBotStatus(
@@ -891,11 +912,200 @@ export class DashboardController {
 
     await this.botStatusRepository.setBotStatus(userId, body.isEnabled);
 
+    if (body.isEnabled) {
+      // Check if worker is already running
+      const status = await this.workerManager.getStatus(userId);
+      if (!status || status.state !== 'running') {
+        try {
+          // Get user's phone number
+          const telegramUserId = parseInt(userId, 10);
+          const user = await this.userRepository.findByTelegramUserId(telegramUserId);
+          if (!user) {
+            this.logger.error(`User not found for telegramUserId: ${telegramUserId}`);
+            res.status(HttpStatus.OK).json({ success: true } satisfies ApiResponse);
+            return;
+          }
+
+          // Create a session for the login flow
+          const requestId = randomUUID();
+          await this.conversationRepository.setConversation({
+            requestId,
+            loggedInUserId: telegramUserId,
+            phoneNumber: user.phone,
+            state: 'idle',
+            source: 'web',
+          });
+
+          // Start the worker
+          await this.workerManager.run(userId);
+
+          // Dispatch login command
+          await this.telegramUserClient.login(userId, user.phone, requestId);
+
+          this.logger.log(`Worker started and login initiated for user ${userId}`);
+        } catch (error) {
+          this.logger.error(`Error starting worker for user ${userId}`, { error });
+          // Bot status is already set to enabled, worker will be retried on next poll
+        }
+      }
+    }
+
     this.logger.log(`Updated bot status for user ${userId}: enabled=${body.isEnabled}`);
 
     res.status(HttpStatus.OK).json({
       success: true,
     } satisfies ApiResponse);
+  }
+
+  // ============================================================================
+  // Worker Management
+  // ============================================================================
+
+  /**
+   * GET /dashboard/worker/status - Get worker + TDLib auth state
+   */
+  @Get('worker/status')
+  async getWorkerStatus(
+    @Req() req: AuthenticatedRequest,
+  ): Promise<ApiResponse<WorkerStatusResponse>> {
+    const userId = req.user.userId;
+    const telegramUserId = parseInt(userId, 10);
+
+    const status = await this.workerManager.getStatus(userId);
+    const workerRunning = status?.state === 'running';
+
+    let authState: WorkerStatusResponse['authState'] = null;
+
+    if (workerRunning) {
+      const session = await this.conversationRepository.getActiveSessionByLoggedInUserId(telegramUserId);
+      if (session) {
+        authState = session.state as WorkerStatusResponse['authState'];
+      } else {
+        // Check for completed session — means TDLib is authenticated
+        const completedSession = await this.conversationRepository.getCompletedSessionByLoggedInUserId(telegramUserId);
+        if (completedSession) {
+          authState = 'completed';
+        } else {
+          // Worker running but no session — assume authenticated (existing TDLib session)
+          authState = 'completed';
+        }
+      }
+    }
+
+    return {
+      success: true,
+      data: { workerRunning, authState },
+    };
+  }
+
+  /**
+   * POST /dashboard/worker/auth-code - Submit TDLib auth code
+   */
+  @Post('worker/auth-code')
+  async submitAuthCode(
+    @Req() req: AuthenticatedRequest,
+    @Body() body: SubmitAuthCodeDto,
+    @Res() res: Response,
+  ): Promise<void> {
+    const userId = req.user.userId;
+    const telegramUserId = parseInt(userId, 10);
+
+    if (!body.code || typeof body.code !== 'string' || body.code.length < 4 || body.code.length > 8) {
+      res.status(HttpStatus.BAD_REQUEST).json({
+        success: false,
+        error: 'code must be a string between 4 and 8 characters',
+      } satisfies ApiResponse);
+      return;
+    }
+
+    const session = await this.conversationRepository.getActiveSessionByLoggedInUserId(telegramUserId);
+    if (!session) {
+      res.status(HttpStatus.BAD_REQUEST).json({
+        success: false,
+        error: 'no_active_session',
+      } satisfies ApiResponse);
+      return;
+    }
+
+    if (session.state !== 'waitingCode') {
+      res.status(HttpStatus.BAD_REQUEST).json({
+        success: false,
+        error: 'session_not_waiting_code',
+      } satisfies ApiResponse);
+      return;
+    }
+
+    try {
+      await this.telegramUserClient.provideAuthCode(userId, session.requestId, body.code, {
+        userId: telegramUserId,
+        chatId: 0, // No bot messages
+        phoneNumber: session.phoneNumber ?? '',
+        state: session.state,
+      });
+
+      res.status(HttpStatus.OK).json({ success: true } satisfies ApiResponse);
+    } catch (error) {
+      this.logger.error('Error providing auth code', { error, userId });
+      res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
+        success: false,
+        error: 'failed_to_submit_code',
+      } satisfies ApiResponse);
+    }
+  }
+
+  /**
+   * POST /dashboard/worker/password - Submit 2FA password
+   */
+  @Post('worker/password')
+  async submitPassword(
+    @Req() req: AuthenticatedRequest,
+    @Body() body: SubmitPasswordDto,
+    @Res() res: Response,
+  ): Promise<void> {
+    const userId = req.user.userId;
+    const telegramUserId = parseInt(userId, 10);
+
+    if (!body.password || typeof body.password !== 'string') {
+      res.status(HttpStatus.BAD_REQUEST).json({
+        success: false,
+        error: 'password is required',
+      } satisfies ApiResponse);
+      return;
+    }
+
+    const session = await this.conversationRepository.getActiveSessionByLoggedInUserId(telegramUserId);
+    if (!session) {
+      res.status(HttpStatus.BAD_REQUEST).json({
+        success: false,
+        error: 'no_active_session',
+      } satisfies ApiResponse);
+      return;
+    }
+
+    if (session.state !== 'waitingPassword') {
+      res.status(HttpStatus.BAD_REQUEST).json({
+        success: false,
+        error: 'session_not_waiting_password',
+      } satisfies ApiResponse);
+      return;
+    }
+
+    try {
+      await this.telegramUserClient.providePassword(userId, session.requestId, body.password, {
+        userId: telegramUserId,
+        chatId: 0, // No bot messages
+        phoneNumber: session.phoneNumber ?? '',
+        state: session.state,
+      });
+
+      res.status(HttpStatus.OK).json({ success: true } satisfies ApiResponse);
+    } catch (error) {
+      this.logger.error('Error providing password', { error, userId });
+      res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
+        success: false,
+        error: 'failed_to_submit_password',
+      } satisfies ApiResponse);
+    }
   }
 
   // ============================================================================

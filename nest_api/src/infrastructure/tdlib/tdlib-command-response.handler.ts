@@ -3,7 +3,6 @@ import { TelegramBotService } from '../telegram/telegram-bot-service';
 import { TelegramUserClientProxyService } from './telegram-user-client-proxy.service';
 import { ActiveGroupsRepository } from '../persistence/active-groups.repository';
 import { ConversationRepository } from '../persistence/conversation.repository';
-import { AuthCodeDeduplicationService } from '../telegram/auth-code-deduplication.service';
 import type {
   CommandContext,
   GetChatCommandContext,
@@ -65,7 +64,6 @@ export class TdlibCommandResponseHandler {
     private readonly telegramUserClient: TelegramUserClientProxyService,
     private readonly activeGroupsRepository: ActiveGroupsRepository,
     private readonly conversationRepository: ConversationRepository,
-    private readonly authCodeDedup: AuthCodeDeduplicationService,
   ) {
     // Start cleanup interval
     setInterval(() => this.cleanupOldErrors(), this.errorCleanupInterval);
@@ -173,9 +171,6 @@ export class TdlibCommandResponseHandler {
         try {
           const session = await this.conversationRepository.getConversation(effectiveRequestId);
           if (session && session.state === 'waitingCode' && session.phoneNumber) {
-            // Clear submitted code flag to allow user to enter new code
-            this.authCodeDedup.delete(effectiveRequestId);
-
             // Restart login process to generate a new code
             // This will call setAuthenticationPhoneNumber again, which triggers a new code
             this.logger.log(`Restarting login to generate new code for requestId: ${effectiveRequestId} due to expired code`);
@@ -189,7 +184,7 @@ export class TdlibCommandResponseHandler {
               await this.botService.bot.api.sendMessage(
                 context.chatId,
                 '⏰ O código expirou. Um novo código está sendo gerado automaticamente...\n\n' +
-                'Por favor, aguarde alguns segundos e envie o novo código que você receberá no Telegram.',
+                'Por favor, aguarde alguns segundos e insira o novo código no painel.',
               );
               return;
             } catch (restartError) {
@@ -207,7 +202,7 @@ export class TdlibCommandResponseHandler {
       await this.botService.bot.api.sendMessage(
         context.chatId,
         '⏰ O código expirou.\n\n' +
-        'Por favor, inicie o processo de login novamente com /login para receber um novo código.',
+        'Por favor, inicie o processo de login novamente pelo painel para receber um novo código.',
       );
       return;
     }
@@ -225,9 +220,6 @@ export class TdlibCommandResponseHandler {
           if (session) {
             await this.conversationRepository.deleteConversation(effectiveRequestId);
             this.logger.log(`Cleared session ${effectiveRequestId} due to PHONE_CODE_INVALID error`);
-            
-            // Clear submitted code flag to allow retry with new code
-            this.authCodeDedup.delete(effectiveRequestId);
           }
         } catch (sessionError) {
           this.logger.error(`Failed to clear session ${effectiveRequestId}:`, sessionError);
@@ -240,7 +232,7 @@ export class TdlibCommandResponseHandler {
       await this.botService.bot.api.sendMessage(
         context.chatId,
         '❌ Código de autenticação inválido.\n\n' +
-        'Por favor, inicie o processo de login novamente com /login.',
+        'Por favor, inicie o processo de login novamente pelo painel.',
       );
       return;
     }
@@ -251,18 +243,13 @@ export class TdlibCommandResponseHandler {
                               error.toLowerCase().includes('invalid password');
     
     if (isPasswordInvalid && commandType === 'providePassword') {
-      // Clear the dedup to allow retry
-      if (effectiveRequestId && effectiveRequestId !== 'unknown') {
-        this.authCodeDedup.delete(`password:${effectiveRequestId}`);
-      }
-
       // Track that we've sent this error
       this.sentErrors.set(errorKey, { timestamp: now, chatId: context.chatId });
 
       await this.botService.bot.api.sendMessage(
         context.chatId,
         '❌ Senha incorreta.\n\n' +
-        'Por favor, verifique sua senha de dois fatores e inicie o processo de login novamente com /login.',
+        'Por favor, verifique sua senha de dois fatores e tente novamente pelo painel.',
       );
       return;
     }
