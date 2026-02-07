@@ -273,7 +273,6 @@ export class WorkerManagerSwarm extends WorkerManager implements OnModuleDestroy
       // Check current replica count
       if (inspect.Spec.Mode?.Replicated?.Replicas === 0 || !isOnCorrectNetwork) {
         // Scale up to 1 replica and/or update network
-        // dockerode handles version automatically from inspect
         await service.update({
           Name: inspect.Spec.Name,
           TaskTemplate: updatedTaskTemplate,
@@ -307,9 +306,8 @@ export class WorkerManagerSwarm extends WorkerManager implements OnModuleDestroy
     try {
       const service = this.docker.getService(serviceName);
       const inspect = await service.inspect();
-      
+
       // Scale down to 0 replicas (effectively stops the service)
-      // dockerode handles version automatically from inspect
       await service.update({
         Name: inspect.Spec.Name,
         TaskTemplate: inspect.Spec.TaskTemplate,
@@ -321,6 +319,7 @@ export class WorkerManagerSwarm extends WorkerManager implements OnModuleDestroy
         UpdateConfig: inspect.Spec.UpdateConfig,
         EndpointSpec: inspect.Spec.EndpointSpec,
         Labels: inspect.Spec.Labels,
+        version: inspect.Version?.Index,
       });
       
       this.logger.log(`Stopped service ${serviceName} by scaling to 0 replicas`);
