@@ -174,7 +174,7 @@ export class TelegramUserClient {
    * Realiza login com configuração fornecida
    */
   async login(config: Parameters<Client['login']>[0]): Promise<void> {
-    const client = this.ensureClient();
+    const client = await this.ensureClientReady();
     return client.login(config);
   }
 
@@ -182,7 +182,7 @@ export class TelegramUserClient {
    * Reenvia código de autenticação
    */
   async resendAuthenticationCode(): Promise<unknown> {
-    const client = this.ensureClient();
+    const client = await this.ensureClientReady();
     return client.invoke({
       _: 'resendAuthenticationCode',
     });
@@ -192,7 +192,7 @@ export class TelegramUserClient {
    * Obtém informações do usuário atual
    */
   async getMe(): Promise<TelegramUserInfo> {
-    const client = this.ensureClient();
+    const client = await this.ensureClientReady();
     const me = await client.invoke({
       _: 'getMe',
     });
@@ -208,7 +208,7 @@ export class TelegramUserClient {
     replyToMessageId?: number,
   ): Promise<unknown> {
     console.log('[DEBUG] Sending message:', { chatId, text, replyToMessageId });
-    const client = this.ensureClient();
+    const client = await this.ensureClientReady();
     const messageParams: Record<string, unknown> = {
       _: 'sendMessage',
       chat_id: chatId,
@@ -243,7 +243,7 @@ export class TelegramUserClient {
    * Returns existing chat if one exists, creates it if it doesn't
    */
   async createPrivateChat(userId: number, force: boolean = false): Promise<{ id: number }> {
-    const client = this.ensureClient();
+    const client = await this.ensureClientReady();
     const result = await client.invoke({
       _: 'createPrivateChat',
       user_id: userId,
@@ -265,7 +265,7 @@ export class TelegramUserClient {
    * Obtém lista de chats
    */
   async getChats(chatList: { _: string }, limit: number): Promise<unknown> {
-    const client = this.ensureClient();
+    const client = await this.ensureClientReady();
     const params: Record<string, unknown> = {
       _: 'getChats',
       chat_list: chatList,
@@ -278,7 +278,7 @@ export class TelegramUserClient {
    * Obtém detalhes de um chat específico
    */
   async getChat(chatId: number): Promise<unknown> {
-    const client = this.ensureClient();
+    const client = await this.ensureClientReady();
     return client.invoke({
       _: 'getChat',
       chat_id: chatId,
@@ -291,7 +291,7 @@ export class TelegramUserClient {
    * Retorna array de { id, title } para grupos e supergrupos
    */
   async getGroups(limit: number = 100): Promise<Array<{ id: number; title: string }>> {
-    const client = this.ensureClient();
+    const client = await this.ensureClientReady();
     
     // Get list of chat IDs
     const chatsResult = await client.invoke({
@@ -344,7 +344,7 @@ export class TelegramUserClient {
    * Obtém uma mensagem específica por ID
    */
   async getMessage(chatId: number, messageId: number): Promise<unknown> {
-    const client = this.ensureClient();
+    const client = await this.ensureClientReady();
     return client.invoke({
       _: 'getMessage',
       chat_id: chatId,
@@ -356,7 +356,7 @@ export class TelegramUserClient {
    * Obtém o estado atual de autorização
    */
   async getAuthorizationState(): Promise<unknown> {
-    const client = this.ensureClient();
+    const client = await this.ensureClientReady();
     return client.invoke({
       _: 'getAuthorizationState',
     });
@@ -366,7 +366,12 @@ export class TelegramUserClient {
    * Realiza logout
    */
   async logOut(): Promise<unknown> {
-    const client = this.ensureClient();
+    if (this.isClientClosed) {
+      console.log('[DEBUG] Client already closed, recreating for next use...');
+      await this.recreateClient();
+      return;
+    }
+    const client = await this.ensureClientReady();
     return client.invoke({
       _: 'logOut',
     });
