@@ -52,11 +52,11 @@
             <p class="text-xs text-gray-500" x-text="getWorkerStatusText()"></p>
           </div>
         </div>
-        <label class="relative inline-flex items-center cursor-pointer" x-show="!isWorkerTransitional() && !isWorkerStartingUp()">
+        <label class="relative inline-flex items-center cursor-pointer" x-show="['disabled','connected','disconnected'].includes(getWorkerDisplayState())">
           <input type="checkbox" class="sr-only peer" x-model="botStatus.isEnabled" @change="saveBotStatus()" :disabled="savingBotStatus">
           <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500 peer-disabled:opacity-50"></div>
         </label>
-        <div x-show="(isWorkerTransitional() || isWorkerStartingUp()) && workerStatus.authState !== 'waitingCode' && workerStatus.authState !== 'waitingPassword'" class="flex items-center gap-2 text-gray-400">
+        <div x-show="['starting','connecting','loading'].includes(getWorkerDisplayState())" class="flex items-center gap-2 text-gray-400">
           <div class="spinner" style="width: 18px; height: 18px; border-width: 2px;"></div>
         </div>
       </div>
@@ -103,7 +103,7 @@
 
       <!-- Failed State -->
       <!-- Disconnected / Failed State -->
-      <div x-show="isWorkerDisconnected()" class="mt-4 pt-4 border-t border-gray-100">
+      <div x-show="getWorkerDisplayState() === 'disconnected'" class="mt-4 pt-4 border-t border-gray-100">
         <div class="flex items-center gap-2 text-red-600 mb-3">
           <i class="fa-solid fa-plug-circle-xmark"></i>
           <span class="text-sm font-medium">A conexão com o Telegram foi perdida</span>
@@ -1038,7 +1038,14 @@
         },
 
         async saveBotStatus() {
+          const enabling = this.botStatus.isEnabled;
           this.savingBotStatus = true;
+
+          // Set optimistically BEFORE fetch to prevent "disconnected" flash
+          if (enabling) {
+            this.workerStatus = { workerRunning: false, authState: null, workerStarting: true, lastAuthError: null };
+          }
+
           try {
             const res = await this.authFetch('/dashboard/bot-status', {
               method: 'PUT',
@@ -1049,23 +1056,20 @@
             if (data.success) {
               this.showToast(this.botStatus.isEnabled ? 'Bot ativado!' : 'Bot desativado!', 'success');
               if (this.botStatus.isEnabled) {
-                // Optimistically show "Iniciando..." until first poll response
-                this.workerStatus = { workerRunning: false, authState: null, workerStarting: true, lastAuthError: null };
-                // Start polling worker status
                 this.startWorkerPolling();
               } else {
                 this.stopWorkerPolling();
                 this.workerStatus = { workerRunning: false, authState: null, workerStarting: false, lastAuthError: null };
               }
             } else {
-              // Revert on error
               this.botStatus.isEnabled = !this.botStatus.isEnabled;
+              if (enabling) this.workerStatus = { workerRunning: false, authState: null, workerStarting: false, lastAuthError: null };
               this.showToast('Erro ao salvar status do bot', 'error');
             }
           } catch (error) {
             console.error('Error saving bot status:', error);
-            // Revert on error
             this.botStatus.isEnabled = !this.botStatus.isEnabled;
+            if (enabling) this.workerStatus = { workerRunning: false, authState: null, workerStarting: false, lastAuthError: null };
             this.showToast('Erro ao salvar status do bot', 'error');
           } finally {
             this.savingBotStatus = false;
@@ -1107,7 +1111,7 @@
               }
 
               // Advance starting phrase while worker is starting
-              if (this.isWorkerStartingUp()) {
+              if (this.getWorkerDisplayState() === 'starting') {
                 this.startingPhraseIndex = (this.startingPhraseIndex + 1) % this.startingPhrases.length;
               } else {
                 this.startingPhraseIndex = 0;
@@ -1120,7 +1124,7 @@
                 && this.workerStatus.authState !== 'completed'
                 && !this.workerStatus.lastAuthError;
 
-              const needsPolling = this.isWorkerStartingUp()
+              const needsPolling = this.getWorkerDisplayState() === 'starting'
                 || this.workerStatus.authState === 'idle'
                 || this.submittingAuth
                 || isTransitionalStartup;
@@ -1149,23 +1153,27 @@
           }
         },
 
-        isWorkerTransitional() {
-          return this.botStatus.isEnabled && this.workerStatus.authState !== 'completed' && this.workerStatus.authState !== null;
-        },
+        getWorkerDisplayState() {
+          if (!this.botStatus.isEnabled) return 'disabled';
 
-        isWorkerStartingUp() {
-          return this.workerStatus.workerStarting
-            && (this.workerStatus.authState === null || this.workerStatus.authState === 'idle');
-        },
+          if (this.workerStatus.workerStarting
+              && (this.workerStatus.authState === null || this.workerStatus.authState === 'idle')) {
+            return 'starting';
+          }
 
-        isWorkerDisconnected() {
-          return this.workerStatusLoaded
-            && this.botStatus.isEnabled
-            && !this.workerStatus.workerStarting
-            && (
-              (!this.workerStatus.workerRunning && this.workerStatus.authState === null)
-              || this.workerStatus.authState === 'failed'
-            );
+          switch (this.workerStatus.authState) {
+            case 'completed':       return 'connected';
+            case 'waitingCode':     return 'waitingCode';
+            case 'waitingPassword': return 'waitingPassword';
+            case 'idle':            return 'connecting';
+            case 'failed':          return 'disconnected';
+          }
+
+          if (this.workerStatusLoaded && !this.workerStatus.workerRunning) {
+            return 'disconnected';
+          }
+
+          return 'loading';
         },
 
         async reconnectWorker() {
@@ -1193,42 +1201,46 @@
         },
 
         getWorkerIndicatorClass() {
-          if (!this.botStatus.isEnabled) return 'bg-gray-100 text-gray-400';
-          if (this.isWorkerStartingUp()) return 'bg-blue-100 text-blue-600';
-          if (this.isWorkerDisconnected()) return 'bg-red-100 text-red-600';
-          switch (this.workerStatus.authState) {
-            case 'completed': return 'bg-emerald-100 text-emerald-600';
-            case 'waitingCode':
-            case 'waitingPassword': return 'bg-amber-100 text-amber-600';
-            case 'idle': return 'bg-blue-100 text-blue-600';
-            default: return 'bg-gray-100 text-gray-400';
-          }
+          const map = {
+            disabled:        'bg-gray-100 text-gray-400',
+            starting:        'bg-blue-100 text-blue-600',
+            connecting:      'bg-blue-100 text-blue-600',
+            loading:         'bg-gray-100 text-gray-400',
+            waitingCode:     'bg-amber-100 text-amber-600',
+            waitingPassword: 'bg-amber-100 text-amber-600',
+            connected:       'bg-emerald-100 text-emerald-600',
+            disconnected:    'bg-red-100 text-red-600',
+          };
+          return map[this.getWorkerDisplayState()] || 'bg-gray-100 text-gray-400';
         },
 
         getWorkerIndicatorIcon() {
-          if (!this.botStatus.isEnabled) return 'fa-pause';
-          if (this.isWorkerStartingUp()) return 'fa-spinner fa-spin';
-          if (this.isWorkerDisconnected()) return 'fa-plug-circle-xmark';
-          switch (this.workerStatus.authState) {
-            case 'completed': return 'fa-play';
-            case 'waitingCode': return 'fa-shield-halved';
-            case 'waitingPassword': return 'fa-lock';
-            case 'idle': return 'fa-spinner fa-spin';
-            default: return 'fa-pause';
-          }
+          const map = {
+            disabled:        'fa-pause',
+            starting:        'fa-spinner fa-spin',
+            connecting:      'fa-spinner fa-spin',
+            loading:         'fa-pause',
+            waitingCode:     'fa-shield-halved',
+            waitingPassword: 'fa-lock',
+            connected:       'fa-play',
+            disconnected:    'fa-plug-circle-xmark',
+          };
+          return map[this.getWorkerDisplayState()] || 'fa-pause';
         },
 
         getWorkerStatusText() {
-          if (!this.botStatus.isEnabled) return 'Quando desativado, o bot ignora mensagens dos grupos';
-          if (this.isWorkerStartingUp()) return this.startingPhrases[this.startingPhraseIndex];
-          if (this.isWorkerDisconnected()) return 'Conexão perdida — clique em Reconectar';
-          switch (this.workerStatus.authState) {
-            case 'completed': return 'Conectado e processando mensagens';
-            case 'waitingCode': return 'Aguardando código de autenticação';
-            case 'waitingPassword': return 'Aguardando senha de dois fatores';
-            case 'idle': return 'Conectando...';
-            default: return 'Verificando status da conexão...';
-          }
+          const state = this.getWorkerDisplayState();
+          if (state === 'starting') return this.startingPhrases[this.startingPhraseIndex];
+          const map = {
+            disabled:        'Quando desativado, o bot ignora mensagens dos grupos',
+            connecting:      'Conectando...',
+            loading:         'Verificando status da conexão...',
+            waitingCode:     'Aguardando código de autenticação',
+            waitingPassword: 'Aguardando senha de dois fatores',
+            connected:       'Conectado e processando mensagens',
+            disconnected:    'Conexão perdida — clique em Reconectar',
+          };
+          return map[state] || 'Verificando status da conexão...';
         },
 
         showAuthErrorToast(errorCode) {
