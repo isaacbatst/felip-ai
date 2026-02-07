@@ -3,7 +3,7 @@ import { TelegramBotService } from '../telegram/telegram-bot-service';
 import { TelegramUserClientProxyService } from './telegram-user-client-proxy.service';
 import { ActiveGroupsRepository } from '../persistence/active-groups.repository';
 import { UserRepository } from '../persistence/user.repository';
-import { BotStatusRepository } from '../persistence/bot-status.repository';
+import { AuthErrorCacheService } from './auth-error-cache.service';
 import type {
   CommandContext,
   GetChatCommandContext,
@@ -65,7 +65,7 @@ export class TdlibCommandResponseHandler {
     private readonly telegramUserClient: TelegramUserClientProxyService,
     private readonly activeGroupsRepository: ActiveGroupsRepository,
     private readonly userRepository: UserRepository,
-    private readonly botStatusRepository: BotStatusRepository,
+    private readonly authErrorCache: AuthErrorCacheService,
   ) {
     // Start cleanup interval
     setInterval(() => this.cleanupOldErrors(), this.errorCleanupInterval);
@@ -154,11 +154,7 @@ export class TdlibCommandResponseHandler {
       }
 
       if (authError) {
-        try {
-          await this.botStatusRepository.setLastAuthError(context.userId.toString(), authError);
-        } catch (err) {
-          this.logger.error(`Failed to store auth error for user ${context.userId}:`, err);
-        }
+        this.authErrorCache.set(context.userId.toString(), authError);
       }
     }
 

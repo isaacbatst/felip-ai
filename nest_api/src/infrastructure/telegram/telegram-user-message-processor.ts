@@ -4,7 +4,7 @@ import { TelegramUserClientProxyService } from '../tdlib/telegram-user-client-pr
 import { QueuedMessage } from './interfaces/queued-message';
 import { ActiveGroupsRepository } from '@/infrastructure/persistence/active-groups.repository';
 import { UserRepository } from '@/infrastructure/persistence/user.repository';
-import { BotStatusRepository } from '@/infrastructure/persistence/bot-status.repository';
+import { BotPreferenceRepository } from '@/infrastructure/persistence/bot-status.repository';
 import { TdlibUpdateNewMessage } from '../tdlib/tdlib-update.types';
 import { HybridAuthorizationService } from '@/infrastructure/subscription/hybrid-authorization.service';
 
@@ -21,7 +21,7 @@ export class TelegramUserMessageProcessor {
     private readonly activeGroupsRepository: ActiveGroupsRepository,
     private readonly telegramUserClient: TelegramUserClientProxyService,
     private readonly userRepository: UserRepository,
-    private readonly botStatusRepository: BotStatusRepository,
+    private readonly botPreferenceRepository: BotPreferenceRepository,
     private readonly hybridAuthorizationService: HybridAuthorizationService,
   ) {}
 
@@ -146,7 +146,7 @@ export class TelegramUserMessageProcessor {
 
       // Check if bot is enabled for this user (default is true if no record exists)
       const loggedInUserIdStr = user.telegramUserId.toString();
-      const isBotEnabled = await this.botStatusRepository.getBotStatus(loggedInUserIdStr);
+      const isBotEnabled = await this.botPreferenceRepository.getBotStatus(loggedInUserIdStr);
       if (!isBotEnabled) {
         this.logger.warn(
           `Bot is disabled for telegramUserId ${user.telegramUserId}, ignoring message...`,

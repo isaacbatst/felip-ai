@@ -33,6 +33,7 @@ import { RegisterController } from './http/register.controller';
 import { CieloWebhookController } from './http/cielo-webhook.controller';
 import { CieloService } from './cielo/cielo.service';
 import { TelegramBotSubscriptionHandler } from './telegram/handlers/telegram-bot-subscription.handler';
+import { AuthErrorCacheService } from './tdlib/auth-error-cache.service';
 
 /**
  * Module responsável por serviços de infraestrutura
@@ -60,6 +61,7 @@ import { TelegramBotSubscriptionHandler } from './telegram/handlers/telegram-bot
     TelegramUserMessageProcessor,
     PhoneWhitelistService,
     TdlibCommandResponseHandler,
+    AuthErrorCacheService,
     OtpService,
     RegistrationTokenService,
     TelegramUserQueueProcessorRabbitMQ,
@@ -84,6 +86,7 @@ import { TelegramBotSubscriptionHandler } from './telegram/handlers/telegram-bot
     SubscriptionService,
     SubscriptionAuthorizationService,
     HybridAuthorizationService,
+    AuthErrorCacheService,
   ],
 })
 export class InfrastructureModule {}

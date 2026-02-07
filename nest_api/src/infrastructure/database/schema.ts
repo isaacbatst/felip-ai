@@ -99,16 +99,15 @@ export const messagesEnqueued = pgTable(
 );
 
 /**
- * Bot status table - stores bot on/off status per user
- * Each user can have only one record, default is on (true)
+ * Bot preferences table - stores bot on/off preference per user
+ * Each user can have only one record, default is off (false)
+ * Table name kept as 'bot_status' to avoid table rename migration
  */
-export const botStatus = pgTable(
+export const botPreferences = pgTable(
   'bot_status',
   {
     userId: text('user_id').primaryKey(),
     isEnabled: boolean('is_enabled').default(true).notNull(),
-    workerStartingAt: timestamp('worker_starting_at'),
-    lastAuthError: text('last_auth_error'),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
   (table) => [
