@@ -63,17 +63,27 @@
 
       <!-- Auth Code Input -->
       <div x-show="workerStatus.authState === 'waitingCode'" class="mt-4 pt-4 border-t border-gray-100">
-        <p class="text-sm text-gray-600 mb-3">
-          <i class="fa-solid fa-shield-halved text-primary mr-1"></i>
-          Digite o código de autenticação enviado ao seu Telegram:
-        </p>
-        <form @submit.prevent="submitAuthCode()" class="flex gap-2">
+        <div class="bg-blue-50 border border-blue-100 rounded-lg p-3 mb-3">
+          <p class="text-sm text-gray-700 mb-1">
+            <i class="fa-solid fa-shield-halved text-primary mr-1"></i>
+            <strong>Precisamos conectar ao seu Telegram</strong>
+          </p>
+          <p class="text-xs text-gray-500 leading-relaxed">
+            Para que o bot responda automaticamente nos grupos, ele precisa acessar sua conta do Telegram.
+            O Telegram enviou um <strong>código de verificação</strong> para você &mdash; digite-o abaixo para autorizar a conexão.
+          </p>
+          <p class="text-xs text-gray-400 mt-1.5 flex items-center gap-1">
+            <i class="fa-solid fa-lock text-xs"></i>
+            Suas credenciais são usadas apenas para a conexão e não ficam armazenadas.
+          </p>
+        </div>
+        <form @submit.prevent="submitAuthCode()" class="flex gap-2 flex-col md:flex-row">
           <input type="text" inputmode="numeric" maxlength="8" x-model="authCode"
-            placeholder="Código"
+            placeholder="Código do Telegram"
             class="flex-1 p-3 border border-gray-200 rounded-lg text-base text-center tracking-widest font-mono transition-all focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none"
             :disabled="submittingAuth">
           <button type="submit"
-            class="flex items-center gap-2 px-5 py-3 bg-primary text-white font-semibold rounded-lg transition-all hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
+            class="flex items-center justify-center gap-2 px-5 py-3 bg-primary text-white font-semibold rounded-lg transition-all hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
             :disabled="submittingAuth || authCode.length < 4">
             <span x-show="submittingAuth" class="spinner" style="width: 16px; height: 16px; border-width: 2px;"></span>
             <span x-text="submittingAuth ? 'Enviando...' : 'Enviar'"></span>
@@ -83,17 +93,27 @@
 
       <!-- Password Input -->
       <div x-show="workerStatus.authState === 'waitingPassword'" class="mt-4 pt-4 border-t border-gray-100">
-        <p class="text-sm text-gray-600 mb-3">
-          <i class="fa-solid fa-lock text-primary mr-1"></i>
-          Sua conta possui autenticação de dois fatores. Digite sua senha:
-        </p>
-        <form @submit.prevent="submitPassword()" class="flex gap-2">
+        <div class="bg-blue-50 border border-blue-100 rounded-lg p-3 mb-3">
+          <p class="text-sm text-gray-700 mb-1">
+            <i class="fa-solid fa-lock text-primary mr-1"></i>
+            <strong>Verificacao em duas etapas</strong>
+          </p>
+          <p class="text-xs text-gray-500 leading-relaxed">
+            Sua conta do Telegram possui verificacao em duas etapas ativada &mdash; otimo, isso significa que ela esta bem protegida!
+            Digite sua <strong>senha do Telegram</strong> (a senha de nuvem / cloud password) para concluir a conexao.
+          </p>
+          <p class="text-xs text-gray-400 mt-1.5 flex items-center gap-1">
+            <i class="fa-solid fa-lock text-xs"></i>
+            A senha e usada somente para autenticar a conexao e nao fica armazenada.
+          </p>
+        </div>
+        <form @submit.prevent="submitPassword()" class="flex gap-2 flex-col md:flex-row">
           <input type="password" x-model="authPassword"
-            placeholder="Senha 2FA"
+            placeholder="Senha do Telegram"
             class="flex-1 p-3 border border-gray-200 rounded-lg text-base transition-all focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none"
             :disabled="submittingAuth">
           <button type="submit"
-            class="flex items-center gap-2 px-5 py-3 bg-primary text-white font-semibold rounded-lg transition-all hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
+            class="flex items-center justify-center gap-2 px-5 py-3 bg-primary text-white font-semibold rounded-lg transition-all hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
             :disabled="submittingAuth || authPassword.length === 0">
             <span x-show="submittingAuth" class="spinner" style="width: 16px; height: 16px; border-width: 2px;"></span>
             <span x-text="submittingAuth ? 'Enviando...' : 'Enviar'"></span>
@@ -101,12 +121,14 @@
         </form>
       </div>
 
-      <!-- Failed State -->
       <!-- Disconnected / Failed State -->
       <div x-show="getWorkerDisplayState() === 'disconnected'" class="mt-4 pt-4 border-t border-gray-100">
-        <div class="flex items-center gap-2 text-red-600 mb-3">
-          <i class="fa-solid fa-plug-circle-xmark"></i>
-          <span class="text-sm font-medium">A conexão com o Telegram foi perdida</span>
+        <div class="bg-red-50 border border-red-100 rounded-lg p-3 mb-3">
+          <div class="flex items-center gap-2 text-red-600 mb-1">
+            <i class="fa-solid fa-plug-circle-xmark"></i>
+            <span class="text-sm font-medium">Conexao com o Telegram perdida</span>
+          </div>
+          <p class="text-xs text-gray-500">Isso pode acontecer por instabilidade na rede ou inatividade. Clique abaixo para reconectar — pode ser necessario informar o codigo novamente.</p>
         </div>
         <button @click="reconnectWorker()"
           class="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg bg-red-100 text-red-600 hover:bg-red-200 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
@@ -1231,13 +1253,13 @@
           const state = this.getWorkerDisplayState();
           if (state === 'starting') return this.startingPhrases[this.startingPhraseIndex];
           const map = {
-            disabled:        'Quando desativado, o bot ignora mensagens dos grupos',
-            connecting:      'Conectando...',
+            disabled:        'Bot desativado — ative para responder nos grupos automaticamente',
+            connecting:      'Estabelecendo conexão com o Telegram...',
             loading:         'Verificando status da conexão...',
-            waitingCode:     'Aguardando código de autenticação',
-            waitingPassword: 'Aguardando senha de dois fatores',
-            connected:       'Conectado e processando mensagens',
-            disconnected:    'Conexão perdida — clique em Reconectar',
+            waitingCode:     'Quase lá! Informe o código enviado pelo Telegram',
+            waitingPassword: 'Mais um passo — digite sua senha do Telegram',
+            connected:       'Tudo certo! Conectado e respondendo nos grupos',
+            disconnected:    'Conexão perdida — clique em Reconectar para voltar',
           };
           return map[state] || 'Verificando status da conexão...';
         },
@@ -1246,19 +1268,19 @@
           if (errorCode.startsWith('FLOOD_WAIT:')) {
             const seconds = parseInt(errorCode.split(':')[1], 10);
             const minutes = Math.ceil(seconds / 60);
-            this.showToast(`Muitas tentativas. Aguarde ~${minutes} minuto(s).`, 'error');
+            this.showToast(`Muitas tentativas seguidas. Por seguranca, aguarde ~${minutes} minuto(s) antes de tentar novamente.`, 'error');
           } else if (errorCode === 'PASSWORD_INVALID') {
-            this.showToast('Senha incorreta. Tente novamente.', 'error');
+            this.showToast('Senha incorreta. Verifique e tente novamente.', 'error');
           } else if (errorCode === 'CODE_INVALID') {
-            this.showToast('Código incorreto. Tente novamente.', 'error');
+            this.showToast('Codigo incorreto. Confira o codigo recebido no Telegram e tente novamente.', 'error');
           } else if (errorCode === 'CODE_EXPIRED') {
-            this.showToast('Código expirado.', 'error');
+            this.showToast('Codigo expirado. Desative e ative o bot novamente para receber um novo codigo.', 'error');
           } else if (errorCode === 'WORKER_STARTUP_FAILED') {
-            this.showToast('Falha ao iniciar o worker. Tente reconectar.', 'error');
+            this.showToast('Nao foi possivel iniciar a conexao. Tente reconectar em alguns instantes.', 'error');
           } else if (errorCode === 'WORKER_STARTUP_ERROR') {
-            this.showToast('Erro ao iniciar o worker. Tente reconectar.', 'error');
+            this.showToast('Ocorreu um erro ao conectar. Tente reconectar em alguns instantes.', 'error');
           } else {
-            this.showToast('Erro desconhecido.', 'error');
+            this.showToast('Algo deu errado. Tente novamente em alguns instantes.', 'error');
           }
         },
 
@@ -1274,7 +1296,7 @@
             const data = await res.json();
             if (data.success) {
               this.authCode = '';
-              this.showToast('Código enviado!', 'success');
+              this.showToast('Codigo enviado! Verificando...', 'success');
               // Keep submittingAuth=true so form stays in loading state
               // Poll will update authState and clear it
               this.startWorkerPolling();
@@ -1301,7 +1323,7 @@
             const data = await res.json();
             if (data.success) {
               this.authPassword = '';
-              this.showToast('Senha enviada!', 'success');
+              this.showToast('Senha enviada! Autenticando...', 'success');
               // Keep submittingAuth=true so form stays in loading state
               // Poll will update authState and clear it
               this.startWorkerPolling();
