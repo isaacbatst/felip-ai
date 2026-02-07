@@ -965,7 +965,6 @@ export class DashboardController {
           }
           await this.telegramUserClient.login(userId, user.phone, requestId);
           this.logger.log(`Worker started and login initiated for user ${userId}`);
-          await this.botStatusRepository.clearWorkerStartingAt(userId);
         }).catch(async (error) => {
           this.logger.error(`Error starting worker for user ${userId}`, { error });
           await this.botStatusRepository.setLastAuthError(userId, 'WORKER_STARTUP_ERROR');
@@ -1023,9 +1022,14 @@ export class DashboardController {
     let workerStarting = workerStartingAt !== null
       && (Date.now() - workerStartingAt.getTime()) < 120_000;
 
-    // If expired, clean up stale flag
-    if (workerStartingAt !== null && !workerStarting) {
+    // Clear workerStartingAt once confirmed running or expired
+    if (workerStartingAt !== null && (workerRunning || !workerStarting)) {
       await this.botStatusRepository.clearWorkerStartingAt(userId);
+      if (!workerRunning) {
+        workerStarting = false;
+      }
+    }
+    if (workerRunning) {
       workerStarting = false;
     }
 

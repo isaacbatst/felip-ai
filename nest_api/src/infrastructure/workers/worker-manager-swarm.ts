@@ -336,16 +336,22 @@ export class WorkerManagerSwarm extends WorkerManager implements OnModuleDestroy
     try {
       const service = this.docker.getService(serviceName);
       const inspect = await service.inspect();
-      
+
       const replicas = inspect.Spec.Mode?.Replicated?.Replicas ?? 0;
-      const runningTasks = inspect.ServiceStatus?.RunningTasks ?? 0;
-      
-      // Service is running if it has replicas > 0 and at least one running task
-      if (replicas > 0 && runningTasks > 0) {
-        return { state: 'running' };
+      if (replicas === 0) {
+        return { state: 'stopped' };
       }
-      
-      return { state: 'stopped' };
+
+      // Use listTasks instead of ServiceStatus.RunningTasks (which is stale/cached)
+      const tasks = await this.docker.listTasks({
+        filters: { service: [serviceName] },
+      });
+
+      const hasRunningTask = tasks.some(
+        (task) => task.Status?.State === 'running' && task.DesiredState === 'running',
+      );
+
+      return { state: hasRunningTask ? 'running' : 'stopped' };
     } catch (error: unknown) {
       const statusCode = (error as { statusCode?: number }).statusCode;
       if (statusCode === 404) {
