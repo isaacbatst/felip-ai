@@ -1118,14 +1118,13 @@
               }
 
               // Keep polling only while background work is in progress
-              // Note: 'idle' means TDLib is actively connecting, not actually idle
               const isTransitionalStartup = this.botStatus.isEnabled
                 && !this.workerStatus.workerRunning
                 && this.workerStatus.authState !== 'completed'
                 && !this.workerStatus.lastAuthError;
 
-              const needsPolling = this.getWorkerDisplayState() === 'starting'
-                || this.workerStatus.authState === 'idle'
+              const displayState = this.getWorkerDisplayState();
+              const needsPolling = ['starting', 'connecting', 'loading'].includes(displayState)
                 || this.submittingAuth
                 || isTransitionalStartup;
 
