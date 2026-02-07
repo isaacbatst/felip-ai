@@ -3,7 +3,7 @@ import { TelegramPurchaseHandler } from './handlers/telegram-user-purchase.handl
 import { TelegramUserClientProxyService } from '../tdlib/telegram-user-client-proxy.service';
 import { QueuedMessage } from './interfaces/queued-message';
 import { ActiveGroupsRepository } from '@/infrastructure/persistence/active-groups.repository';
-import { ConversationRepository } from '@/infrastructure/persistence/conversation.repository';
+import { UserRepository } from '@/infrastructure/persistence/user.repository';
 import { BotStatusRepository } from '@/infrastructure/persistence/bot-status.repository';
 import { TdlibUpdateNewMessage } from '../tdlib/tdlib-update.types';
 import { HybridAuthorizationService } from '@/infrastructure/subscription/hybrid-authorization.service';
@@ -20,7 +20,7 @@ export class TelegramUserMessageProcessor {
     private readonly purchaseHandler: TelegramPurchaseHandler,
     private readonly activeGroupsRepository: ActiveGroupsRepository,
     private readonly telegramUserClient: TelegramUserClientProxyService,
-    private readonly conversationRepository: ConversationRepository,
+    private readonly userRepository: UserRepository,
     private readonly botStatusRepository: BotStatusRepository,
     private readonly hybridAuthorizationService: HybridAuthorizationService,
   ) {}
@@ -135,31 +135,30 @@ export class TelegramUserMessageProcessor {
         return;
       }
 
-      const conversation = await this.conversationRepository.getConversationByTelegramUserId(telegramUserId);
+      const user = await this.userRepository.findByTelegramUserId(telegramUserId);
 
-      if (!conversation) {
+      if (!user) {
         this.logger.warn(
-          `No loggedInUserId found for telegramUserId: ${telegramUserId}, ignoring message...`,
+          `No user found for telegramUserId: ${telegramUserId}, ignoring message...`,
         );
         return;
       }
 
       // Check if bot is enabled for this user (default is true if no record exists)
-      const loggedInUserIdStr = conversation.loggedInUserId.toString();
+      const loggedInUserIdStr = user.telegramUserId.toString();
       const isBotEnabled = await this.botStatusRepository.getBotStatus(loggedInUserIdStr);
       if (!isBotEnabled) {
         this.logger.warn(
-          `Bot is disabled for loggedInUserId ${conversation.loggedInUserId}, ignoring message...`,
+          `Bot is disabled for telegramUserId ${user.telegramUserId}, ignoring message...`,
         );
         return;
       }
 
       // Check authorization (subscription or whitelist based on AUTHORIZATION_MODE)
-      console.log('loggedInPhoneNumber', conversation.phoneNumber);
-      const isAuthorized = await this.hybridAuthorizationService.isAuthorized(loggedInUserIdStr, conversation.phoneNumber);
+      const isAuthorized = await this.hybridAuthorizationService.isAuthorized(loggedInUserIdStr, user.phone);
       if (!isAuthorized) {
         this.logger.warn(
-          `User ${conversation.loggedInUserId} not authorized (no active subscription), ignoring message...`,
+          `User ${user.telegramUserId} not authorized (no active subscription), ignoring message...`,
         );
         return;
       }
@@ -169,7 +168,7 @@ export class TelegramUserMessageProcessor {
       const activeGroups = await this.activeGroupsRepository.getActiveGroups(loggedInUserIdStr);
       if (activeGroups === null || !activeGroups.includes(chatId)) {
         this.logger.warn(
-          `Group ${chatId} is not activated for loggedInUserId ${conversation.loggedInUserId}, ignoring message...`,
+          `Group ${chatId} is not activated for telegramUserId ${user.telegramUserId}, ignoring message...`,
         );
         return;
       }
