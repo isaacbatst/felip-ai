@@ -284,6 +284,7 @@ export class WorkerManagerSwarm extends WorkerManager implements OnModuleDestroy
           UpdateConfig: inspect.Spec.UpdateConfig,
           EndpointSpec: inspect.Spec.EndpointSpec,
           Labels: inspect.Spec.Labels,
+          version: inspect.Version?.Index,
         });
         if (!isOnCorrectNetwork) {
           this.logger.log(`Updated service ${serviceName} network to ${this.RABBITMQ_NETWORK_ID}`);
