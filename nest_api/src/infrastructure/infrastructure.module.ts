@@ -30,6 +30,7 @@ import { HybridAuthorizationService } from './subscription/hybrid-authorization.
 import { SessionGuard } from './http/guards/session.guard';
 import { LoginController } from './http/login.controller';
 import { RegisterController } from './http/register.controller';
+import { AuthErrorCacheService } from './tdlib/auth-error-cache.service';
 
 /**
  * Module responsável por serviços de infraestrutura
@@ -57,6 +58,7 @@ import { RegisterController } from './http/register.controller';
     TelegramUserMessageProcessor,
     PhoneWhitelistService,
     TdlibCommandResponseHandler,
+    AuthErrorCacheService,
     OtpService,
     RegistrationTokenService,
     TelegramUserQueueProcessorRabbitMQ,
@@ -77,6 +79,7 @@ import { RegisterController } from './http/register.controller';
     SubscriptionService,
     SubscriptionAuthorizationService,
     HybridAuthorizationService,
+    AuthErrorCacheService,
   ],
 })
 export class InfrastructureModule {}

@@ -18,13 +18,14 @@ import { UserDataRepository, PriceEntryInput, MaxPriceInput, AvailableMilesInput
 import { MilesProgramRepository } from '@/infrastructure/persistence/miles-program.repository';
 import { CounterOfferSettingsRepository, type CounterOfferSettingsInput } from '@/infrastructure/persistence/counter-offer-settings.repository';
 import { ActiveGroupsRepository } from '@/infrastructure/persistence/active-groups.repository';
-import { BotStatusRepository } from '@/infrastructure/persistence/bot-status.repository';
+import { BotPreferenceRepository } from '@/infrastructure/persistence/bot-status.repository';
 import { TelegramUserClientProxyService } from '@/infrastructure/tdlib/telegram-user-client-proxy.service';
 import { SubscriptionService } from '@/infrastructure/subscription/subscription.service';
 import { HybridAuthorizationService } from '@/infrastructure/subscription/hybrid-authorization.service';
 import { SessionGuard } from '@/infrastructure/http/guards/session.guard';
 import { WorkerManager } from '@/infrastructure/workers/worker-manager';
 import { UserRepository } from '@/infrastructure/persistence/user.repository';
+import { AuthErrorCacheService } from '@/infrastructure/tdlib/auth-error-cache.service';
 import { randomUUID } from 'node:crypto';
 import {
   COUNTER_OFFER_TEMPLATES,
@@ -149,8 +150,7 @@ interface UpdateBotStatusDto {
 
 interface WorkerStatusResponse {
   workerRunning: boolean;
-  authState: 'idle' | 'waitingCode' | 'waitingPassword' | 'completed' | 'failed' | null;
-  workerStarting: boolean;
+  authState: 'idle' | 'waitingCode' | 'waitingPassword' | 'ready' | null;
   lastAuthError: string | null;
 }
 
@@ -201,12 +201,13 @@ export class DashboardController {
     private readonly milesProgramRepository: MilesProgramRepository,
     private readonly counterOfferSettingsRepository: CounterOfferSettingsRepository,
     private readonly activeGroupsRepository: ActiveGroupsRepository,
-    private readonly botStatusRepository: BotStatusRepository,
+    private readonly botPreferenceRepository: BotPreferenceRepository,
     private readonly telegramUserClient: TelegramUserClientProxyService,
     private readonly subscriptionService: SubscriptionService,
     private readonly hybridAuthorizationService: HybridAuthorizationService,
     private readonly workerManager: WorkerManager,
     private readonly userRepository: UserRepository,
+    private readonly authErrorCache: AuthErrorCacheService,
   ) {}
 
   /**
@@ -897,7 +898,7 @@ export class DashboardController {
     @Req() req: AuthenticatedRequest,
   ): Promise<ApiResponse<BotStatusResponse>> {
     const userId = req.user.userId;
-    const isEnabled = await this.botStatusRepository.getBotStatus(userId);
+    const isEnabled = await this.botPreferenceRepository.getBotStatus(userId);
 
     return {
       success: true,
@@ -906,8 +907,8 @@ export class DashboardController {
   }
 
   /**
-   * PUT /dashboard/bot-status - Update bot enabled/disabled status
-   * When enabling, starts the TDLib worker and initiates login if needed
+   * PUT /dashboard/bot-status - Update bot enabled/disabled preference
+   * When disabling, also stops the worker to prevent orphaned containers
    */
   @Put('bot-status')
   async updateBotStatus(
@@ -925,43 +926,15 @@ export class DashboardController {
       return;
     }
 
-    await this.botStatusRepository.setBotStatus(userId, body.isEnabled);
+    await this.botPreferenceRepository.setBotStatus(userId, body.isEnabled);
 
-    if (body.isEnabled) {
-      // Check if worker is already running
-      const status = await this.workerManager.getStatus(userId);
-      if (!status || status.state !== 'running') {
-        // Get user's phone number
-        const telegramUserId = parseInt(userId, 10);
-        const user = await this.userRepository.findByTelegramUserId(telegramUserId);
-        if (!user) {
-          this.logger.error(`User not found for telegramUserId: ${telegramUserId}`);
-          res.status(HttpStatus.OK).json({ success: true } satisfies ApiResponse);
-          return;
-        }
-
-        // Set starting flag before firing off async work
-        await this.botStatusRepository.setWorkerStartingAt(userId);
-
-        // Fire-and-forget: start worker, then login when healthy
-        this.workerManager.run(userId).then(async (started) => {
-          if (!started) {
-            this.logger.error(`Worker failed to start for user ${userId}`);
-            await this.botStatusRepository.setLastAuthError(userId, 'WORKER_STARTUP_FAILED');
-            await this.botStatusRepository.clearWorkerStartingAt(userId);
-            return;
-          }
-          await this.telegramUserClient.login(userId, user.phone);
-          this.logger.log(`Worker started and login initiated for user ${userId}`);
-        }).catch(async (error) => {
-          this.logger.error(`Error starting worker for user ${userId}`, { error });
-          await this.botStatusRepository.setLastAuthError(userId, 'WORKER_STARTUP_ERROR');
-          await this.botStatusRepository.clearWorkerStartingAt(userId);
-        });
+    if (!body.isEnabled) {
+      // Stop worker when disabling to prevent orphaned containers
+      try {
+        await this.workerManager.stop(userId);
+      } catch (error) {
+        this.logger.error(`Error stopping worker on disable for user ${userId}`, { error });
       }
-    } else {
-      // Clear workerStartingAt when disabling
-      await this.botStatusRepository.clearWorkerStartingAt(userId);
     }
 
     this.logger.log(`Updated bot status for user ${userId}: enabled=${body.isEnabled}`);
@@ -976,15 +949,13 @@ export class DashboardController {
   // ============================================================================
 
   /**
-   * GET /dashboard/worker/status - Get worker + TDLib auth state
+   * GET /dashboard/worker/status - Get worker + TDLib auth state (live only)
    */
   @Get('worker/status')
   async getWorkerStatus(
     @Req() req: AuthenticatedRequest,
   ): Promise<ApiResponse<WorkerStatusResponse>> {
     const userId = req.user.userId;
-    const telegramUserId = parseInt(userId, 10);
-
     const status = await this.workerManager.getStatus(userId);
     const workerRunning = status?.state === 'running';
 
@@ -1001,7 +972,7 @@ export class DashboardController {
             authState = 'waitingPassword';
             break;
           case 'authorizationStateReady':
-            authState = 'completed';
+            authState = 'ready';
             break;
           default:
             authState = 'idle';
@@ -1013,27 +984,11 @@ export class DashboardController {
       }
     }
 
-    // Compute workerStarting from DB timestamp (auto-expires after 2 minutes)
-    const workerStartingAt = await this.botStatusRepository.getWorkerStartingAt(userId);
-    let workerStarting = workerStartingAt !== null
-      && (Date.now() - workerStartingAt.getTime()) < 120_000;
-
-    // Clear workerStartingAt once confirmed running or expired
-    if (workerStartingAt !== null && (workerRunning || !workerStarting)) {
-      await this.botStatusRepository.clearWorkerStartingAt(userId);
-      if (!workerRunning) {
-        workerStarting = false;
-      }
-    }
-    if (workerRunning) {
-      workerStarting = false;
-    }
-
-    const lastAuthError = await this.botStatusRepository.getLastAuthError(userId);
+    const lastAuthError = this.authErrorCache.get(userId);
 
     return {
       success: true,
-      data: { workerRunning, authState, workerStarting, lastAuthError },
+      data: { workerRunning, authState, lastAuthError },
     };
   }
 
@@ -1079,7 +1034,7 @@ export class DashboardController {
     const phoneNumber = user?.phone ?? '';
 
     try {
-      await this.botStatusRepository.clearLastAuthError(userId);
+      this.authErrorCache.clear(userId);
       await this.telegramUserClient.provideAuthCode(userId, randomUUID(), body.code, {
         userId: telegramUserId,
         chatId: 0, // No bot messages
@@ -1139,7 +1094,7 @@ export class DashboardController {
     const phoneNumber = user?.phone ?? '';
 
     try {
-      await this.botStatusRepository.clearLastAuthError(userId);
+      this.authErrorCache.clear(userId);
       await this.telegramUserClient.providePassword(userId, randomUUID(), body.password, {
         userId: telegramUserId,
         chatId: 0, // No bot messages
@@ -1155,6 +1110,134 @@ export class DashboardController {
         error: 'failed_to_submit_password',
       } satisfies ApiResponse);
     }
+  }
+
+  // ============================================================================
+  // New single-responsibility worker endpoints
+  // ============================================================================
+
+  /**
+   * POST /dashboard/worker/start - Start the worker container (no login)
+   */
+  @Post('worker/start')
+  async startWorker(
+    @Req() req: AuthenticatedRequest,
+  ): Promise<ApiResponse> {
+    const userId = req.user.userId;
+    // Fire-and-forget: kick off container startup, don't await
+    this.workerManager.run(userId).then((started) => {
+      this.logger.log(`Worker startup for user ${userId}: started=${started}`);
+    }).catch((error) => {
+      this.logger.error(`Worker startup failed for user ${userId}`, { error });
+    });
+    return { success: true };
+  }
+
+  /**
+   * POST /dashboard/worker/stop - Stop the worker container
+   */
+  @Post('worker/stop')
+  async stopWorker(
+    @Req() req: AuthenticatedRequest,
+  ): Promise<ApiResponse> {
+    const userId = req.user.userId;
+    await this.workerManager.stop(userId);
+    this.logger.log(`POST /worker/stop for user ${userId}`);
+    return { success: true };
+  }
+
+  /**
+   * POST /dashboard/worker/login - Initiate TDLib login on a running worker
+   */
+  @Post('worker/login')
+  async loginWorker(
+    @Req() req: AuthenticatedRequest,
+    @Res() res: Response,
+  ): Promise<void> {
+    const userId = req.user.userId;
+    const telegramUserId = parseInt(userId, 10);
+
+    // Require worker to be running
+    const status = await this.workerManager.getStatus(userId);
+    if (!status || status.state !== 'running') {
+      res.status(HttpStatus.BAD_REQUEST).json({
+        success: false,
+        error: 'worker_not_running',
+      } satisfies ApiResponse);
+      return;
+    }
+
+    // Look up user phone
+    const user = await this.userRepository.findByTelegramUserId(telegramUserId);
+    if (!user) {
+      res.status(HttpStatus.BAD_REQUEST).json({
+        success: false,
+        error: 'user_not_found',
+      } satisfies ApiResponse);
+      return;
+    }
+
+    try {
+      await this.telegramUserClient.login(userId, user.phone);
+      this.logger.log(`POST /worker/login for user ${userId}: login initiated`);
+      res.status(HttpStatus.OK).json({ success: true } satisfies ApiResponse);
+    } catch (error) {
+      this.logger.error(`POST /worker/login failed for user ${userId}`, { error });
+      res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
+        success: false,
+        error: 'login_failed',
+      } satisfies ApiResponse);
+    }
+  }
+
+  /**
+   * POST /dashboard/worker/reauthorize - Logout and re-login on a running worker
+   */
+  @Post('worker/reauthorize')
+  async reauthorizeWorker(
+    @Req() req: AuthenticatedRequest,
+    @Res() res: Response,
+  ): Promise<void> {
+    const userId = req.user.userId;
+    const telegramUserId = parseInt(userId, 10);
+
+    // Verify worker is running
+    const status = await this.workerManager.getStatus(userId);
+    if (!status || status.state !== 'running') {
+      res.status(HttpStatus.BAD_REQUEST).json({
+        success: false, error: 'worker_not_running',
+      } satisfies ApiResponse);
+      return;
+    }
+
+    // Get phone for login
+    const user = await this.userRepository.findByTelegramUserId(telegramUserId);
+    if (!user) {
+      res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
+        success: false, error: 'user_not_found',
+      } satisfies ApiResponse);
+      return;
+    }
+
+    // logOut (non-fatal — session may already be broken)
+    try {
+      await this.telegramUserClient.logOut(userId);
+    } catch (error) {
+      this.logger.error(`logOut failed for user ${userId}`, { error });
+    }
+
+    // Re-login (async — will trigger waitingCode)
+    try {
+      await this.telegramUserClient.login(userId, user.phone);
+    } catch (error) {
+      this.logger.error(`Re-login failed for user ${userId}`, { error });
+      res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
+        success: false, error: 'reauthorize_failed',
+      } satisfies ApiResponse);
+      return;
+    }
+
+    res.status(HttpStatus.OK).json({ success: true } satisfies ApiResponse);
   }
 
   // ============================================================================

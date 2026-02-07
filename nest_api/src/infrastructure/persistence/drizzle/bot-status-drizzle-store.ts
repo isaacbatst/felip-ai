@@ -1,16 +1,16 @@
 import { Injectable, Inject } from '@nestjs/common';
 import { eq } from 'drizzle-orm';
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
-import { BotStatusRepository } from '../bot-status.repository';
-import { botStatus } from '@/infrastructure/database/schema';
+import { BotPreferenceRepository } from '../bot-status.repository';
+import { botPreferences } from '@/infrastructure/database/schema';
 import type * as schema from '@/infrastructure/database/schema';
 
 /**
- * Drizzle implementation of BotStatusRepository
- * Single Responsibility: bot status operations using Drizzle ORM with Neon PostgreSQL
+ * Drizzle implementation of BotPreferenceRepository
+ * Only handles bot preference (isEnabled) — operational state is managed in-memory.
  */
 @Injectable()
-export class BotStatusDrizzleStore extends BotStatusRepository {
+export class BotPreferenceDrizzleStore extends BotPreferenceRepository {
   constructor(
     @Inject('DATABASE_CONNECTION')
     private readonly db: PostgresJsDatabase<typeof schema>,
@@ -18,124 +18,36 @@ export class BotStatusDrizzleStore extends BotStatusRepository {
     super();
   }
 
-  /**
-   * Get bot status for a user
-   * Returns true if enabled, false if disabled
-   * Default is true if no record exists
-   */
   async getBotStatus(userId: string): Promise<boolean> {
     const result = await this.db
       .select({
-        isEnabled: botStatus.isEnabled,
+        isEnabled: botPreferences.isEnabled,
       })
-      .from(botStatus)
-      .where(eq(botStatus.userId, userId))
+      .from(botPreferences)
+      .where(eq(botPreferences.userId, userId))
       .limit(1);
 
     if (result.length === 0) {
-      // Default is off (false) if no record exists
       return false;
     }
 
     return result[0].isEnabled;
   }
 
-  /**
-   * Set bot status for a user
-   * Creates or updates the record
-   */
   async setBotStatus(userId: string, isEnabled: boolean): Promise<void> {
     await this.db
-      .insert(botStatus)
+      .insert(botPreferences)
       .values({
         userId,
         isEnabled,
         updatedAt: new Date(),
       })
       .onConflictDoUpdate({
-        target: botStatus.userId,
+        target: botPreferences.userId,
         set: {
           isEnabled,
           updatedAt: new Date(),
         },
       });
-  }
-
-  async setWorkerStartingAt(userId: string): Promise<void> {
-    await this.db
-      .insert(botStatus)
-      .values({
-        userId,
-        isEnabled: true,
-        workerStartingAt: new Date(),
-        updatedAt: new Date(),
-      })
-      .onConflictDoUpdate({
-        target: botStatus.userId,
-        set: {
-          workerStartingAt: new Date(),
-          updatedAt: new Date(),
-        },
-      });
-  }
-
-  async clearWorkerStartingAt(userId: string): Promise<void> {
-    await this.db
-      .update(botStatus)
-      .set({ workerStartingAt: null, updatedAt: new Date() })
-      .where(eq(botStatus.userId, userId));
-  }
-
-  async getWorkerStartingAt(userId: string): Promise<Date | null> {
-    const result = await this.db
-      .select({ workerStartingAt: botStatus.workerStartingAt })
-      .from(botStatus)
-      .where(eq(botStatus.userId, userId))
-      .limit(1);
-
-    if (result.length === 0) {
-      return null;
-    }
-
-    return result[0].workerStartingAt;
-  }
-
-  async setLastAuthError(userId: string, error: string): Promise<void> {
-    await this.db
-      .insert(botStatus)
-      .values({
-        userId,
-        isEnabled: true,
-        lastAuthError: error,
-        updatedAt: new Date(),
-      })
-      .onConflictDoUpdate({
-        target: botStatus.userId,
-        set: {
-          lastAuthError: error,
-          updatedAt: new Date(),
-        },
-      });
-  }
-
-  async clearLastAuthError(userId: string): Promise<void> {
-    await this.db
-      .update(botStatus)
-      .set({ lastAuthError: null, updatedAt: new Date() })
-      .where(eq(botStatus.userId, userId));
-  }
-
-  async getLastAuthError(userId: string): Promise<string | null> {
-    const result = await this.db
-      .select({ lastAuthError: botStatus.lastAuthError })
-      .from(botStatus)
-      .where(eq(botStatus.userId, userId))
-      .limit(1);
-
-    if (result.length === 0) {
-      return null;
-    }
-
-    return result[0].lastAuthError;
   }
 }
