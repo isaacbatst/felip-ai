@@ -167,6 +167,7 @@ export class WorkerManagerCompose extends WorkerManager {
           console.log(`Timeout reached for container ${containerId}`);
           clearInterval(intervalId);
           resolve(false);
+          return;
         }
         const isHealthy = await this.isHealthy(containerId);
         console.log(`Container ${containerId} is healthy: ${isHealthy}`);

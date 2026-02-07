@@ -3,10 +3,8 @@ import { ConfigService } from '@nestjs/config';
 import { connect, Connection, Channel } from 'amqplib';
 import { TelegramUserQueueProcessorRabbitMQ } from './telegram-user-queue-processor-rabbitmq.service';
 import { TdlibUpdateJobData } from '../../tdlib/tdlib-update.types';
-import { ConversationRepository, ConversationData } from '../../persistence/conversation.repository';
 import { TdlibCommandResponseHandler } from '../../tdlib/tdlib-command-response.handler';
 import { MessageProcessedLogRepository } from '@/infrastructure/persistence/message-processed-log.repository';
-import { TelegramUserClientProxyService } from '../../tdlib/telegram-user-client-proxy.service';
 
 /**
  * Worker that consumes updates from tdlib_worker via RabbitMQ
@@ -28,10 +26,8 @@ export class TdlibUpdatesWorkerRabbitMQ implements OnModuleInit, OnModuleDestroy
   constructor(
     private readonly configService: ConfigService,
     private readonly telegramUserQueueProcessor: TelegramUserQueueProcessorRabbitMQ,
-    private readonly conversationRepository: ConversationRepository,
     private readonly commandResponseHandler: TdlibCommandResponseHandler,
     private readonly messageProcessedLogRepository: MessageProcessedLogRepository,
-    private readonly telegramUserClient: TelegramUserClientProxyService,
   ) {
     const host = this.configService.get<string>('RABBITMQ_HOST') || 'localhost';
     const port = this.configService.get<string>('RABBITMQ_PORT') || '5672';
@@ -166,51 +162,13 @@ export class TdlibUpdatesWorkerRabbitMQ implements OnModuleInit, OnModuleDestroy
         break;
       }
       case 'auth-code-request': {
-        const { botUserId, retry } = jobData;
-        if (botUserId) {
-          // Look up active session by loggedInUserId (botUserId is the loggedInUserId as string)
-          const loggedInUserId = Number.parseInt(botUserId, 10);
-          if (Number.isNaN(loggedInUserId)) {
-            this.logger.error(`[ERROR] Invalid botUserId (not a number): ${botUserId}`);
-            break;
-          }
-          const session = await this.conversationRepository.getActiveSessionByLoggedInUserId(loggedInUserId);
-          if (!session) {
-            this.logger.error(`[ERROR] Active session not found for loggedInUserId: ${loggedInUserId}`);
-            break;
-          }
-
-          // Prevent duplicate auth code requests: if session is already waiting for code and this is not a retry, skip
-          if (session.state === 'waitingCode' && !retry) {
-            this.logger.log(`[DEBUG] Skipping duplicate auth-code-request for session ${session.requestId} (already in waitingCode state)`);
-            break;
-          }
-
-          // Update session state to waiting for auth code
-          await this.conversationRepository.updateSessionState(session.requestId, 'waitingCode');
-          this.logger.debug(`Session ${session.requestId} updated to waitingCode`);
-        }
+        const { botUserId } = jobData;
+        this.logger.log(`[DEBUG] auth-code-request event received for botUserId: ${botUserId}`);
         break;
       }
       case 'password-request': {
         const { botUserId } = jobData;
-        if (botUserId) {
-          // Look up active session by loggedInUserId (botUserId is the loggedInUserId as string)
-          const loggedInUserId = Number.parseInt(botUserId, 10);
-          if (Number.isNaN(loggedInUserId)) {
-            this.logger.error(`[ERROR] Invalid botUserId (not a number): ${botUserId}`);
-            break;
-          }
-          const session = await this.conversationRepository.getActiveSessionByLoggedInUserId(loggedInUserId);
-          if (!session) {
-            this.logger.error(`[ERROR] Active session not found for loggedInUserId: ${loggedInUserId}`);
-            break;
-          }
-
-          // Update session state to waitingPassword
-          await this.conversationRepository.updateSessionState(session.requestId, 'waitingPassword');
-          this.logger.debug(`Session ${session.requestId} updated to waitingPassword`);
-        }
+        this.logger.log(`[DEBUG] password-request event received for botUserId: ${botUserId}`);
         break;
       }
       case 'authorization-state': {
@@ -223,143 +181,12 @@ export class TdlibUpdatesWorkerRabbitMQ implements OnModuleInit, OnModuleDestroy
       }
       case 'login-success': {
         const { botUserId, userInfo } = jobData;
-        if (botUserId) {
-          const loggedInUserId = Number.parseInt(botUserId, 10);
-          if (Number.isNaN(loggedInUserId)) {
-            this.logger.error(`[ERROR] Invalid botUserId (not a number): ${botUserId}`);
-            break;
-          }
-
-          // Find session: active first, then completed, then by actual userInfo.id
-          let session = await this.conversationRepository.getActiveSessionByLoggedInUserId(loggedInUserId);
-
-          if (!session) {
-            this.logger.debug(`[DEBUG] Active session not found, trying completed session for loggedInUserId: ${loggedInUserId}`);
-            session = await this.conversationRepository.getCompletedSessionByLoggedInUserId(loggedInUserId);
-          }
-
-          if (!session && userInfo?.id) {
-            const actualLoggedInUserId = userInfo.id;
-            if (actualLoggedInUserId !== loggedInUserId) {
-              this.logger.debug(`[DEBUG] Trying to find session by actual logged-in user ID: ${actualLoggedInUserId}`);
-              session = await this.conversationRepository.getActiveSessionByLoggedInUserId(actualLoggedInUserId);
-              if (!session) {
-                session = await this.conversationRepository.getCompletedSessionByLoggedInUserId(actualLoggedInUserId);
-              }
-            }
-          }
-
-          if (session) {
-            this.logger.log(`[DEBUG] Found session for login success`, {
-              requestId: session.requestId,
-              loggedInUserId: session.loggedInUserId,
-              state: session.state
-            });
-
-            // Update loggedInUserId if it changed
-            const actualLoggedInUserId = userInfo?.id ?? session.loggedInUserId;
-            if (actualLoggedInUserId !== session.loggedInUserId) {
-              const updatedConversation: ConversationData = {
-                ...session,
-                loggedInUserId: actualLoggedInUserId,
-                state: 'completed',
-              };
-              await this.conversationRepository.setConversation(updatedConversation);
-              this.logger.log('Session updated with new logged-in user ID', { oldLoggedInUserId: session.loggedInUserId, newLoggedInUserId: actualLoggedInUserId });
-            } else {
-              await this.conversationRepository.updateSessionState(session.requestId, 'completed');
-              this.logger.log('Session marked as completed', { loggedInUserId });
-            }
-          } else {
-            this.logger.error(`[ERROR] Session not found for loggedInUserId: ${loggedInUserId} when handling login success`, {
-              botUserId,
-              loggedInUserId,
-              userInfoId: userInfo?.id,
-            });
-          }
-        }
+        this.logger.log(`[DEBUG] login-success event received for botUserId: ${botUserId}`, { userInfo });
         break;
       }
       case 'login-failure': {
         const { botUserId, error } = jobData;
-        if (botUserId) {
-          const loggedInUserId = Number.parseInt(botUserId, 10);
-          if (Number.isNaN(loggedInUserId)) {
-            this.logger.error(`[ERROR] Invalid botUserId (not a number): ${botUserId}`);
-            break;
-          }
-          const session = await this.conversationRepository.getActiveSessionByLoggedInUserId(loggedInUserId);
-
-          if (session) {
-            // Check if this is an expired code error — automatically restart login
-            const isPhoneCodeExpired = error && (
-              error.includes('PHONE_CODE_EXPIRED') ||
-              error.includes('phone code expired') ||
-              error.includes('code expired') ||
-              (error.includes('expired') && error.toLowerCase().includes('code'))
-            );
-
-            if (isPhoneCodeExpired && session.state === 'waitingCode' && session.phoneNumber) {
-              this.logger.log(`Restarting login to generate new code for requestId: ${session.requestId} due to expired code`);
-              try {
-                await this.telegramUserClient.login(loggedInUserId.toString(), session.phoneNumber, session.requestId);
-                return;
-              } catch (restartError) {
-                this.logger.error(`Failed to restart login for new code: ${restartError}`, { requestId: session.requestId });
-              }
-            }
-
-            // Mark as failed
-            await this.conversationRepository.updateSessionState(session.requestId, 'failed');
-            this.logger.log('Session marked as failed', { loggedInUserId, requestId: session.requestId });
-          } else {
-            this.logger.error(`[ERROR] Active session not found for loggedInUserId: ${loggedInUserId} when handling login failure`);
-          }
-        }
-        break;
-      }
-      case 'session-created': {
-        // Sessions are now created in Nest API before dispatching login command
-        // This event is kept for backward compatibility but is a no-op
-        const { requestId } = jobData;
-        this.logger.log(`[DEBUG] session-created event received (no-op, session already created in Nest API): ${requestId}`);
-        break;
-      }
-      case 'session-state-updated': {
-        const { botUserId, state } = jobData;
-        if (botUserId && state) {
-          // Look up active session by loggedInUserId (botUserId is the loggedInUserId as string)
-          const loggedInUserId = Number.parseInt(botUserId, 10);
-          if (!Number.isNaN(loggedInUserId)) {
-            const session = await this.conversationRepository.getActiveSessionByLoggedInUserId(loggedInUserId);
-            if (session) {
-              await this.conversationRepository.updateSessionState(
-                session.requestId,
-                state as 'idle' | 'waitingPhone' | 'waitingCode' | 'waitingPassword' | 'completed' | 'failed',
-              );
-              this.logger.log(`[DEBUG] Session state updated: ${session.requestId} -> ${state}`);
-            } else {
-              this.logger.error(`[ERROR] Active session not found for loggedInUserId: ${loggedInUserId} when updating state`);
-            }
-          }
-        }
-        break;
-      }
-      case 'session-deleted': {
-        const { botUserId } = jobData;
-        if (botUserId) {
-          // Look up active session by loggedInUserId (botUserId is the loggedInUserId as string)
-          const loggedInUserId = Number.parseInt(botUserId, 10);
-          if (!Number.isNaN(loggedInUserId)) {
-            const session = await this.conversationRepository.getActiveSessionByLoggedInUserId(loggedInUserId);
-            if (session) {
-              await this.conversationRepository.deleteSession(session.requestId);
-              this.logger.log(`[DEBUG] Session deleted: ${session.requestId}`);
-            } else {
-              this.logger.error(`[ERROR] Active session not found for loggedInUserId: ${loggedInUserId} when deleting`);
-            }
-          }
-        }
+        this.logger.log(`[DEBUG] login-failure event received for botUserId: ${botUserId}`, { error });
         break;
       }
       case 'command-response': {

@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { TelegramBotService } from '../telegram/telegram-bot-service';
 import { TelegramUserClientProxyService } from './telegram-user-client-proxy.service';
 import { ActiveGroupsRepository } from '../persistence/active-groups.repository';
-import { ConversationRepository } from '../persistence/conversation.repository';
+import { UserRepository } from '../persistence/user.repository';
 import { BotStatusRepository } from '../persistence/bot-status.repository';
 import type {
   CommandContext,
@@ -64,7 +64,7 @@ export class TdlibCommandResponseHandler {
     private readonly botService: TelegramBotService,
     private readonly telegramUserClient: TelegramUserClientProxyService,
     private readonly activeGroupsRepository: ActiveGroupsRepository,
-    private readonly conversationRepository: ConversationRepository,
+    private readonly userRepository: UserRepository,
     private readonly botStatusRepository: BotStatusRepository,
   ) {
     // Start cleanup interval
@@ -198,18 +198,17 @@ export class TdlibCommandResponseHandler {
     
     if (isPhoneCodeExpired && commandType === 'provideAuthCode') {
       // Try to automatically restart login to generate a new code
-      // Note: resendAuthenticationCode doesn't work for expired codes, so we restart the login process
-      if (effectiveRequestId && effectiveRequestId !== 'unknown' && context.userId) {
+      if (context.userId) {
         try {
-          const session = await this.conversationRepository.getConversation(effectiveRequestId);
-          if (session && session.state === 'waitingCode' && session.phoneNumber) {
-            // Restart login process to generate a new code
-            // This will call setAuthenticationPhoneNumber again, which triggers a new code
-            this.logger.log(`Restarting login to generate new code for requestId: ${effectiveRequestId} due to expired code`);
+          const telegramUserId = Number.parseInt(context.userId.toString(), 10);
+          const user = !Number.isNaN(telegramUserId)
+            ? await this.userRepository.findByTelegramUserId(telegramUserId)
+            : null;
+          if (user?.phone) {
+            this.logger.log(`Restarting login to generate new code for userId: ${context.userId} due to expired code`);
             try {
-              // Restart login with the same phone number to get a new code
-              await this.telegramUserClient.login(context.userId, session.phoneNumber, session.requestId);
-              
+              await this.telegramUserClient.login(context.userId.toString(), user.phone);
+
               // Track that we've sent this error
               this.sentErrors.set(errorKey, { timestamp: now, chatId: context.chatId });
 
@@ -220,16 +219,15 @@ export class TdlibCommandResponseHandler {
               );
               return;
             } catch (restartError) {
-              this.logger.error(`Failed to restart login for new code: ${restartError}`, { requestId: effectiveRequestId });
-              // Fall through to show error message
+              this.logger.error(`Failed to restart login for new code: ${restartError}`, { userId: context.userId });
             }
           }
-        } catch (sessionError) {
-          this.logger.error(`Failed to handle expired code for ${effectiveRequestId}:`, sessionError);
+        } catch (userError) {
+          this.logger.error(`Failed to handle expired code for userId ${context.userId}:`, userError);
         }
       }
 
-      // If restart failed or session not found, show error message
+      // If restart failed or user not found, show error message
       this.sentErrors.set(errorKey, { timestamp: now, chatId: context.chatId });
       await this.botService.bot.api.sendMessage(
         context.chatId,
@@ -245,19 +243,6 @@ export class TdlibCommandResponseHandler {
                                error.toLowerCase().includes('invalid code');
     
     if (isPhoneCodeInvalid && commandType === 'provideAuthCode') {
-      // Clear the session to allow user to start fresh
-      if (effectiveRequestId && effectiveRequestId !== 'unknown') {
-        try {
-          const session = await this.conversationRepository.getConversation(effectiveRequestId);
-          if (session) {
-            await this.conversationRepository.deleteConversation(effectiveRequestId);
-            this.logger.log(`Cleared session ${effectiveRequestId} due to PHONE_CODE_INVALID error`);
-          }
-        } catch (sessionError) {
-          this.logger.error(`Failed to clear session ${effectiveRequestId}:`, sessionError);
-        }
-      }
-
       // Track that we've sent this error
       this.sentErrors.set(errorKey, { timestamp: now, chatId: context.chatId });
 

@@ -52,28 +52,38 @@
             <p class="text-xs text-gray-500" x-text="getWorkerStatusText()"></p>
           </div>
         </div>
-        <label class="relative inline-flex items-center cursor-pointer" x-show="!isWorkerTransitional() && !isWorkerStartingUp()">
+        <label class="relative inline-flex items-center cursor-pointer" x-show="['disabled','connected','disconnected'].includes(getWorkerDisplayState())">
           <input type="checkbox" class="sr-only peer" x-model="botStatus.isEnabled" @change="saveBotStatus()" :disabled="savingBotStatus">
           <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500 peer-disabled:opacity-50"></div>
         </label>
-        <div x-show="(isWorkerTransitional() || isWorkerStartingUp()) && workerStatus.authState !== 'waitingCode' && workerStatus.authState !== 'waitingPassword'" class="flex items-center gap-2 text-gray-400">
+        <div x-show="['starting','connecting','loading'].includes(getWorkerDisplayState())" class="flex items-center gap-2 text-gray-400">
           <div class="spinner" style="width: 18px; height: 18px; border-width: 2px;"></div>
         </div>
       </div>
 
       <!-- Auth Code Input -->
       <div x-show="workerStatus.authState === 'waitingCode'" class="mt-4 pt-4 border-t border-gray-100">
-        <p class="text-sm text-gray-600 mb-3">
-          <i class="fa-solid fa-shield-halved text-primary mr-1"></i>
-          Digite o código de autenticação enviado ao seu Telegram:
-        </p>
-        <form @submit.prevent="submitAuthCode()" class="flex gap-2">
+        <div class="bg-blue-50 border border-blue-100 rounded-lg p-3 mb-3">
+          <p class="text-sm text-gray-700 mb-1">
+            <i class="fa-solid fa-shield-halved text-primary mr-1"></i>
+            <strong>Precisamos conectar ao seu Telegram</strong>
+          </p>
+          <p class="text-xs text-gray-500 leading-relaxed">
+            Para que o bot responda automaticamente nos grupos, ele precisa acessar sua conta do Telegram.
+            O Telegram enviou um <strong>código de verificação</strong> para você &mdash; digite-o abaixo para autorizar a conexão.
+          </p>
+          <p class="text-xs text-gray-400 mt-1.5 flex items-center gap-1">
+            <i class="fa-solid fa-lock text-xs"></i>
+            Suas credenciais são usadas apenas para a conexão e não ficam armazenadas.
+          </p>
+        </div>
+        <form @submit.prevent="submitAuthCode()" class="flex gap-2 flex-col md:flex-row">
           <input type="text" inputmode="numeric" maxlength="8" x-model="authCode"
-            placeholder="Código"
+            placeholder="Código do Telegram"
             class="flex-1 p-3 border border-gray-200 rounded-lg text-base text-center tracking-widest font-mono transition-all focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none"
             :disabled="submittingAuth">
           <button type="submit"
-            class="flex items-center gap-2 px-5 py-3 bg-primary text-white font-semibold rounded-lg transition-all hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
+            class="flex items-center justify-center gap-2 px-5 py-3 bg-primary text-white font-semibold rounded-lg transition-all hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
             :disabled="submittingAuth || authCode.length < 4">
             <span x-show="submittingAuth" class="spinner" style="width: 16px; height: 16px; border-width: 2px;"></span>
             <span x-text="submittingAuth ? 'Enviando...' : 'Enviar'"></span>
@@ -83,17 +93,27 @@
 
       <!-- Password Input -->
       <div x-show="workerStatus.authState === 'waitingPassword'" class="mt-4 pt-4 border-t border-gray-100">
-        <p class="text-sm text-gray-600 mb-3">
-          <i class="fa-solid fa-lock text-primary mr-1"></i>
-          Sua conta possui autenticação de dois fatores. Digite sua senha:
-        </p>
-        <form @submit.prevent="submitPassword()" class="flex gap-2">
+        <div class="bg-blue-50 border border-blue-100 rounded-lg p-3 mb-3">
+          <p class="text-sm text-gray-700 mb-1">
+            <i class="fa-solid fa-lock text-primary mr-1"></i>
+            <strong>Verificacao em duas etapas</strong>
+          </p>
+          <p class="text-xs text-gray-500 leading-relaxed">
+            Sua conta do Telegram possui verificacao em duas etapas ativada &mdash; otimo, isso significa que ela esta bem protegida!
+            Digite sua <strong>senha do Telegram</strong> (a senha de nuvem / cloud password) para concluir a conexao.
+          </p>
+          <p class="text-xs text-gray-400 mt-1.5 flex items-center gap-1">
+            <i class="fa-solid fa-lock text-xs"></i>
+            A senha e usada somente para autenticar a conexao e nao fica armazenada.
+          </p>
+        </div>
+        <form @submit.prevent="submitPassword()" class="flex gap-2 flex-col md:flex-row">
           <input type="password" x-model="authPassword"
-            placeholder="Senha 2FA"
+            placeholder="Senha do Telegram"
             class="flex-1 p-3 border border-gray-200 rounded-lg text-base transition-all focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none"
             :disabled="submittingAuth">
           <button type="submit"
-            class="flex items-center gap-2 px-5 py-3 bg-primary text-white font-semibold rounded-lg transition-all hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
+            class="flex items-center justify-center gap-2 px-5 py-3 bg-primary text-white font-semibold rounded-lg transition-all hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
             :disabled="submittingAuth || authPassword.length === 0">
             <span x-show="submittingAuth" class="spinner" style="width: 16px; height: 16px; border-width: 2px;"></span>
             <span x-text="submittingAuth ? 'Enviando...' : 'Enviar'"></span>
@@ -101,12 +121,14 @@
         </form>
       </div>
 
-      <!-- Failed State -->
       <!-- Disconnected / Failed State -->
-      <div x-show="isWorkerDisconnected()" class="mt-4 pt-4 border-t border-gray-100">
-        <div class="flex items-center gap-2 text-red-600 mb-3">
-          <i class="fa-solid fa-plug-circle-xmark"></i>
-          <span class="text-sm font-medium">A conexão com o Telegram foi perdida</span>
+      <div x-show="getWorkerDisplayState() === 'disconnected'" class="mt-4 pt-4 border-t border-gray-100">
+        <div class="bg-red-50 border border-red-100 rounded-lg p-3 mb-3">
+          <div class="flex items-center gap-2 text-red-600 mb-1">
+            <i class="fa-solid fa-plug-circle-xmark"></i>
+            <span class="text-sm font-medium">Conexao com o Telegram perdida</span>
+          </div>
+          <p class="text-xs text-gray-500">Isso pode acontecer por instabilidade na rede ou inatividade. Clique abaixo para reconectar — pode ser necessario informar o codigo novamente.</p>
         </div>
         <button @click="reconnectWorker()"
           class="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg bg-red-100 text-red-600 hover:bg-red-200 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
@@ -1038,7 +1060,14 @@
         },
 
         async saveBotStatus() {
+          const enabling = this.botStatus.isEnabled;
           this.savingBotStatus = true;
+
+          // Set optimistically BEFORE fetch to prevent "disconnected" flash
+          if (enabling) {
+            this.workerStatus = { workerRunning: false, authState: null, workerStarting: true, lastAuthError: null };
+          }
+
           try {
             const res = await this.authFetch('/dashboard/bot-status', {
               method: 'PUT',
@@ -1049,23 +1078,20 @@
             if (data.success) {
               this.showToast(this.botStatus.isEnabled ? 'Bot ativado!' : 'Bot desativado!', 'success');
               if (this.botStatus.isEnabled) {
-                // Optimistically show "Iniciando..." until first poll response
-                this.workerStatus = { workerRunning: false, authState: null, workerStarting: true, lastAuthError: null };
-                // Start polling worker status
                 this.startWorkerPolling();
               } else {
                 this.stopWorkerPolling();
                 this.workerStatus = { workerRunning: false, authState: null, workerStarting: false, lastAuthError: null };
               }
             } else {
-              // Revert on error
               this.botStatus.isEnabled = !this.botStatus.isEnabled;
+              if (enabling) this.workerStatus = { workerRunning: false, authState: null, workerStarting: false, lastAuthError: null };
               this.showToast('Erro ao salvar status do bot', 'error');
             }
           } catch (error) {
             console.error('Error saving bot status:', error);
-            // Revert on error
             this.botStatus.isEnabled = !this.botStatus.isEnabled;
+            if (enabling) this.workerStatus = { workerRunning: false, authState: null, workerStarting: false, lastAuthError: null };
             this.showToast('Erro ao salvar status do bot', 'error');
           } finally {
             this.savingBotStatus = false;
@@ -1081,8 +1107,12 @@
             const data = await res.json();
             if (data.success) {
               const prevAuthState = this.workerStatus.authState;
+              const prevAuthError = this.workerStatus.lastAuthError;
               this.workerStatus = data.data;
               this.workerStatusLoaded = true;
+
+              // Detect newly appeared errors
+              const isNewError = this.workerStatus.lastAuthError && this.workerStatus.lastAuthError !== prevAuthError;
 
               // Clear form loading and notify user on auth errors
               if (this.submittingAuth) {
@@ -1095,18 +1125,30 @@
                 // else: keep polling, result not back yet
               }
 
+              // Show startup errors when newly detected (not during auth submission)
+              if (!this.submittingAuth && isNewError
+                && (this.workerStatus.lastAuthError === 'WORKER_STARTUP_FAILED'
+                  || this.workerStatus.lastAuthError === 'WORKER_STARTUP_ERROR')) {
+                this.showAuthErrorToast(this.workerStatus.lastAuthError);
+              }
+
               // Advance starting phrase while worker is starting
-              if (this.isWorkerStartingUp()) {
+              if (this.getWorkerDisplayState() === 'starting') {
                 this.startingPhraseIndex = (this.startingPhraseIndex + 1) % this.startingPhrases.length;
               } else {
                 this.startingPhraseIndex = 0;
               }
 
               // Keep polling only while background work is in progress
-              // Note: 'idle' means TDLib is actively connecting, not actually idle
-              const needsPolling = this.isWorkerStartingUp()
-                || this.workerStatus.authState === 'idle'
-                || this.submittingAuth;
+              const isTransitionalStartup = this.botStatus.isEnabled
+                && !this.workerStatus.workerRunning
+                && this.workerStatus.authState !== 'completed'
+                && !this.workerStatus.lastAuthError;
+
+              const displayState = this.getWorkerDisplayState();
+              const needsPolling = ['starting', 'connecting', 'loading'].includes(displayState)
+                || this.submittingAuth
+                || isTransitionalStartup;
 
               if (!needsPolling) {
                 this.stopWorkerPolling();
@@ -1132,23 +1174,27 @@
           }
         },
 
-        isWorkerTransitional() {
-          return this.botStatus.isEnabled && this.workerStatus.authState !== 'completed' && this.workerStatus.authState !== null;
-        },
+        getWorkerDisplayState() {
+          if (!this.botStatus.isEnabled) return 'disabled';
 
-        isWorkerStartingUp() {
-          return this.workerStatus.workerStarting
-            && (this.workerStatus.authState === null || this.workerStatus.authState === 'idle');
-        },
+          if (this.workerStatus.workerStarting
+              && (this.workerStatus.authState === null || this.workerStatus.authState === 'idle')) {
+            return 'starting';
+          }
 
-        isWorkerDisconnected() {
-          return this.workerStatusLoaded
-            && this.botStatus.isEnabled
-            && !this.workerStatus.workerStarting
-            && (
-              (!this.workerStatus.workerRunning && this.workerStatus.authState === null)
-              || this.workerStatus.authState === 'failed'
-            );
+          switch (this.workerStatus.authState) {
+            case 'completed':       return 'connected';
+            case 'waitingCode':     return 'waitingCode';
+            case 'waitingPassword': return 'waitingPassword';
+            case 'idle':            return 'connecting';
+            case 'failed':          return 'disconnected';
+          }
+
+          if (this.workerStatusLoaded && !this.workerStatus.workerRunning) {
+            return 'disconnected';
+          }
+
+          return 'loading';
         },
 
         async reconnectWorker() {
@@ -1176,57 +1222,65 @@
         },
 
         getWorkerIndicatorClass() {
-          if (!this.botStatus.isEnabled) return 'bg-gray-100 text-gray-400';
-          if (this.isWorkerStartingUp()) return 'bg-blue-100 text-blue-600';
-          if (this.isWorkerDisconnected()) return 'bg-red-100 text-red-600';
-          switch (this.workerStatus.authState) {
-            case 'completed': return 'bg-emerald-100 text-emerald-600';
-            case 'waitingCode':
-            case 'waitingPassword': return 'bg-amber-100 text-amber-600';
-            case 'idle': return 'bg-blue-100 text-blue-600';
-            default: return 'bg-gray-100 text-gray-400';
-          }
+          const map = {
+            disabled:        'bg-gray-100 text-gray-400',
+            starting:        'bg-blue-100 text-blue-600',
+            connecting:      'bg-blue-100 text-blue-600',
+            loading:         'bg-gray-100 text-gray-400',
+            waitingCode:     'bg-amber-100 text-amber-600',
+            waitingPassword: 'bg-amber-100 text-amber-600',
+            connected:       'bg-emerald-100 text-emerald-600',
+            disconnected:    'bg-red-100 text-red-600',
+          };
+          return map[this.getWorkerDisplayState()] || 'bg-gray-100 text-gray-400';
         },
 
         getWorkerIndicatorIcon() {
-          if (!this.botStatus.isEnabled) return 'fa-pause';
-          if (this.isWorkerStartingUp()) return 'fa-spinner fa-spin';
-          if (this.isWorkerDisconnected()) return 'fa-plug-circle-xmark';
-          switch (this.workerStatus.authState) {
-            case 'completed': return 'fa-play';
-            case 'waitingCode': return 'fa-shield-halved';
-            case 'waitingPassword': return 'fa-lock';
-            case 'idle': return 'fa-spinner fa-spin';
-            default: return 'fa-pause';
-          }
+          const map = {
+            disabled:        'fa-pause',
+            starting:        'fa-spinner fa-spin',
+            connecting:      'fa-spinner fa-spin',
+            loading:         'fa-pause',
+            waitingCode:     'fa-shield-halved',
+            waitingPassword: 'fa-lock',
+            connected:       'fa-play',
+            disconnected:    'fa-plug-circle-xmark',
+          };
+          return map[this.getWorkerDisplayState()] || 'fa-pause';
         },
 
         getWorkerStatusText() {
-          if (!this.botStatus.isEnabled) return 'Quando desativado, o bot ignora mensagens dos grupos';
-          if (this.isWorkerStartingUp()) return this.startingPhrases[this.startingPhraseIndex];
-          if (this.isWorkerDisconnected()) return 'Conexão perdida — clique em Reconectar';
-          switch (this.workerStatus.authState) {
-            case 'completed': return 'Conectado e processando mensagens';
-            case 'waitingCode': return 'Aguardando código de autenticação';
-            case 'waitingPassword': return 'Aguardando senha de dois fatores';
-            case 'idle': return 'Conectando...';
-            default: return 'Verificando status da conexão...';
-          }
+          const state = this.getWorkerDisplayState();
+          if (state === 'starting') return this.startingPhrases[this.startingPhraseIndex];
+          const map = {
+            disabled:        'Bot desativado — ative para responder nos grupos automaticamente',
+            connecting:      'Estabelecendo conexão com o Telegram...',
+            loading:         'Verificando status da conexão...',
+            waitingCode:     'Quase lá! Informe o código enviado pelo Telegram',
+            waitingPassword: 'Mais um passo — digite sua senha do Telegram',
+            connected:       'Tudo certo! Conectado e respondendo nos grupos',
+            disconnected:    'Conexão perdida — clique em Reconectar para voltar',
+          };
+          return map[state] || 'Verificando status da conexão...';
         },
 
         showAuthErrorToast(errorCode) {
           if (errorCode.startsWith('FLOOD_WAIT:')) {
             const seconds = parseInt(errorCode.split(':')[1], 10);
             const minutes = Math.ceil(seconds / 60);
-            this.showToast(`Muitas tentativas. Aguarde ~${minutes} minuto(s).`, 'error');
+            this.showToast(`Muitas tentativas seguidas. Por seguranca, aguarde ~${minutes} minuto(s) antes de tentar novamente.`, 'error');
           } else if (errorCode === 'PASSWORD_INVALID') {
-            this.showToast('Senha incorreta. Tente novamente.', 'error');
+            this.showToast('Senha incorreta. Verifique e tente novamente.', 'error');
           } else if (errorCode === 'CODE_INVALID') {
-            this.showToast('Código incorreto. Tente novamente.', 'error');
+            this.showToast('Codigo incorreto. Confira o codigo recebido no Telegram e tente novamente.', 'error');
           } else if (errorCode === 'CODE_EXPIRED') {
-            this.showToast('Código expirado.', 'error');
+            this.showToast('Codigo expirado. Desative e ative o bot novamente para receber um novo codigo.', 'error');
+          } else if (errorCode === 'WORKER_STARTUP_FAILED') {
+            this.showToast('Nao foi possivel iniciar a conexao. Tente reconectar em alguns instantes.', 'error');
+          } else if (errorCode === 'WORKER_STARTUP_ERROR') {
+            this.showToast('Ocorreu um erro ao conectar. Tente reconectar em alguns instantes.', 'error');
           } else {
-            this.showToast('Erro desconhecido.', 'error');
+            this.showToast('Algo deu errado. Tente novamente em alguns instantes.', 'error');
           }
         },
 
@@ -1242,7 +1296,7 @@
             const data = await res.json();
             if (data.success) {
               this.authCode = '';
-              this.showToast('Código enviado!', 'success');
+              this.showToast('Codigo enviado! Verificando...', 'success');
               // Keep submittingAuth=true so form stays in loading state
               // Poll will update authState and clear it
               this.startWorkerPolling();
@@ -1269,7 +1323,7 @@
             const data = await res.json();
             if (data.success) {
               this.authPassword = '';
-              this.showToast('Senha enviada!', 'success');
+              this.showToast('Senha enviada! Autenticando...', 'success');
               // Keep submittingAuth=true so form stays in loading state
               // Poll will update authState and clear it
               this.startWorkerPolling();
