@@ -113,6 +113,13 @@
       "when": 1770658800000,
       "tag": "0015_drop_bot_status_operational_columns",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1770558126593,
+      "tag": "0016_promotional_pricing",
+      "breakpoints": true
     }
   ]
 }

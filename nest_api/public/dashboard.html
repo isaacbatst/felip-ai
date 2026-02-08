@@ -520,7 +520,7 @@
           <div class="mb-4">
             <h4 class="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
               <span class="w-2 h-2 bg-emerald-500 rounded-full"></span>
-              Grupos Ativos (<span x-text="activeGroups.length"></span><span x-show="groupLimit > 0">/<span x-text="groupLimit"></span></span>)
+              Grupos Ativos (<span x-text="activeGroups.length"></span><span x-show="groupLimit !== null && groupLimit > 0">/<span x-text="groupLimit"></span></span>)
             </h4>
             <div class="flex flex-col gap-2">
               <template x-for="group in activeGroups" :key="group.id">
@@ -834,7 +834,7 @@
 
         // Groups state
         availableGroups: [],
-        groupLimit: 0,
+        groupLimit: null,
         loadingGroups: false,
         loadingAvailableGroups: false,
         groupsError: false,
@@ -957,6 +957,7 @@
         },
 
         get isGroupLimitReached() {
+          if (this.groupLimit === null) return false;
           return this.groupLimit > 0 && this.activeGroups.length >= this.groupLimit;
         },
 
@@ -1469,7 +1470,7 @@
             
             if (data.success) {
               this.availableGroups = data.data.groups;
-              this.groupLimit = data.data.groupLimit || 0;
+              this.groupLimit = data.data.groupLimit;
               this.groupsFetched = true;
             } else {
               this.groupsError = true;

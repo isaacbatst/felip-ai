@@ -25,6 +25,8 @@ export interface CieloCreateRecurrentPaymentRequest {
   MerchantOrderId: string;
   Customer: {
     Name: string;
+    Identity: string;
+    IdentityType: 'CPF' | 'CNPJ';
   };
   Payment: {
     Type: 'CreditCard';
@@ -34,6 +36,7 @@ export interface CieloCreateRecurrentPaymentRequest {
     RecurrentPayment: {
       AuthorizeNow: boolean;
       Interval: CieloRecurrentInterval;
+      StartDate?: string; // "YYYY-MM-DD" - first charge date when AuthorizeNow=false
     };
     CreditCard: {
       CardNumber: string;
@@ -120,4 +123,6 @@ export interface CheckoutRequestDto {
   securityCode: string;
   brand: string;
   customerName: string;
+  customerIdentity: string;
+  customerIdentityType: 'CPF' | 'CNPJ';
 }

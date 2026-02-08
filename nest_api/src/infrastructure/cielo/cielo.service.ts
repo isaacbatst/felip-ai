@@ -38,12 +38,13 @@ export class CieloService {
     request: CieloCreateRecurrentPaymentRequest,
   ): Promise<CieloCreateRecurrentPaymentResponse> {
     const url = `${this.getApiUrl()}/1/sales/`;
-    this.logger.log(`Creating recurrent payment for order ${request.MerchantOrderId}`);
+    const body = JSON.stringify(request);
+    this.logger.log(`Creating recurrent payment for order ${request.MerchantOrderId}, request JSON: ${body}`);
 
     const response = await fetch(url, {
       method: 'POST',
       headers: this.getHeaders(),
-      body: JSON.stringify(request),
+      body,
     });
 
     const data = await response.json();
@@ -52,6 +53,8 @@ export class CieloService {
       this.logger.error(`Cielo API error: ${response.status}`, JSON.stringify(data));
       throw new Error(`Cielo API error: ${response.status} - ${JSON.stringify(data)}`);
     }
+
+    this.logger.log(`Recurrent payment created for order ${request.MerchantOrderId}, response JSON: ${JSON.stringify(data)}`);
 
     return data as CieloCreateRecurrentPaymentResponse;
   }
@@ -73,6 +76,23 @@ export class CieloService {
     }
 
     return data as CieloQueryPaymentResponse;
+  }
+
+  async updateRecurrenceAmount(recurrentPaymentId: string, newAmountInCents: number): Promise<void> {
+    const url = `${this.getApiUrl()}/1/RecurrentPayment/${recurrentPaymentId}/Amount`;
+    this.logger.log(`Updating recurrence ${recurrentPaymentId} amount to ${newAmountInCents}`);
+
+    const response = await fetch(url, {
+      method: 'PUT',
+      headers: this.getHeaders(),
+      body: JSON.stringify(newAmountInCents),
+    });
+
+    if (!response.ok) {
+      const data = await response.text();
+      this.logger.error(`Cielo update amount error: ${response.status}`, data);
+      throw new Error(`Cielo update amount error: ${response.status} - ${data}`);
+    }
   }
 
   async deactivateRecurrence(recurrentPaymentId: string): Promise<void> {

@@ -10,6 +10,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/public/output.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/@alpinejs/mask@3.x.x/dist/cdn.min.js"></script>
   <script defer src="https://unpkg.com/alpinejs@3.13.3/dist/cdn.min.js"></script>
 </head>
 
@@ -53,48 +54,15 @@
     <!-- No Subscription State -->
     <template x-if="!subscription || subscription.status === 'expired' || subscription.status === 'canceled'">
       <div>
-        <!-- Trial CTA (only if no subscription at all) -->
-        <template x-if="!subscription">
+        <!-- Trial CTA banner (only if trial not used yet) -->
+        <template x-if="!trialUsed">
           <div class="bg-gradient-to-br from-primary/10 to-secondary/10 border-2 border-primary/20 rounded-2xl p-6 mb-6 text-center">
             <div class="w-16 h-16 mx-auto mb-4 rounded-full bg-primary/20 flex items-center justify-center">
               <i class="fa-solid fa-gift text-primary text-2xl"></i>
             </div>
-            <h2 class="text-xl font-bold text-gray-800 mb-2">Comece seu Período de Teste</h2>
-            <p class="text-gray-600 mb-4">Experimente todas as funcionalidades gratuitamente por 7 dias.</p>
-
-            <ul class="text-left mb-6 space-y-2 max-w-xs mx-auto">
-              <li class="flex items-center gap-2 text-gray-700">
-                <i class="fa-solid fa-check text-emerald-500"></i>
-                <span>3 grupos ativos</span>
-              </li>
-              <li class="flex items-center gap-2 text-gray-700">
-                <i class="fa-solid fa-check text-emerald-500"></i>
-                <span>Todas as funcionalidades</span>
-              </li>
-              <li class="flex items-center gap-2 text-gray-700">
-                <i class="fa-solid fa-check text-emerald-500"></i>
-                <span>Configuração via dashboard</span>
-              </li>
-              <li class="flex items-center gap-2 text-gray-700">
-                <i class="fa-solid fa-check text-emerald-500"></i>
-                <span>Sem compromisso</span>
-              </li>
-            </ul>
-
-            <button
-              @click="startTrial()"
-              :disabled="startingTrial || trialUsed"
-              class="w-full max-w-xs px-6 py-4 bg-gradient-to-r from-primary to-secondary text-white font-semibold rounded-xl transition-all hover:shadow-lg hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:shadow-none">
-              <span x-show="startingTrial" class="spinner mr-2" style="width: 16px; height: 16px;"></span>
-              <span x-show="!startingTrial && !trialUsed">
-                <i class="fa-solid fa-rocket mr-2"></i>
-                Começar Teste Gratuito
-              </span>
-              <span x-show="trialUsed && !startingTrial">
-                <i class="fa-solid fa-times-circle mr-2"></i>
-                Teste já utilizado
-              </span>
-            </button>
+            <h2 class="text-xl font-bold text-gray-800 mb-2">Teste Gratuito de 7 Dias</h2>
+            <p class="text-gray-600 mb-2">Escolha seu plano abaixo e experimente gratuitamente por 7 dias.</p>
+            <p class="text-sm text-gray-500">O cartao sera cadastrado mas a cobranca so ocorre apos o periodo de teste.</p>
           </div>
         </template>
 
@@ -109,25 +77,38 @@
           </div>
         </template>
 
-        <!-- Plans -->
+        <!-- Plans Grid -->
         <div class="border-t-2 border-gray-100 pt-6">
           <h3 class="text-lg font-semibold text-gray-800 mb-4 text-center">Planos Disponíveis</h3>
           <div class="grid gap-4 md:grid-cols-3">
             <template x-for="plan in plans" :key="plan.id">
               <div class="border-2 rounded-xl p-4 transition-all cursor-pointer"
                 :class="selectedPlan?.id === plan.id ? 'border-primary bg-primary/5' : 'border-gray-200 hover:border-primary/50'"
-                @click="selectPlan(plan)">
+                @click="selectPlan(plan, !trialUsed)">
                 <h4 class="font-bold text-gray-800" x-text="plan.displayName"></h4>
-                <p class="text-2xl font-bold text-primary my-2">
-                  R$ <span x-text="(plan.priceInCents / 100).toFixed(0)"></span>
-                  <span class="text-sm font-normal text-gray-500">/mês</span>
-                </p>
-                <p class="text-sm text-gray-600" x-text="`${plan.groupLimit} grupos ativos`"></p>
+                <template x-if="plan.promotionalPriceInCents">
+                  <div class="my-2">
+                    <span class="text-sm text-gray-400 line-through">R$ <span x-text="(plan.priceInCents / 100).toFixed(0)"></span></span>
+                    <p class="text-2xl font-bold text-primary">
+                      R$ <span x-text="(plan.promotionalPriceInCents / 100).toFixed(0)"></span>
+                      <span class="text-sm font-normal text-gray-500">/mês</span>
+                    </p>
+                    <span class="inline-block mt-1 px-2 py-0.5 bg-emerald-100 text-emerald-700 text-xs font-semibold rounded-full">30% OFF por <span x-text="plan.promotionalMonths"></span> meses</span>
+                  </div>
+                </template>
+                <template x-if="!plan.promotionalPriceInCents">
+                  <p class="text-2xl font-bold text-primary my-2">
+                    R$ <span x-text="(plan.priceInCents / 100).toFixed(0)"></span>
+                    <span class="text-sm font-normal text-gray-500">/mês</span>
+                  </p>
+                </template>
+                <p class="text-sm text-gray-600" x-text="plan.groupLimit ? `${plan.groupLimit} grupos ativos` : 'Grupos ilimitados'"></p>
+                <!-- Trial button or Subscribe button -->
                 <button
-                  @click.stop="selectPlan(plan)"
+                  @click.stop="selectPlan(plan, !trialUsed)"
                   class="w-full mt-4 px-4 py-2 rounded-lg transition-all font-medium"
                   :class="selectedPlan?.id === plan.id ? 'bg-primary text-white' : 'bg-primary/10 text-primary hover:bg-primary/20'">
-                  <span x-text="selectedPlan?.id === plan.id ? 'Selecionado' : 'Selecionar'"></span>
+                  <span x-text="!trialUsed ? 'Teste Grátis 7 Dias' : (selectedPlan?.id === plan.id ? 'Selecionado' : 'Assinar')"></span>
                 </button>
               </div>
             </template>
@@ -160,7 +141,7 @@
                   x-text="getStatusLabel(subscription.status)">
                 </span>
               </div>
-              <p class="text-gray-600 text-sm" x-text="subscription.plan.priceInCents === 0 ? 'Gratuito' : `R$ ${(subscription.plan.priceInCents / 100).toFixed(2)}/mês`"></p>
+              <p class="text-gray-600 text-sm" x-text="subscription.status === 'trialing' ? `R$ 0 agora, depois R$ ${(subscription.plan.priceInCents / 100).toFixed(2)}/mês` : `R$ ${(subscription.plan.priceInCents / 100).toFixed(2)}/mês`"></p>
             </div>
             <div class="w-12 h-12 rounded-full flex items-center justify-center"
               :class="{
@@ -183,28 +164,35 @@
               <p class="text-xs text-gray-500 mb-1">Grupos Ativos</p>
               <p class="text-lg font-bold text-gray-800">
                 <span x-text="subscription.activeGroupsCount"></span>
-                <span class="text-gray-400 font-normal">/</span>
-                <span x-text="subscription.totalGroupLimit"></span>
+                <template x-if="subscription.totalGroupLimit !== null">
+                  <span>
+                    <span class="text-gray-400 font-normal">/</span>
+                    <span x-text="subscription.totalGroupLimit"></span>
+                  </span>
+                </template>
+                <template x-if="subscription.totalGroupLimit === null">
+                  <span class="text-gray-400 font-normal text-sm"> (ilimitados)</span>
+                </template>
               </p>
             </div>
             <div class="bg-white/50 rounded-xl p-3">
-              <p class="text-xs text-gray-500 mb-1" x-text="subscription.status === 'trialing' ? 'Dias Restantes' : 'Próxima Cobrança'"></p>
-              <p class="text-lg font-bold text-gray-800" x-text="subscription.status === 'trialing' ? subscription.daysRemaining + ' dias' : formatDate(subscription.nextBillingDate)"></p>
+              <p class="text-xs text-gray-500 mb-1" x-text="subscription.status === 'trialing' ? 'Será cobrado em' : 'Próxima Cobrança'"></p>
+              <p class="text-lg font-bold text-gray-800" x-text="formatDate(subscription.nextBillingDate)"></p>
             </div>
           </div>
 
-          <!-- Trial Warning -->
-          <template x-if="subscription.status === 'trialing' && subscription.daysRemaining <= 3">
+          <!-- Trial Info -->
+          <template x-if="subscription.status === 'trialing'">
             <div class="bg-amber-100 border border-amber-300 rounded-lg p-3 flex items-center gap-2">
-              <i class="fa-solid fa-exclamation-triangle text-amber-600"></i>
+              <i class="fa-solid fa-info-circle text-amber-600"></i>
               <p class="text-sm text-amber-800">
-                Seu período de teste expira em <strong x-text="subscription.daysRemaining"></strong> dias.
+                Período de teste gratuito. A primeira cobrança será em <strong x-text="formatDate(subscription.nextBillingDate)"></strong>.
               </p>
             </div>
           </template>
         </div>
 
-        <!-- Card Info (for paid subscriptions) -->
+        <!-- Card Info -->
         <template x-if="subscription.cardLastFourDigits">
           <div class="border-2 border-gray-200 rounded-xl p-5 mb-6">
             <h3 class="font-semibold text-gray-800 mb-3 flex items-center gap-2">
@@ -242,7 +230,7 @@
         </div>
 
         <!-- Subscription Details -->
-        <div class="border-2 border-gray-200 rounded-xl p-5">
+        <div class="border-2 border-gray-200 rounded-xl p-5 mb-6">
           <h3 class="font-semibold text-gray-800 mb-3 flex items-center gap-2">
             <i class="fa-solid fa-info-circle text-primary"></i>
             Detalhes da Assinatura
@@ -252,43 +240,32 @@
               <span class="text-gray-500">Início</span>
               <span class="text-gray-800" x-text="formatDate(subscription.startDate)"></span>
             </div>
-            <div class="flex justify-between">
-              <span class="text-gray-500">Período Atual</span>
-              <span class="text-gray-800" x-text="`${formatDate(subscription.currentPeriodStart)} - ${formatDate(subscription.currentPeriodEnd)}`"></span>
-            </div>
+            <template x-if="subscription.status !== 'trialing'">
+              <div class="flex justify-between">
+                <span class="text-gray-500">Período Atual</span>
+                <span class="text-gray-800" x-text="`${formatDate(subscription.currentPeriodStart)} - ${formatDate(subscription.currentPeriodEnd)}`"></span>
+              </div>
+            </template>
             <template x-if="subscription.nextBillingDate">
               <div class="flex justify-between">
-                <span class="text-gray-500">Próxima Cobrança</span>
+                <span class="text-gray-500" x-text="subscription.status === 'trialing' ? 'Primeira Cobrança' : 'Próxima Cobrança'"></span>
                 <span class="text-gray-800" x-text="formatDate(subscription.nextBillingDate)"></span>
               </div>
             </template>
           </div>
         </div>
 
-        <!-- Upgrade Plans (show for trialing users) -->
+        <!-- Actions for trialing users -->
         <template x-if="subscription.status === 'trialing'">
-          <div class="border-t-2 border-gray-100 pt-6 mt-6">
-            <h3 class="text-lg font-semibold text-gray-800 mb-4 text-center">Assinar um Plano</h3>
-            <div class="grid gap-4 md:grid-cols-3">
-              <template x-for="plan in plans" :key="plan.id">
-                <div class="border-2 rounded-xl p-4 transition-all cursor-pointer"
-                  :class="selectedPlan?.id === plan.id ? 'border-primary bg-primary/5' : 'border-gray-200 hover:border-primary/50'"
-                  @click="selectPlan(plan)">
-                  <h4 class="font-bold text-gray-800" x-text="plan.displayName"></h4>
-                  <p class="text-2xl font-bold text-primary my-2">
-                    R$ <span x-text="(plan.priceInCents / 100).toFixed(0)"></span>
-                    <span class="text-sm font-normal text-gray-500">/mês</span>
-                  </p>
-                  <p class="text-sm text-gray-600" x-text="`${plan.groupLimit} grupos ativos`"></p>
-                  <button
-                    @click.stop="selectPlan(plan)"
-                    class="w-full mt-4 px-4 py-2 rounded-lg transition-all font-medium"
-                    :class="selectedPlan?.id === plan.id ? 'bg-primary text-white' : 'bg-primary/10 text-primary hover:bg-primary/20'">
-                    <span x-text="selectedPlan?.id === plan.id ? 'Selecionado' : 'Selecionar'"></span>
-                  </button>
-                </div>
-              </template>
-            </div>
+          <div class="text-center pt-4">
+            <button
+              @click="cancelSubscription()"
+              :disabled="cancelingSubscription"
+              class="text-sm text-red-500 hover:text-red-700 transition-colors disabled:opacity-50">
+              <i class="fa-solid fa-times-circle mr-1"></i>
+              <span x-show="!cancelingSubscription">Cancelar Teste</span>
+              <span x-show="cancelingSubscription">Cancelando...</span>
+            </button>
           </div>
         </template>
       </div>
@@ -312,8 +289,8 @@
           <!-- Modal Header -->
           <div class="flex justify-between items-center mb-6">
             <h2 class="text-xl font-bold text-gray-800">
-              <i class="fa-solid fa-lock mr-2 text-primary"></i>
-              Checkout
+              <i class="fa-solid mr-2 text-primary" :class="isTrial ? 'fa-gift' : 'fa-lock'"></i>
+              <span x-text="isTrial ? 'Iniciar Teste Gratuito' : 'Checkout'"></span>
             </h2>
             <button @click="closeCheckoutModal()" class="text-gray-400 hover:text-gray-600 transition-colors">
               <i class="fa-solid fa-times text-xl"></i>
@@ -325,11 +302,35 @@
             <div class="flex justify-between items-center">
               <div>
                 <p class="font-semibold text-gray-800" x-text="selectedPlan?.displayName"></p>
-                <p class="text-sm text-gray-500" x-text="`${selectedPlan?.groupLimit} grupos ativos`"></p>
+                <p class="text-sm text-gray-500" x-text="selectedPlan?.groupLimit ? `${selectedPlan.groupLimit} grupos ativos` : 'Grupos ilimitados'"></p>
               </div>
-              <p class="text-xl font-bold text-primary">
-                R$ <span x-text="selectedPlan ? (selectedPlan.priceInCents / 100).toFixed(2).replace('.', ',') : ''"></span><span class="text-sm font-normal text-gray-500">/mês</span>
-              </p>
+              <div class="text-right">
+                <template x-if="isTrial">
+                  <div>
+                    <p class="text-xl font-bold text-emerald-600">R$ 0</p>
+                    <p class="text-xs text-gray-500">nos primeiros 7 dias</p>
+                    <p class="text-xs text-gray-400">depois R$ <span x-text="selectedPlan ? ((selectedPlan.promotionalPriceInCents || selectedPlan.priceInCents) / 100).toFixed(2).replace('.', ',') : ''"></span>/mês</p>
+                  </div>
+                </template>
+                <template x-if="!isTrial">
+                  <div>
+                    <template x-if="selectedPlan?.promotionalPriceInCents">
+                      <div>
+                        <span class="text-sm text-gray-400 line-through">R$ <span x-text="selectedPlan ? (selectedPlan.priceInCents / 100).toFixed(2).replace('.', ',') : ''"></span></span>
+                        <p class="text-xl font-bold text-primary">
+                          R$ <span x-text="selectedPlan ? (selectedPlan.promotionalPriceInCents / 100).toFixed(2).replace('.', ',') : ''"></span><span class="text-sm font-normal text-gray-500">/mês</span>
+                        </p>
+                        <p class="text-xs text-emerald-600">por <span x-text="selectedPlan?.promotionalMonths"></span> meses</p>
+                      </div>
+                    </template>
+                    <template x-if="!selectedPlan?.promotionalPriceInCents">
+                      <p class="text-xl font-bold text-primary">
+                        R$ <span x-text="selectedPlan ? (selectedPlan.priceInCents / 100).toFixed(2).replace('.', ',') : ''"></span><span class="text-sm font-normal text-gray-500">/mês</span>
+                      </p>
+                    </template>
+                  </div>
+                </template>
+              </div>
             </div>
           </div>
 
@@ -343,6 +344,41 @@
                   placeholder="Como está no cartão"
                   class="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-primary focus:outline-none transition-colors"
                   :disabled="processingCheckout">
+              </div>
+
+              <!-- CPF / CNPJ -->
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1" x-text="checkoutForm.customerIdentityType"></label>
+                <div class="flex mb-2 rounded-lg overflow-hidden border-2 border-gray-200">
+                  <button type="button"
+                    @click="checkoutForm.customerIdentityType = 'CPF'; checkoutForm.customerIdentity = ''"
+                    class="flex-1 px-3 py-1.5 text-sm font-medium transition-colors"
+                    :class="checkoutForm.customerIdentityType === 'CPF' ? 'bg-primary text-white' : 'bg-white text-gray-600 hover:bg-gray-50'"
+                    :disabled="processingCheckout">
+                    CPF
+                  </button>
+                  <button type="button"
+                    @click="checkoutForm.customerIdentityType = 'CNPJ'; checkoutForm.customerIdentity = ''"
+                    class="flex-1 px-3 py-1.5 text-sm font-medium transition-colors"
+                    :class="checkoutForm.customerIdentityType === 'CNPJ' ? 'bg-primary text-white' : 'bg-white text-gray-600 hover:bg-gray-50'"
+                    :disabled="processingCheckout">
+                    CNPJ
+                  </button>
+                </div>
+                <template x-if="checkoutForm.customerIdentityType === 'CPF'">
+                  <input type="text" x-model="checkoutForm.customerIdentity"
+                    x-mask="999.999.999-99"
+                    placeholder="000.000.000-00"
+                    class="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-primary focus:outline-none transition-colors font-mono"
+                    :disabled="processingCheckout">
+                </template>
+                <template x-if="checkoutForm.customerIdentityType === 'CNPJ'">
+                  <input type="text" x-model="checkoutForm.customerIdentity"
+                    x-mask="99.999.999/9999-99"
+                    placeholder="00.000.000/0000-00"
+                    class="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-primary focus:outline-none transition-colors font-mono"
+                    :disabled="processingCheckout">
+                </template>
               </div>
 
               <!-- Card Number -->
@@ -407,15 +443,15 @@
               class="w-full mt-6 px-6 py-4 bg-gradient-to-r from-primary to-secondary text-white font-semibold rounded-xl transition-all hover:shadow-lg hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:shadow-none flex items-center justify-center gap-2">
               <span x-show="processingCheckout" class="spinner" style="width: 18px; height: 18px;"></span>
               <span x-show="!processingCheckout">
-                <i class="fa-solid fa-lock mr-2"></i>
-                Assinar
+                <i class="fa-solid mr-2" :class="isTrial ? 'fa-rocket' : 'fa-lock'"></i>
+                <span x-text="isTrial ? 'Iniciar Teste Gratuito' : 'Assinar'"></span>
               </span>
               <span x-show="processingCheckout">Processando...</span>
             </button>
 
             <p class="text-xs text-gray-400 text-center mt-3">
               <i class="fa-solid fa-shield-halved mr-1"></i>
-              Pagamento processado com segurança pela Cielo
+              <span x-text="isTrial ? 'Seu cartão será cadastrado mas não será cobrado agora.' : 'Pagamento processado com segurança pela Cielo'"></span>
             </p>
           </form>
         </div>
@@ -444,15 +480,18 @@
         subscription: null,
         plans: [],
         trialUsed: false,
-        startingTrial: false,
         loggingOut: false,
+        cancelingSubscription: false,
 
         // Checkout state
         selectedPlan: null,
         showCheckoutModal: false,
         processingCheckout: false,
+        isTrial: false,
         checkoutForm: {
           holder: '',
+          customerIdentity: '',
+          customerIdentityType: 'CPF',
           cardNumberFormatted: '',
           expirationDate: '',
           securityCode: '',
@@ -518,39 +557,15 @@
           }
         },
 
-        async startTrial() {
-          if (this.startingTrial || this.trialUsed) return;
-
-          this.startingTrial = true;
-          try {
-            const res = await this.authFetch('/subscription/trial', {
-              method: 'POST',
-            });
-            const data = await res.json();
-
-            if (data.success) {
-              this.showToast('Período de teste iniciado!', 'success');
-              await this.init();
-            } else {
-              this.showToast(data.error || 'Erro ao iniciar teste', 'error');
-              if (data.code === 'trial_already_used') {
-                this.trialUsed = true;
-              }
-            }
-          } catch (error) {
-            console.error('Error starting trial:', error);
-            this.showToast('Erro ao iniciar teste. Tente novamente.', 'error');
-          } finally {
-            this.startingTrial = false;
-          }
-        },
-
-        // Checkout
-        selectPlan(plan) {
+        // Checkout / Trial
+        selectPlan(plan, asTrial = false) {
           this.selectedPlan = plan;
+          this.isTrial = asTrial;
           this.showCheckoutModal = true;
           this.checkoutForm = {
             holder: '',
+            customerIdentity: '',
+            customerIdentityType: 'CPF',
             cardNumberFormatted: '',
             expirationDate: '',
             securityCode: '',
@@ -562,6 +577,7 @@
           if (this.processingCheckout) return;
           this.showCheckoutModal = false;
           this.selectedPlan = null;
+          this.isTrial = false;
         },
 
         detectCardBrand(cardNumber) {
@@ -611,10 +627,17 @@
         async processCheckout() {
           if (this.processingCheckout || !this.selectedPlan) return;
 
-          const { holder, cardNumberFormatted, expirationDate, securityCode, brand } = this.checkoutForm;
+          const { holder, customerIdentity, cardNumberFormatted, expirationDate, securityCode, brand } = this.checkoutForm;
 
-          if (!holder || !cardNumberFormatted || !expirationDate || !securityCode) {
+          if (!holder || !customerIdentity || !cardNumberFormatted || !expirationDate || !securityCode) {
             this.showToast('Preencha todos os campos do cartão.', 'error');
+            return;
+          }
+
+          const identityDigits = customerIdentity.replace(/\D/g, '');
+          const expectedLength = this.checkoutForm.customerIdentityType === 'CPF' ? 11 : 14;
+          if (identityDigits.length !== expectedLength) {
+            this.showToast(`${this.checkoutForm.customerIdentityType} inválido. Informe os ${expectedLength} dígitos.`, 'error');
             return;
           }
 
@@ -634,9 +657,11 @@
             return;
           }
 
+          const endpoint = this.isTrial ? '/subscription/trial' : '/subscription/checkout';
+
           this.processingCheckout = true;
           try {
-            const res = await this.authFetch('/subscription/checkout', {
+            const res = await this.authFetch(endpoint, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
@@ -647,6 +672,8 @@
                 securityCode,
                 brand,
                 customerName: holder,
+                customerIdentity: identityDigits,
+                customerIdentityType: this.checkoutForm.customerIdentityType,
               }),
             });
             const data = await res.json();
@@ -654,18 +681,50 @@
             if (data.success) {
               this.showCheckoutModal = false;
               this.selectedPlan = null;
-              this.showToast('Assinatura ativada com sucesso!', 'success');
+              const msg = this.isTrial ? 'Período de teste iniciado!' : 'Assinatura ativada com sucesso!';
+              this.isTrial = false;
+              this.showToast(msg, 'success');
               // Reload data
               this.loading = true;
               await this.init();
             } else {
-              this.showToast(data.error || 'Erro ao processar pagamento.', 'error');
+              this.showToast(data.error || 'Erro ao processar. Tente novamente.', 'error');
+              if (data.code === 'trial_already_used') {
+                this.trialUsed = true;
+              }
             }
           } catch (error) {
             console.error('Checkout error:', error);
-            this.showToast('Erro ao processar pagamento. Tente novamente.', 'error');
+            this.showToast('Erro ao processar. Tente novamente.', 'error');
           } finally {
             this.processingCheckout = false;
+          }
+        },
+
+        async cancelSubscription() {
+          if (this.cancelingSubscription) return;
+
+          if (!confirm('Tem certeza que deseja cancelar? Você perderá o acesso ao plano.')) return;
+
+          this.cancelingSubscription = true;
+          try {
+            const res = await this.authFetch('/subscription/cancel', {
+              method: 'POST',
+            });
+            const data = await res.json();
+
+            if (data.success) {
+              this.showToast('Assinatura cancelada.', 'success');
+              this.loading = true;
+              await this.init();
+            } else {
+              this.showToast(data.error || 'Erro ao cancelar.', 'error');
+            }
+          } catch (error) {
+            console.error('Cancel error:', error);
+            this.showToast('Erro ao cancelar. Tente novamente.', 'error');
+          } finally {
+            this.cancelingSubscription = false;
           }
         },
 
@@ -695,7 +754,7 @@
           this.toast = { visible: true, message, type };
           setTimeout(() => {
             this.toast.visible = false;
-          }, 3000);
+          }, type === 'error' ? 5000 : 3000);
         },
       };
     }

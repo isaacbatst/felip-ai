@@ -42,20 +42,23 @@ interface SubscriptionDataResponse {
     cancelReason: string | null;
     trialUsed: boolean;
     extraGroups: number;
+    promotionalPaymentsRemaining: number;
     plan: {
       id: number;
       name: string;
       displayName: string;
       priceInCents: number;
-      groupLimit: number;
+      groupLimit: number | null;
       durationDays: number | null;
+      promotionalPriceInCents: number | null;
+      promotionalMonths: number | null;
       features: string[] | null;
     };
     // Card info
     cardLastFourDigits: string | null;
     cardBrand: string | null;
     // Calculated fields
-    totalGroupLimit: number;
+    totalGroupLimit: number | null;
     activeGroupsCount: number;
     daysRemaining: number;
   } | null;
@@ -67,22 +70,11 @@ interface PlansResponse {
     name: string;
     displayName: string;
     priceInCents: number;
-    groupLimit: number;
+    groupLimit: number | null;
+    promotionalPriceInCents: number | null;
+    promotionalMonths: number | null;
     features: string[] | null;
   }>;
-}
-
-interface TrialResponse {
-  subscription: {
-    id: number;
-    status: string;
-    plan: {
-      name: string;
-      displayName: string;
-    };
-    currentPeriodEnd: string;
-    daysRemaining: number;
-  };
 }
 
 /**
@@ -148,6 +140,7 @@ export class SubscriptionController {
         cancelReason: subscription.cancelReason,
         trialUsed: subscription.trialUsed,
         extraGroups: subscription.extraGroups,
+        promotionalPaymentsRemaining: subscription.promotionalPaymentsRemaining,
         plan: {
           id: subscription.plan.id,
           name: subscription.plan.name,
@@ -155,11 +148,15 @@ export class SubscriptionController {
           priceInCents: subscription.plan.priceInCents,
           groupLimit: subscription.plan.groupLimit,
           durationDays: subscription.plan.durationDays,
+          promotionalPriceInCents: subscription.plan.promotionalPriceInCents,
+          promotionalMonths: subscription.plan.promotionalMonths,
           features: subscription.plan.features,
         },
         cardLastFourDigits: subscription.cardLastFourDigits,
         cardBrand: subscription.cardBrand,
-        totalGroupLimit: subscription.plan.groupLimit + subscription.extraGroups,
+        totalGroupLimit: subscription.plan.groupLimit !== null
+          ? subscription.plan.groupLimit + subscription.extraGroups
+          : null,
         activeGroupsCount,
         daysRemaining,
       },
@@ -188,6 +185,8 @@ export class SubscriptionController {
         displayName: p.displayName,
         priceInCents: p.priceInCents,
         groupLimit: p.groupLimit,
+        promotionalPriceInCents: p.promotionalPriceInCents,
+        promotionalMonths: p.promotionalMonths,
         features: p.features,
       })),
     };
@@ -199,7 +198,7 @@ export class SubscriptionController {
   }
 
   /**
-   * POST /subscription/trial - Start a free trial
+   * POST /subscription/trial - Start a trial with card info via Cielo
    */
   @Post('trial')
   async startTrial(
@@ -207,30 +206,66 @@ export class SubscriptionController {
     @Res() res: Response,
   ): Promise<void> {
     const userId = req.user.userId;
+    const body = req.body as Partial<CheckoutRequestDto>;
+
+    // Validate required fields (same as checkout)
+    const requiredFields: (keyof CheckoutRequestDto)[] = [
+      'planId', 'cardNumber', 'holder', 'expirationDate', 'securityCode', 'brand', 'customerName', 'customerIdentity', 'customerIdentityType',
+    ];
+    const missingFields = requiredFields.filter((f) => !body[f]);
+    if (missingFields.length > 0) {
+      res.status(HttpStatus.BAD_REQUEST).json({
+        success: false,
+        error: `Campos obrigatórios faltando: ${missingFields.join(', ')}`,
+        code: 'missing_fields',
+      } satisfies ApiResponse);
+      return;
+    }
 
     try {
-      const result = await this.subscriptionService.startTrial(userId);
+      const result = await this.subscriptionService.checkout(userId, body as CheckoutRequestDto);
       const daysRemaining = await this.subscriptionService.getDaysRemaining(userId) ?? 0;
-
-      const response: TrialResponse = {
-        subscription: {
-          id: result.subscription.id,
-          status: result.subscription.status,
-          plan: {
-            name: result.subscription.plan.name,
-            displayName: result.subscription.plan.displayName,
-          },
-          currentPeriodEnd: result.subscription.currentPeriodEnd.toISOString(),
-          daysRemaining,
-        },
-      };
+      const activeGroups = await this.activeGroupsRepository.getActiveGroups(userId);
+      const activeGroupsCount = activeGroups?.length ?? 0;
 
       this.logger.log(`Trial started for user ${userId}`);
 
       res.status(HttpStatus.OK).json({
         success: true,
-        data: response,
-      } satisfies ApiResponse<TrialResponse>);
+        data: {
+          subscription: {
+            id: result.subscription.id,
+            status: result.subscription.status,
+            startDate: result.subscription.startDate.toISOString(),
+            currentPeriodStart: result.subscription.currentPeriodStart.toISOString(),
+            currentPeriodEnd: result.subscription.currentPeriodEnd.toISOString(),
+            nextBillingDate: result.subscription.nextBillingDate?.toISOString() ?? null,
+            canceledAt: null,
+            cancelReason: null,
+            trialUsed: result.subscription.trialUsed,
+            extraGroups: result.subscription.extraGroups,
+            promotionalPaymentsRemaining: result.subscription.promotionalPaymentsRemaining,
+            plan: {
+              id: result.subscription.plan.id,
+              name: result.subscription.plan.name,
+              displayName: result.subscription.plan.displayName,
+              priceInCents: result.subscription.plan.priceInCents,
+              groupLimit: result.subscription.plan.groupLimit,
+              durationDays: result.subscription.plan.durationDays,
+              promotionalPriceInCents: result.subscription.plan.promotionalPriceInCents,
+              promotionalMonths: result.subscription.plan.promotionalMonths,
+              features: result.subscription.plan.features,
+            },
+            totalGroupLimit: result.subscription.plan.groupLimit !== null
+              ? result.subscription.plan.groupLimit + result.subscription.extraGroups
+              : null,
+            activeGroupsCount,
+            daysRemaining,
+            cardLastFourDigits: result.subscription.cardLastFourDigits,
+            cardBrand: result.subscription.cardBrand,
+          },
+        },
+      } satisfies ApiResponse);
     } catch (error) {
       if (error instanceof SubscriptionError) {
         res.status(HttpStatus.BAD_REQUEST).json({
@@ -251,6 +286,43 @@ export class SubscriptionController {
   }
 
   /**
+   * POST /subscription/cancel - Cancel trial or subscription
+   */
+  @Post('cancel')
+  async cancelSubscription(
+    @Req() req: AuthenticatedRequest,
+    @Res() res: Response,
+  ): Promise<void> {
+    const userId = req.user.userId;
+
+    try {
+      await this.subscriptionService.cancelSubscription(userId);
+
+      this.logger.log(`Subscription canceled for user ${userId}`);
+
+      res.status(HttpStatus.OK).json({
+        success: true,
+      } satisfies ApiResponse);
+    } catch (error) {
+      if (error instanceof SubscriptionError) {
+        res.status(HttpStatus.BAD_REQUEST).json({
+          success: false,
+          error: error.message,
+          code: error.code,
+        } satisfies ApiResponse);
+        return;
+      }
+
+      this.logger.error('Error canceling subscription', { error, userId });
+      res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
+        success: false,
+        error: 'Erro ao cancelar assinatura. Tente novamente.',
+        code: 'cancel_failed',
+      } satisfies ApiResponse);
+    }
+  }
+
+  /**
    * POST /subscription/checkout - Subscribe to a paid plan via Cielo
    */
   @Post('checkout')
@@ -263,7 +335,7 @@ export class SubscriptionController {
 
     // Validate required fields
     const requiredFields: (keyof CheckoutRequestDto)[] = [
-      'planId', 'cardNumber', 'holder', 'expirationDate', 'securityCode', 'brand', 'customerName',
+      'planId', 'cardNumber', 'holder', 'expirationDate', 'securityCode', 'brand', 'customerName', 'customerIdentity', 'customerIdentityType',
     ];
     const missingFields = requiredFields.filter((f) => !body[f]);
     if (missingFields.length > 0) {
@@ -295,6 +367,7 @@ export class SubscriptionController {
             cancelReason: null,
             trialUsed: result.subscription.trialUsed,
             extraGroups: result.subscription.extraGroups,
+            promotionalPaymentsRemaining: result.subscription.promotionalPaymentsRemaining,
             plan: {
               id: result.subscription.plan.id,
               name: result.subscription.plan.name,
@@ -302,9 +375,13 @@ export class SubscriptionController {
               priceInCents: result.subscription.plan.priceInCents,
               groupLimit: result.subscription.plan.groupLimit,
               durationDays: result.subscription.plan.durationDays,
+              promotionalPriceInCents: result.subscription.plan.promotionalPriceInCents,
+              promotionalMonths: result.subscription.plan.promotionalMonths,
               features: result.subscription.plan.features,
             },
-            totalGroupLimit: result.subscription.plan.groupLimit + result.subscription.extraGroups,
+            totalGroupLimit: result.subscription.plan.groupLimit !== null
+              ? result.subscription.plan.groupLimit + result.subscription.extraGroups
+              : null,
             activeGroupsCount,
             daysRemaining,
             cardLastFourDigits: result.subscription.cardLastFourDigits,

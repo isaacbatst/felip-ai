@@ -249,8 +249,10 @@ export const subscriptionPlans = pgTable(
     name: text('name').notNull().unique(), // Internal name: 'trial', 'starter', 'pro', 'scale'
     displayName: text('display_name').notNull(), // User-facing name: 'Período de Teste', 'Starter', etc.
     priceInCents: integer('price_in_cents').notNull(), // Price in cents (0 for trial)
-    groupLimit: integer('group_limit').notNull(), // Max groups allowed
+    groupLimit: integer('group_limit'), // Max groups allowed (NULL = unlimited)
     durationDays: integer('duration_days'), // NULL for recurring plans, number for fixed-term (e.g., 7 for trial)
+    promotionalPriceInCents: integer('promotional_price_in_cents'), // Discounted price during promo (NULL = no promo)
+    promotionalMonths: integer('promotional_months'), // How many months promo lasts (NULL = no promo)
     features: jsonb('features'), // JSON array of feature strings
     isActive: boolean('is_active').default(true).notNull(), // Whether plan is available for new subscriptions
     createdAt: timestamp('created_at').defaultNow().notNull(),
@@ -288,6 +290,8 @@ export const subscriptions = pgTable(
     cancelReason: text('cancel_reason'),
     // Trial tracking
     trialUsed: boolean('trial_used').default(false).notNull(),
+    // Promotional payments countdown (0 = no promo active)
+    promotionalPaymentsRemaining: integer('promotional_payments_remaining').default(0).notNull(),
     // Extra groups add-on
     extraGroups: integer('extra_groups').default(0).notNull(),
     // Timestamps
