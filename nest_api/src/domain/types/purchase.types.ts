@@ -47,9 +47,9 @@ export const PurchaseRequestSchema = z.object({
 const ProposalSchema = z.object({
   quantity: z
     .number()
-    .positive()
+    .min(1000)
     .describe(
-      'Quantidade de milhas. Sufixo k retorna milhares. Exemplos: 26.1k => 26100, 34.500k => 34500, 100,212k => 100212. Sufixo kk retorna milhões. Exemplos: 25kk => 25000000. Sem sufixo depende da quantidade. Exemplos: 10.400 => 10400, 12,5 => 12500.',
+      'Quantidade de milhas.'
     ),
   cpfCount: z.number().int().positive().describe('Número de CPFs/Passageiros/PAX, contando com bebês (ex: 2 para 2CPF, 4 para 3CPF + 1 bebê/bb/baby)'),
   acceptedPrices: z
