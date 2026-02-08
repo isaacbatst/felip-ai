@@ -520,7 +520,7 @@
           <div class="mb-4">
             <h4 class="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
               <span class="w-2 h-2 bg-emerald-500 rounded-full"></span>
-              Grupos Ativos (<span x-text="activeGroups.length"></span>)
+              Grupos Ativos (<span x-text="activeGroups.length"></span><span x-show="groupLimit > 0">/<span x-text="groupLimit"></span></span>)
             </h4>
             <div class="flex flex-col gap-2">
               <template x-for="group in activeGroups" :key="group.id">
@@ -557,6 +557,16 @@
           </div>
         </template>
 
+        <!-- Group Limit Warning -->
+        <template x-if="isGroupLimitReached && inactiveGroups.length > 0">
+          <div class="p-4 bg-amber-50 border border-amber-200 rounded-xl mb-2">
+            <div class="flex items-center gap-2">
+              <i class="fa-solid fa-triangle-exclamation text-amber-500"></i>
+              <p class="text-amber-700 text-sm font-medium">Limite de grupos atingido (<span x-text="activeGroups.length"></span>/<span x-text="groupLimit"></span>). Desative um grupo para ativar outro ou faça upgrade do seu plano.</p>
+            </div>
+          </div>
+        </template>
+
         <!-- Available Groups -->
         <template x-if="inactiveGroups.length > 0">
           <div>
@@ -578,9 +588,10 @@
                       </div>
                     </div>
                     <button type="button"
-                      class="px-3 py-2 text-sm font-medium rounded-lg bg-emerald-100 text-emerald-600 hover:bg-emerald-200 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                      class="px-3 py-2 text-sm font-medium rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                      :class="isGroupLimitReached ? 'bg-gray-100 text-gray-400' : 'bg-emerald-100 text-emerald-600 hover:bg-emerald-200'"
                       @click="activateGroup(group.id)"
-                      :disabled="activatingGroupId === group.id">
+                      :disabled="activatingGroupId === group.id || isGroupLimitReached">
                       <span x-show="activatingGroupId === group.id" class="spinner" style="width: 14px; height: 14px;"></span>
                       <span x-show="activatingGroupId !== group.id"><i class="fa-solid fa-plus mr-1"></i> <span class="hidden md:inline">Ativar</span></span>
                     </button>
@@ -823,6 +834,7 @@
 
         // Groups state
         availableGroups: [],
+        groupLimit: 0,
         loadingGroups: false,
         loadingAvailableGroups: false,
         groupsError: false,
@@ -942,6 +954,10 @@
 
         get inactiveGroups() {
           return this.availableGroups.filter(g => !g.isActive);
+        },
+
+        get isGroupLimitReached() {
+          return this.groupLimit > 0 && this.activeGroups.length >= this.groupLimit;
         },
 
         // ============================================================================
@@ -1453,6 +1469,7 @@
             
             if (data.success) {
               this.availableGroups = data.data.groups;
+              this.groupLimit = data.data.groupLimit || 0;
               this.groupsFetched = true;
             } else {
               this.groupsError = true;
@@ -1491,7 +1508,10 @@
               }
               this.showToast('Grupo ativado com sucesso!', 'success');
             } else {
-              if (data.error === 'group_not_found') {
+              if (data.error === 'group_limit_reached') {
+                this.groupLimit = data.data?.limit ?? this.groupLimit;
+                this.showToast(`Limite de grupos atingido (${data.data?.currentCount ?? this.activeGroups.length}/${data.data?.limit ?? this.groupLimit}). Faça upgrade do plano para ativar mais grupos.`, 'error');
+              } else if (data.error === 'group_not_found') {
                 this.showToast('Grupo não encontrado', 'error');
               } else if (data.error === 'not_a_group') {
                 this.showToast('Este chat não é um grupo', 'error');

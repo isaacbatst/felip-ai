@@ -138,6 +138,8 @@ interface ActiveGroupsResponse {
 
 interface AvailableGroupsResponse {
   groups: GroupResponse[];
+  groupLimit: number;
+  activeGroupsCount: number;
 }
 
 interface BotStatusResponse {
@@ -765,9 +767,11 @@ export class DashboardController {
         isActive: activeGroupsSet.has(group.id),
       }));
 
+      const groupLimit = await this.subscriptionService.getGroupLimit(userId);
+
       res.status(HttpStatus.OK).json({
         success: true,
-        data: { groups },
+        data: { groups, groupLimit, activeGroupsCount: activeGroupIds?.length ?? 0 },
       } satisfies ApiResponse<AvailableGroupsResponse>);
     } catch (error) {
       this.logger.error('Error fetching available groups', { error, userId });
@@ -831,6 +835,23 @@ export class DashboardController {
           error: 'not_a_group',
         } satisfies ApiResponse);
         return;
+      }
+
+      // Check group limit (skip if group is already active — idempotent)
+      const activeGroupIds = await this.activeGroupsRepository.getActiveGroups(userId);
+      const alreadyActive = activeGroupIds?.includes(groupIdNum);
+      if (!alreadyActive) {
+        const activeGroupsCount = activeGroupIds?.length ?? 0;
+        const canAdd = await this.subscriptionService.canAddGroup(userId, activeGroupsCount);
+        if (!canAdd) {
+          const limit = await this.subscriptionService.getGroupLimit(userId);
+          res.status(HttpStatus.FORBIDDEN).json({
+            success: false,
+            error: 'group_limit_reached',
+            data: { currentCount: activeGroupsCount, limit },
+          } satisfies ApiResponse);
+          return;
+        }
       }
 
       // Add to active groups
