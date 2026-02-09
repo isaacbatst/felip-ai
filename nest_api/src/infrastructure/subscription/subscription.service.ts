@@ -2,6 +2,7 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { SubscriptionRepository, SubscriptionData, SubscriptionWithPlan, SubscriptionStatus } from '@/infrastructure/persistence/subscription.repository';
 import { SubscriptionPlanRepository, SubscriptionPlanData } from '@/infrastructure/persistence/subscription-plan.repository';
 import { SubscriptionPaymentRepository } from '@/infrastructure/persistence/subscription-payment.repository';
+import { ActiveGroupsRepository } from '@/infrastructure/persistence/active-groups.repository';
 import { AppConfigService } from '@/config/app.config';
 import { CieloService } from '@/infrastructure/cielo/cielo.service';
 import type { CheckoutRequestDto, CieloWebhookPayload } from '@/infrastructure/cielo/cielo.types';
@@ -47,6 +48,7 @@ export class SubscriptionService implements OnModuleInit {
     private readonly subscriptionRepository: SubscriptionRepository,
     private readonly subscriptionPlanRepository: SubscriptionPlanRepository,
     private readonly subscriptionPaymentRepository: SubscriptionPaymentRepository,
+    private readonly activeGroupsRepository: ActiveGroupsRepository,
     private readonly appConfig: AppConfigService,
     private readonly cieloService: CieloService,
   ) {}
@@ -128,6 +130,17 @@ export class SubscriptionService implements OnModuleInit {
    */
   async hasUsedTrial(userId: string): Promise<boolean> {
     return this.subscriptionRepository.hasUsedTrial(userId);
+  }
+
+  /**
+   * Get payment history for a user's subscription
+   */
+  async getPaymentHistory(userId: string): Promise<import('@/infrastructure/persistence/subscription-payment.repository').SubscriptionPaymentData[]> {
+    const subscription = await this.subscriptionRepository.getByUserId(userId);
+    if (!subscription) {
+      return [];
+    }
+    return this.subscriptionPaymentRepository.getBySubscriptionId(subscription.id);
   }
 
   /**
@@ -270,6 +283,168 @@ export class SubscriptionService implements OnModuleInit {
     this.logger.log(`Checkout completed for user ${userId}, plan ${plan.name}`);
 
     return { success: true, subscription: result };
+  }
+
+  /**
+   * Update payment method: deactivate old Cielo recurrence and create new one
+   */
+  async updatePaymentMethod(userId: string, dto: CheckoutRequestDto): Promise<SubscriptionWithPlan> {
+    const existing = await this.subscriptionRepository.getByUserId(userId);
+    if (!existing) {
+      throw new SubscriptionError('Nenhuma assinatura encontrada.', 'no_subscription');
+    }
+    if (existing.status !== 'active' && existing.status !== 'trialing' && existing.status !== 'past_due') {
+      throw new SubscriptionError('Assinatura não está ativa.', 'subscription_not_active');
+    }
+
+    const plan = await this.subscriptionPlanRepository.getPlanById(existing.planId);
+    if (!plan) {
+      throw new SubscriptionError('Plano não encontrado.', 'plan_not_found');
+    }
+
+    // Deactivate old Cielo recurrence
+    if (existing.cieloRecurrentPaymentId) {
+      try {
+        await this.cieloService.deactivateRecurrence(existing.cieloRecurrentPaymentId);
+        this.logger.log(`Deactivated old recurrence ${existing.cieloRecurrentPaymentId} for card update`);
+      } catch (error) {
+        this.logger.warn(`Failed to deactivate old recurrence for card update: ${error}`);
+      }
+    }
+
+    // Create new Cielo recurrence with AuthorizeNow=false, starting at next billing date
+    const nextBillingDate = existing.nextBillingDate ?? existing.currentPeriodEnd;
+    const startDateStr = nextBillingDate.toISOString().split('T')[0];
+
+    const chargeAmount = existing.promotionalPaymentsRemaining > 0
+      ? (plan.promotionalPriceInCents ?? plan.priceInCents)
+      : plan.priceInCents;
+
+    const merchantOrderId = `UPD-${userId}-${Date.now()}`;
+    const cieloRequest = {
+      MerchantOrderId: merchantOrderId,
+      Customer: {
+        Name: dto.customerName,
+        Identity: dto.customerIdentity.replace(/\D/g, ''),
+        IdentityType: dto.customerIdentityType,
+      },
+      Payment: {
+        Type: 'CreditCard' as const,
+        Amount: chargeAmount,
+        Installments: 1,
+        SoftDescriptor: 'FelipAI',
+        RecurrentPayment: {
+          AuthorizeNow: false as boolean,
+          Interval: 'Monthly' as const,
+          StartDate: startDateStr,
+        },
+        CreditCard: {
+          CardNumber: dto.cardNumber,
+          Holder: dto.holder,
+          ExpirationDate: dto.expirationDate,
+          SecurityCode: dto.securityCode,
+          Brand: dto.brand,
+          SaveCard: true,
+        },
+      },
+    };
+
+    const cieloResponse = await this.cieloService.createRecurrentPayment(cieloRequest);
+    const paymentStatus = cieloResponse.Payment.Status;
+
+    if (
+      paymentStatus !== CieloTransactionStatus.Authorized &&
+      paymentStatus !== CieloTransactionStatus.Confirmed &&
+      paymentStatus !== CieloTransactionStatus.Scheduled
+    ) {
+      throw new SubscriptionError(
+        this.getCieloErrorMessage(cieloResponse),
+        'update_payment_failed',
+      );
+    }
+
+    const cardNumber = dto.cardNumber.replace(/\s/g, '');
+    const last4 = cardNumber.slice(-4);
+
+    // Update only card-related fields (preserve subscription)
+    await this.subscriptionRepository.update(existing.id, {
+      cieloRecurrentPaymentId: cieloResponse.Payment.RecurrentPayment.RecurrentPaymentId,
+      cieloCardToken: cieloResponse.Payment.CreditCard.CardToken ?? undefined,
+      cardLastFourDigits: last4,
+      cardBrand: dto.brand,
+    });
+
+    this.logger.log(`Payment method updated for user ${userId}`);
+
+    const updated = await this.subscriptionRepository.getWithPlanByUserId(userId);
+    if (!updated) {
+      throw new SubscriptionError('Erro ao atualizar forma de pagamento.', 'update_payment_failed');
+    }
+    return updated;
+  }
+
+  /**
+   * Change subscription plan (upgrade/downgrade)
+   */
+  async changePlan(userId: string, newPlanId: number): Promise<SubscriptionWithPlan> {
+    const existing = await this.subscriptionRepository.getByUserId(userId);
+    if (!existing) {
+      throw new SubscriptionError('Nenhuma assinatura encontrada.', 'no_subscription');
+    }
+    if (existing.status !== 'active' && existing.status !== 'trialing') {
+      throw new SubscriptionError('Assinatura não está ativa.', 'subscription_not_active');
+    }
+    if (existing.planId === newPlanId) {
+      throw new SubscriptionError('Você já está neste plano.', 'same_plan');
+    }
+
+    const newPlan = await this.subscriptionPlanRepository.getPlanById(newPlanId);
+    if (!newPlan) {
+      throw new SubscriptionError('Plano não encontrado.', 'plan_not_found');
+    }
+    if (newPlan.name === 'trial' || !newPlan.isActive) {
+      throw new SubscriptionError('Plano não está disponível.', 'plan_not_found');
+    }
+
+    // Downgrade guard: check if active groups exceed new plan's limit
+    if (newPlan.groupLimit !== null) {
+      const activeGroups = await this.activeGroupsRepository.getActiveGroups(userId);
+      const activeGroupsCount = activeGroups?.length ?? 0;
+      const newLimit = newPlan.groupLimit + existing.extraGroups;
+      if (activeGroupsCount > newLimit) {
+        throw new SubscriptionError(
+          `Você tem ${activeGroupsCount} grupos ativos. O plano ${newPlan.displayName} permite no máximo ${newLimit}. Remova grupos antes de trocar.`,
+          'group_limit_exceeded',
+        );
+      }
+    }
+
+    // Update Cielo recurrence amount
+    if (existing.cieloRecurrentPaymentId) {
+      const newAmount = existing.promotionalPaymentsRemaining > 0
+        ? (newPlan.promotionalPriceInCents ?? newPlan.priceInCents)
+        : newPlan.priceInCents;
+
+      try {
+        await this.cieloService.updateRecurrenceAmount(existing.cieloRecurrentPaymentId, newAmount);
+        this.logger.log(`Updated recurrence amount to ${newAmount} for plan change`);
+      } catch (error) {
+        this.logger.error(`Failed to update Cielo amount for plan change: ${error}`);
+        throw new SubscriptionError('Erro ao atualizar plano na Cielo.', 'plan_change_failed');
+      }
+    }
+
+    await this.subscriptionRepository.update(existing.id, {
+      planId: newPlanId,
+    });
+
+    this.logger.log(`Plan changed for user ${userId} from ${existing.planId} to ${newPlanId}`);
+
+    const updated = await this.subscriptionRepository.getWithPlanByUserId(userId);
+    if (!updated) {
+      throw new SubscriptionError('Erro ao trocar de plano.', 'plan_change_failed');
+    }
+    return updated;
   }
 
   /**

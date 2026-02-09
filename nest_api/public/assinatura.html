@@ -54,8 +54,8 @@
     <!-- No Subscription State -->
     <template x-if="!subscription || subscription.status === 'expired' || subscription.status === 'canceled'">
       <div>
-        <!-- Trial CTA banner (only if trial not used yet) -->
-        <template x-if="!trialUsed">
+        <!-- Trial CTA banner (only for brand-new users with no subscription) -->
+        <template x-if="!subscription && !trialUsed">
           <div class="bg-gradient-to-br from-primary/10 to-secondary/10 border-2 border-primary/20 rounded-2xl p-6 mb-6 text-center">
             <div class="w-16 h-16 mx-auto mb-4 rounded-full bg-primary/20 flex items-center justify-center">
               <i class="fa-solid fa-gift text-primary text-2xl"></i>
@@ -73,7 +73,33 @@
               <i class="fa-solid fa-times-circle text-red-600 text-xl"></i>
               <h2 class="text-lg font-bold text-red-800" x-text="subscription.status === 'expired' ? 'Assinatura Expirada' : 'Assinatura Cancelada'"></h2>
             </div>
-            <p class="text-red-700 text-sm">Assine um plano abaixo para continuar usando.</p>
+            <template x-if="subscription.status === 'canceled' && subscription.currentPeriodEnd && new Date(subscription.currentPeriodEnd) > new Date()">
+              <p class="text-red-700 text-sm mb-2">Acesso disponivel ate <strong x-text="formatDate(subscription.currentPeriodEnd)"></strong>.</p>
+            </template>
+            <p class="text-red-700 text-sm">Escolha um plano abaixo para reativar sua assinatura.</p>
+          </div>
+        </template>
+
+        <!-- Payment History (canceled/expired) -->
+        <template x-if="payments.length > 0">
+          <div class="border-2 border-gray-200 rounded-xl p-5 mb-6">
+            <h3 class="font-semibold text-gray-800 mb-3 flex items-center gap-2">
+              <i class="fa-solid fa-receipt text-primary"></i>
+              Historico de Pagamentos
+            </h3>
+            <div class="space-y-2">
+              <template x-for="payment in payments" :key="payment.id">
+                <div class="flex items-center justify-between py-2 border-b border-gray-100 last:border-0">
+                  <div>
+                    <p class="text-sm text-gray-800 font-medium" x-text="`R$ ${(payment.amountInCents / 100).toFixed(2).replace('.', ',')}`"></p>
+                    <p class="text-xs text-gray-500" x-text="formatDate(payment.paidAt || payment.failedAt || payment.createdAt)"></p>
+                  </div>
+                  <span class="px-2 py-0.5 rounded-full text-xs font-semibold"
+                    :class="getPaymentStatusClass(payment.status)"
+                    x-text="getPaymentStatusLabel(payment.status)"></span>
+                </div>
+              </template>
+            </div>
           </div>
         </template>
 
@@ -84,7 +110,7 @@
             <template x-for="plan in plans" :key="plan.id">
               <div class="border-2 rounded-xl p-4 transition-all cursor-pointer"
                 :class="selectedPlan?.id === plan.id ? 'border-primary bg-primary/5' : 'border-gray-200 hover:border-primary/50'"
-                @click="selectPlan(plan, !trialUsed)">
+                @click="selectPlan(plan, !subscription && !trialUsed)">
                 <h4 class="font-bold text-gray-800" x-text="plan.displayName"></h4>
                 <template x-if="plan.promotionalPriceInCents">
                   <div class="my-2">
@@ -105,10 +131,10 @@
                 <p class="text-sm text-gray-600" x-text="plan.groupLimit ? `${plan.groupLimit} grupos ativos` : 'Grupos ilimitados'"></p>
                 <!-- Trial button or Subscribe button -->
                 <button
-                  @click.stop="selectPlan(plan, !trialUsed)"
+                  @click.stop="selectPlan(plan, !subscription && !trialUsed)"
                   class="w-full mt-4 px-4 py-2 rounded-lg transition-all font-medium"
                   :class="selectedPlan?.id === plan.id ? 'bg-primary text-white' : 'bg-primary/10 text-primary hover:bg-primary/20'">
-                  <span x-text="!trialUsed ? 'Teste Grátis 7 Dias' : (selectedPlan?.id === plan.id ? 'Selecionado' : 'Assinar')"></span>
+                  <span x-text="!subscription && !trialUsed ? 'Teste Grátis 7 Dias' : (selectedPlan?.id === plan.id ? 'Selecionado' : (subscription ? 'Reativar' : 'Assinar'))"></span>
                 </button>
               </div>
             </template>
@@ -141,7 +167,7 @@
                   x-text="getStatusLabel(subscription.status)">
                 </span>
               </div>
-              <p class="text-gray-600 text-sm" x-text="subscription.status === 'trialing' ? `R$ 0 agora, depois R$ ${(subscription.plan.priceInCents / 100).toFixed(2)}/mês` : `R$ ${(subscription.plan.priceInCents / 100).toFixed(2)}/mês`"></p>
+              <p class="text-gray-600 text-sm" x-text="subscription.status === 'trialing' ? `R$ 0 agora, depois R$ ${((subscription.plan.promotionalPriceInCents || subscription.plan.priceInCents) / 100).toFixed(2)}/mês` : `R$ ${(subscription.plan.priceInCents / 100).toFixed(2)}/mês`"></p>
             </div>
             <div class="w-12 h-12 rounded-full flex items-center justify-center"
               :class="{
@@ -199,16 +225,21 @@
               <i class="fa-solid fa-credit-card text-primary"></i>
               Forma de Pagamento
             </h3>
-            <div class="flex items-center gap-3">
-              <div class="w-10 h-7 bg-gray-100 rounded flex items-center justify-center">
-                <i class="fa-brands text-lg"
-                  :class="{
-                    'fa-cc-visa text-blue-600': subscription.cardBrand?.toLowerCase() === 'visa',
-                    'fa-cc-mastercard text-red-500': subscription.cardBrand?.toLowerCase() === 'master' || subscription.cardBrand?.toLowerCase() === 'mastercard',
-                    'fa-credit-card text-gray-500': !['visa', 'master', 'mastercard'].includes(subscription.cardBrand?.toLowerCase() || '')
-                  }"></i>
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-3">
+                <div class="w-10 h-7 bg-gray-100 rounded flex items-center justify-center">
+                  <i class="fa-brands text-lg"
+                    :class="{
+                      'fa-cc-visa text-blue-600': subscription.cardBrand?.toLowerCase() === 'visa',
+                      'fa-cc-mastercard text-red-500': subscription.cardBrand?.toLowerCase() === 'master' || subscription.cardBrand?.toLowerCase() === 'mastercard',
+                      'fa-credit-card text-gray-500': !['visa', 'master', 'mastercard'].includes(subscription.cardBrand?.toLowerCase() || '')
+                    }"></i>
+                </div>
+                <span class="text-gray-800 font-medium" x-text="`${subscription.cardBrand} **** ${subscription.cardLastFourDigits}`"></span>
               </div>
-              <span class="text-gray-800 font-medium" x-text="`${subscription.cardBrand} **** ${subscription.cardLastFourDigits}`"></span>
+              <button @click="openUpdateCard()" class="text-sm text-primary hover:text-primary/80 transition-colors font-medium">
+                <i class="fa-solid fa-pen mr-1"></i>Alterar
+              </button>
             </div>
           </div>
         </template>
@@ -255,15 +286,49 @@
           </div>
         </div>
 
-        <!-- Actions for trialing users -->
-        <template x-if="subscription.status === 'trialing'">
+        <!-- Change Plan button -->
+        <template x-if="subscription.status === 'active' || subscription.status === 'trialing'">
+          <div class="text-center mb-6">
+            <button @click="showChangePlanModal = true"
+              class="px-4 py-2 rounded-lg text-sm font-medium transition-all bg-primary/10 text-primary hover:bg-primary/20">
+              <i class="fa-solid fa-exchange-alt mr-1"></i>
+              Trocar Plano
+            </button>
+          </div>
+        </template>
+
+        <!-- Payment History -->
+        <template x-if="payments.length > 0">
+          <div class="border-2 border-gray-200 rounded-xl p-5 mb-6">
+            <h3 class="font-semibold text-gray-800 mb-3 flex items-center gap-2">
+              <i class="fa-solid fa-receipt text-primary"></i>
+              Historico de Pagamentos
+            </h3>
+            <div class="space-y-2">
+              <template x-for="payment in payments" :key="payment.id">
+                <div class="flex items-center justify-between py-2 border-b border-gray-100 last:border-0">
+                  <div>
+                    <p class="text-sm text-gray-800 font-medium" x-text="`R$ ${(payment.amountInCents / 100).toFixed(2).replace('.', ',')}`"></p>
+                    <p class="text-xs text-gray-500" x-text="formatDate(payment.paidAt || payment.failedAt || payment.createdAt)"></p>
+                  </div>
+                  <span class="px-2 py-0.5 rounded-full text-xs font-semibold"
+                    :class="getPaymentStatusClass(payment.status)"
+                    x-text="getPaymentStatusLabel(payment.status)"></span>
+                </div>
+              </template>
+            </div>
+          </div>
+        </template>
+
+        <!-- Cancel action -->
+        <template x-if="subscription.status === 'trialing' || subscription.status === 'active' || subscription.status === 'past_due'">
           <div class="text-center pt-4">
             <button
               @click="cancelSubscription()"
               :disabled="cancelingSubscription"
               class="text-sm text-red-500 hover:text-red-700 transition-colors disabled:opacity-50">
               <i class="fa-solid fa-times-circle mr-1"></i>
-              <span x-show="!cancelingSubscription">Cancelar Teste</span>
+              <span x-show="!cancelingSubscription" x-text="subscription.status === 'trialing' ? 'Cancelar Teste' : 'Cancelar Assinatura'"></span>
               <span x-show="cancelingSubscription">Cancelando...</span>
             </button>
           </div>
@@ -289,8 +354,8 @@
           <!-- Modal Header -->
           <div class="flex justify-between items-center mb-6">
             <h2 class="text-xl font-bold text-gray-800">
-              <i class="fa-solid mr-2 text-primary" :class="isTrial ? 'fa-gift' : 'fa-lock'"></i>
-              <span x-text="isTrial ? 'Iniciar Teste Gratuito' : 'Checkout'"></span>
+              <i class="fa-solid mr-2 text-primary" :class="updateCardMode ? 'fa-credit-card' : (isTrial ? 'fa-gift' : 'fa-lock')"></i>
+              <span x-text="updateCardMode ? 'Alterar Cartao' : (isTrial ? 'Iniciar Teste Gratuito' : 'Checkout')"></span>
             </h2>
             <button @click="closeCheckoutModal()" class="text-gray-400 hover:text-gray-600 transition-colors">
               <i class="fa-solid fa-times text-xl"></i>
@@ -298,7 +363,7 @@
           </div>
 
           <!-- Plan Summary -->
-          <div class="bg-gray-50 rounded-xl p-4 mb-6">
+          <div class="bg-gray-50 rounded-xl p-4 mb-6" x-show="!updateCardMode">
             <div class="flex justify-between items-center">
               <div>
                 <p class="font-semibold text-gray-800" x-text="selectedPlan?.displayName"></p>
@@ -443,17 +508,85 @@
               class="w-full mt-6 px-6 py-4 bg-gradient-to-r from-primary to-secondary text-white font-semibold rounded-xl transition-all hover:shadow-lg hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:shadow-none flex items-center justify-center gap-2">
               <span x-show="processingCheckout" class="spinner" style="width: 18px; height: 18px;"></span>
               <span x-show="!processingCheckout">
-                <i class="fa-solid mr-2" :class="isTrial ? 'fa-rocket' : 'fa-lock'"></i>
-                <span x-text="isTrial ? 'Iniciar Teste Gratuito' : 'Assinar'"></span>
+                <i class="fa-solid mr-2" :class="updateCardMode ? 'fa-credit-card' : (isTrial ? 'fa-rocket' : 'fa-lock')"></i>
+                <span x-text="updateCardMode ? 'Atualizar Cartao' : (isTrial ? 'Iniciar Teste Gratuito' : 'Assinar')"></span>
               </span>
               <span x-show="processingCheckout">Processando...</span>
             </button>
 
             <p class="text-xs text-gray-400 text-center mt-3">
               <i class="fa-solid fa-shield-halved mr-1"></i>
-              <span x-text="isTrial ? 'Seu cartão será cadastrado mas não será cobrado agora.' : 'Pagamento processado com segurança pela Cielo'"></span>
+              <span x-text="updateCardMode ? 'Seu novo cartao sera usado nas proximas cobranças.' : (isTrial ? 'Seu cartão será cadastrado mas não será cobrado agora.' : 'Pagamento processado com segurança pela Cielo')"></span>
             </p>
           </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- Change Plan Modal -->
+    <div x-show="showChangePlanModal" class="fixed inset-0 z-[900] flex items-center justify-center p-4"
+      x-transition:enter="transition ease-out duration-200"
+      x-transition:enter-start="opacity-0"
+      x-transition:enter-end="opacity-100"
+      x-transition:leave="transition ease-in duration-150"
+      x-transition:leave-start="opacity-100"
+      x-transition:leave-end="opacity-0">
+      <div class="absolute inset-0 bg-black/50" @click="if (!changingPlan) showChangePlanModal = false"></div>
+      <div class="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto" @click.stop>
+        <div class="p-6">
+          <div class="flex justify-between items-center mb-6">
+            <h2 class="text-xl font-bold text-gray-800">
+              <i class="fa-solid fa-exchange-alt mr-2 text-primary"></i>
+              Trocar Plano
+            </h2>
+            <button @click="if (!changingPlan) showChangePlanModal = false" class="text-gray-400 hover:text-gray-600 transition-colors">
+              <i class="fa-solid fa-times text-xl"></i>
+            </button>
+          </div>
+
+          <p class="text-sm text-gray-500 mb-4">Plano atual: <strong x-text="subscription?.plan?.displayName"></strong></p>
+
+          <div class="grid gap-3">
+            <template x-for="plan in plans" :key="plan.id">
+              <div class="border-2 rounded-xl p-4 transition-all"
+                :class="plan.id === subscription?.plan?.id ? 'border-gray-300 bg-gray-50' : 'border-gray-200 hover:border-primary/50 cursor-pointer'"
+                @click="if (plan.id !== subscription?.plan?.id && !changingPlan) submitChangePlan(plan.id)">
+                <div class="flex items-center justify-between">
+                  <div>
+                    <h4 class="font-bold text-gray-800 flex items-center gap-2">
+                      <span x-text="plan.displayName"></span>
+                      <template x-if="plan.id === subscription?.plan?.id">
+                        <span class="px-2 py-0.5 bg-primary/10 text-primary text-xs font-semibold rounded-full">Atual</span>
+                      </template>
+                      <template x-if="plan.id !== subscription?.plan?.id && plan.priceInCents > (subscription?.plan?.priceInCents ?? 0)">
+                        <span class="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-xs font-semibold rounded-full">Upgrade</span>
+                      </template>
+                      <template x-if="plan.id !== subscription?.plan?.id && plan.priceInCents < (subscription?.plan?.priceInCents ?? 0)">
+                        <span class="px-2 py-0.5 bg-amber-100 text-amber-700 text-xs font-semibold rounded-full">Downgrade</span>
+                      </template>
+                    </h4>
+                    <p class="text-sm text-gray-600" x-text="plan.groupLimit ? `${plan.groupLimit} grupos ativos` : 'Grupos ilimitados'"></p>
+                  </div>
+                  <div class="text-right">
+                    <template x-if="plan.promotionalPriceInCents">
+                      <div>
+                        <span class="text-sm text-gray-400 line-through">R$ <span x-text="(plan.priceInCents / 100).toFixed(0)"></span></span>
+                        <p class="text-lg font-bold text-primary">R$ <span x-text="(plan.promotionalPriceInCents / 100).toFixed(0)"></span><span class="text-sm font-normal text-gray-500">/mes</span></p>
+                      </div>
+                    </template>
+                    <template x-if="!plan.promotionalPriceInCents">
+                      <p class="text-lg font-bold text-primary">R$ <span x-text="(plan.priceInCents / 100).toFixed(0)"></span><span class="text-sm font-normal text-gray-500">/mes</span></p>
+                    </template>
+                  </div>
+                </div>
+              </div>
+            </template>
+          </div>
+
+          <div x-show="changingPlan" class="text-center mt-4">
+            <div class="spinner" style="width: 24px; height: 24px; border-width: 3px; margin: 0 auto;"></div>
+            <p class="text-sm text-gray-500 mt-2">Trocando plano...</p>
+          </div>
         </div>
       </div>
     </div>
@@ -482,12 +615,17 @@
         trialUsed: false,
         loggingOut: false,
         cancelingSubscription: false,
+        payments: [],
+        loadingPayments: false,
+        showChangePlanModal: false,
+        changingPlan: false,
 
         // Checkout state
         selectedPlan: null,
         showCheckoutModal: false,
         processingCheckout: false,
         isTrial: false,
+        updateCardMode: false,
         checkoutForm: {
           holder: '',
           customerIdentity: '',
@@ -538,6 +676,11 @@
             // Fetch available plans
             await this.fetchPlans();
 
+            // Fetch payment history
+            if (this.subscription) {
+              this.fetchPayments();
+            }
+
             this.loading = false;
           } catch (error) {
             console.error('Initialization error:', error);
@@ -557,6 +700,36 @@
           }
         },
 
+        async fetchPayments() {
+          this.loadingPayments = true;
+          try {
+            const res = await this.authFetch('/subscription/payments');
+            const data = await res.json();
+            if (data.success) {
+              this.payments = data.data.payments;
+            }
+          } catch (error) {
+            console.warn('Failed to fetch payments:', error);
+          } finally {
+            this.loadingPayments = false;
+          }
+        },
+
+        getPaymentStatusLabel(status) {
+          const labels = { 'paid': 'Pago', 'failed': 'Falhou', 'pending': 'Pendente', 'refunded': 'Reembolsado' };
+          return labels[status] || status;
+        },
+
+        getPaymentStatusClass(status) {
+          const classes = {
+            'paid': 'bg-emerald-100 text-emerald-700',
+            'failed': 'bg-red-100 text-red-700',
+            'pending': 'bg-amber-100 text-amber-700',
+            'refunded': 'bg-blue-100 text-blue-700',
+          };
+          return classes[status] || 'bg-gray-100 text-gray-700';
+        },
+
         // Checkout / Trial
         selectPlan(plan, asTrial = false) {
           this.selectedPlan = plan;
@@ -573,11 +746,28 @@
           };
         },
 
+        openUpdateCard() {
+          this.updateCardMode = true;
+          this.selectedPlan = this.subscription?.plan ?? null;
+          this.showCheckoutModal = true;
+          this.isTrial = false;
+          this.checkoutForm = {
+            holder: '',
+            customerIdentity: '',
+            customerIdentityType: 'CPF',
+            cardNumberFormatted: '',
+            expirationDate: '',
+            securityCode: '',
+            brand: '',
+          };
+        },
+
         closeCheckoutModal() {
           if (this.processingCheckout) return;
           this.showCheckoutModal = false;
           this.selectedPlan = null;
           this.isTrial = false;
+          this.updateCardMode = false;
         },
 
         detectCardBrand(cardNumber) {
@@ -657,7 +847,9 @@
             return;
           }
 
-          const endpoint = this.isTrial ? '/subscription/trial' : '/subscription/checkout';
+          const endpoint = this.updateCardMode
+            ? '/subscription/update-payment'
+            : (this.isTrial ? '/subscription/trial' : '/subscription/checkout');
 
           this.processingCheckout = true;
           try {
@@ -681,8 +873,11 @@
             if (data.success) {
               this.showCheckoutModal = false;
               this.selectedPlan = null;
-              const msg = this.isTrial ? 'Período de teste iniciado!' : 'Assinatura ativada com sucesso!';
+              const msg = this.updateCardMode
+                ? 'Cartao atualizado com sucesso!'
+                : (this.isTrial ? 'Período de teste iniciado!' : 'Assinatura ativada com sucesso!');
               this.isTrial = false;
+              this.updateCardMode = false;
               this.showToast(msg, 'success');
               // Reload data
               this.loading = true;
@@ -701,10 +896,40 @@
           }
         },
 
+        async submitChangePlan(planId) {
+          if (this.changingPlan) return;
+          this.changingPlan = true;
+          try {
+            const res = await this.authFetch('/subscription/change-plan', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ planId }),
+            });
+            const data = await res.json();
+
+            if (data.success) {
+              this.showChangePlanModal = false;
+              this.showToast('Plano alterado com sucesso!', 'success');
+              this.loading = true;
+              await this.init();
+            } else {
+              this.showToast(data.error || 'Erro ao trocar de plano.', 'error');
+            }
+          } catch (error) {
+            console.error('Change plan error:', error);
+            this.showToast('Erro ao trocar de plano. Tente novamente.', 'error');
+          } finally {
+            this.changingPlan = false;
+          }
+        },
+
         async cancelSubscription() {
           if (this.cancelingSubscription) return;
 
-          if (!confirm('Tem certeza que deseja cancelar? Você perderá o acesso ao plano.')) return;
+          const cancelMsg = this.subscription.status === 'trialing'
+            ? 'Tem certeza que deseja cancelar o teste? Você perderá o acesso ao plano.'
+            : `Tem certeza que deseja cancelar? Você terá acesso até ${this.formatDate(this.subscription.currentPeriodEnd)}.`;
+          if (!confirm(cancelMsg)) return;
 
           this.cancelingSubscription = true;
           try {

@@ -198,6 +198,33 @@ export class SubscriptionController {
   }
 
   /**
+   * GET /subscription/payments - Get payment history
+   */
+  @Get('payments')
+  async getPaymentHistory(
+    @Req() req: AuthenticatedRequest,
+    @Res() res: Response,
+  ): Promise<void> {
+    const userId = req.user.userId;
+
+    const payments = await this.subscriptionService.getPaymentHistory(userId);
+
+    res.status(HttpStatus.OK).json({
+      success: true,
+      data: {
+        payments: payments.map(p => ({
+          id: p.id,
+          amountInCents: p.amountInCents,
+          status: p.status,
+          paidAt: p.paidAt?.toISOString() ?? null,
+          failedAt: p.failedAt?.toISOString() ?? null,
+          createdAt: p.createdAt.toISOString(),
+        })),
+      },
+    } satisfies ApiResponse);
+  }
+
+  /**
    * POST /subscription/trial - Start a trial with card info via Cielo
    */
   @Post('trial')
@@ -223,7 +250,7 @@ export class SubscriptionController {
     }
 
     try {
-      const result = await this.subscriptionService.checkout(userId, body as CheckoutRequestDto);
+      const result = await this.subscriptionService.startTrial(userId, body as CheckoutRequestDto);
       const daysRemaining = await this.subscriptionService.getDaysRemaining(userId) ?? 0;
       const activeGroups = await this.activeGroupsRepository.getActiveGroups(userId);
       const activeGroupsCount = activeGroups?.length ?? 0;
@@ -286,6 +313,59 @@ export class SubscriptionController {
   }
 
   /**
+   * POST /subscription/update-payment - Update payment method
+   */
+  @Post('update-payment')
+  async updatePaymentMethod(
+    @Req() req: AuthenticatedRequest,
+    @Res() res: Response,
+  ): Promise<void> {
+    const userId = req.user.userId;
+    const body = req.body as Partial<CheckoutRequestDto>;
+
+    const requiredFields: (keyof CheckoutRequestDto)[] = [
+      'cardNumber', 'holder', 'expirationDate', 'securityCode', 'brand', 'customerName', 'customerIdentity', 'customerIdentityType',
+    ];
+    const missingFields = requiredFields.filter((f) => !body[f]);
+    if (missingFields.length > 0) {
+      res.status(HttpStatus.BAD_REQUEST).json({
+        success: false,
+        error: `Campos obrigatórios faltando: ${missingFields.join(', ')}`,
+        code: 'missing_fields',
+      } satisfies ApiResponse);
+      return;
+    }
+
+    try {
+      const updated = await this.subscriptionService.updatePaymentMethod(userId, body as CheckoutRequestDto);
+
+      res.status(HttpStatus.OK).json({
+        success: true,
+        data: {
+          cardLastFourDigits: updated.cardLastFourDigits,
+          cardBrand: updated.cardBrand,
+        },
+      } satisfies ApiResponse);
+    } catch (error) {
+      if (error instanceof SubscriptionError) {
+        res.status(HttpStatus.BAD_REQUEST).json({
+          success: false,
+          error: error.message,
+          code: error.code,
+        } satisfies ApiResponse);
+        return;
+      }
+
+      this.logger.error('Error updating payment method', { error, userId });
+      res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
+        success: false,
+        error: 'Erro ao atualizar forma de pagamento. Tente novamente.',
+        code: 'update_payment_failed',
+      } satisfies ApiResponse);
+    }
+  }
+
+  /**
    * POST /subscription/cancel - Cancel trial or subscription
    */
   @Post('cancel')
@@ -318,6 +398,87 @@ export class SubscriptionController {
         success: false,
         error: 'Erro ao cancelar assinatura. Tente novamente.',
         code: 'cancel_failed',
+      } satisfies ApiResponse);
+    }
+  }
+
+  /**
+   * POST /subscription/change-plan - Change subscription plan
+   */
+  @Post('change-plan')
+  async changePlan(
+    @Req() req: AuthenticatedRequest,
+    @Res() res: Response,
+  ): Promise<void> {
+    const userId = req.user.userId;
+    const body = req.body as { planId?: number };
+
+    if (!body.planId) {
+      res.status(HttpStatus.BAD_REQUEST).json({
+        success: false,
+        error: 'planId é obrigatório.',
+        code: 'missing_fields',
+      } satisfies ApiResponse);
+      return;
+    }
+
+    try {
+      const updated = await this.subscriptionService.changePlan(userId, body.planId);
+      const activeGroups = await this.activeGroupsRepository.getActiveGroups(userId);
+      const activeGroupsCount = activeGroups?.length ?? 0;
+      const daysRemaining = await this.subscriptionService.getDaysRemaining(userId) ?? 0;
+
+      res.status(HttpStatus.OK).json({
+        success: true,
+        data: {
+          subscription: {
+            id: updated.id,
+            status: updated.status,
+            startDate: updated.startDate.toISOString(),
+            currentPeriodStart: updated.currentPeriodStart.toISOString(),
+            currentPeriodEnd: updated.currentPeriodEnd.toISOString(),
+            nextBillingDate: updated.nextBillingDate?.toISOString() ?? null,
+            canceledAt: updated.canceledAt?.toISOString() ?? null,
+            cancelReason: updated.cancelReason,
+            trialUsed: updated.trialUsed,
+            extraGroups: updated.extraGroups,
+            promotionalPaymentsRemaining: updated.promotionalPaymentsRemaining,
+            plan: {
+              id: updated.plan.id,
+              name: updated.plan.name,
+              displayName: updated.plan.displayName,
+              priceInCents: updated.plan.priceInCents,
+              groupLimit: updated.plan.groupLimit,
+              durationDays: updated.plan.durationDays,
+              promotionalPriceInCents: updated.plan.promotionalPriceInCents,
+              promotionalMonths: updated.plan.promotionalMonths,
+              features: updated.plan.features,
+            },
+            totalGroupLimit: updated.plan.groupLimit !== null
+              ? updated.plan.groupLimit + updated.extraGroups
+              : null,
+            activeGroupsCount,
+            daysRemaining,
+            cardLastFourDigits: updated.cardLastFourDigits,
+            cardBrand: updated.cardBrand,
+          },
+        },
+      } satisfies ApiResponse);
+    } catch (error) {
+      if (error instanceof SubscriptionError) {
+        res.status(HttpStatus.BAD_REQUEST).json({
+          success: false,
+          error: error.message,
+          code: error.code,
+        } satisfies ApiResponse);
+        return;
+      }
+
+      this.logger.error('Error changing plan', { error, userId });
+      res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
+        success: false,
+        error: 'Erro ao trocar de plano. Tente novamente.',
+        code: 'plan_change_failed',
       } satisfies ApiResponse);
     }
   }
