@@ -643,7 +643,7 @@ export class DashboardController {
       return;
     }
 
-    if (typeof body.messageTemplateId !== 'number' || !COUNTER_OFFER_TEMPLATE_IDS.includes(body.messageTemplateId as 1 | 2 | 3)) {
+    if (typeof body.messageTemplateId !== 'number' || !COUNTER_OFFER_TEMPLATE_IDS.includes(body.messageTemplateId as (typeof COUNTER_OFFER_TEMPLATE_IDS)[number])) {
       res.status(HttpStatus.BAD_REQUEST).json({
         success: false,
         error: `messageTemplateId must be one of: ${COUNTER_OFFER_TEMPLATE_IDS.join(', ')}`,
@@ -651,7 +651,7 @@ export class DashboardController {
       return;
     }
 
-    if (typeof body.callToActionTemplateId !== 'number' || !CALL_TO_ACTION_TEMPLATE_IDS.includes(body.callToActionTemplateId as 1 | 2)) {
+    if (typeof body.callToActionTemplateId !== 'number' || !CALL_TO_ACTION_TEMPLATE_IDS.includes(body.callToActionTemplateId as (typeof CALL_TO_ACTION_TEMPLATE_IDS)[number])) {
       res.status(HttpStatus.BAD_REQUEST).json({
         success: false,
         error: `callToActionTemplateId must be one of: ${CALL_TO_ACTION_TEMPLATE_IDS.join(', ')}`,
