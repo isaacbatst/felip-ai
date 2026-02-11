@@ -85,7 +85,8 @@ export class CommandProcessor {
       
       this.connection = await connect(url);
       this.channel = await this.connection.createChannel();
-      
+      await this.channel.prefetch(10);
+
       // Set up event listeners for connection
       this.connection.on('error', (err) => {
         console.error(`[ERROR] CommandProcessor: Connection error: ${err.message}`);

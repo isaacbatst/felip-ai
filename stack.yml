@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   nest_api:
     image: ghcr.io/isaacbatst/felip-ai:${GIT_COMMIT_HASH:-latest}
@@ -30,7 +28,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
 
   rabbitmq:
-    image: rabbitmq:4.2.2-management
+    image: rabbitmq:4.2.3-management
     deploy:
       update_config:
         order: start-first

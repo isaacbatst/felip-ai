@@ -14,6 +14,7 @@ export class RabbitMQPublisherService implements OnModuleInit, OnModuleDestroy {
   private channel: Channel | null = null;
   private isConnecting = false;
   private reconnectTimeout: NodeJS.Timeout | null = null;
+  private readonly assertedQueues = new Set<string>();
   private readonly rabbitmqConfig: {
     urls: string[];
     queueOptions: {
@@ -114,6 +115,7 @@ export class RabbitMQPublisherService implements OnModuleInit, OnModuleDestroy {
     if (this.connection) {
       this.connection = null;
     }
+    this.assertedQueues.clear();
     this.scheduleReconnect();
   }
 
@@ -149,7 +151,12 @@ export class RabbitMQPublisherService implements OnModuleInit, OnModuleDestroy {
     }
 
     try {
-      await this.channel.assertQueue(queueName, this.rabbitmqConfig.queueOptions);
+      // Assert queue only on first use (per connection)
+      if (!this.assertedQueues.has(queueName)) {
+        await this.channel.assertQueue(queueName, this.rabbitmqConfig.queueOptions);
+        this.assertedQueues.add(queueName);
+      }
+
       const message = Buffer.from(JSON.stringify(data));
       this.channel.sendToQueue(queueName, message, {
         persistent: true,
@@ -173,6 +180,7 @@ export class RabbitMQPublisherService implements OnModuleInit, OnModuleDestroy {
         if (this.channel) {
           try {
             await this.channel.assertQueue(queueName, this.rabbitmqConfig.queueOptions);
+            this.assertedQueues.add(queueName);
             const message = Buffer.from(JSON.stringify(data));
             this.channel.sendToQueue(queueName, message, {
               persistent: true,

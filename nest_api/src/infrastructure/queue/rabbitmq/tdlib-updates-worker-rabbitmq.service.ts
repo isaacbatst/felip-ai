@@ -68,6 +68,7 @@ export class TdlibUpdatesWorkerRabbitMQ implements OnModuleInit, OnModuleDestroy
 
       this.connection = await connect(connectionUrl);
       this.channel = await this.connection.createChannel();
+      await this.channel.prefetch(10);
 
       // Assert queue exists
       await this.channel.assertQueue(this.queueName, this.rabbitmqConfig.queueOptions);
@@ -191,7 +192,6 @@ export class TdlibUpdatesWorkerRabbitMQ implements OnModuleInit, OnModuleDestroy
       }
       case 'command-response': {
         const { requestId, commandType, result, error, context } = jobData;
-        console.log(JSON.stringify(jobData, null, 2));
         if (requestId && context) {
           // Use context from response (echoed back from worker)
           await this.commandResponseHandler.handleResponse({
@@ -220,7 +220,6 @@ export class TdlibUpdatesWorkerRabbitMQ implements OnModuleInit, OnModuleDestroy
     }
 
     try {
-      await this.channel.assertQueue(this.queueName, this.rabbitmqConfig.queueOptions);
       const message = Buffer.from(JSON.stringify({ pattern, data }));
       this.channel.sendToQueue(this.queueName, message, {
         persistent: true,

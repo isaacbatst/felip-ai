@@ -179,10 +179,6 @@ export class UpdateHandler {
     }
 
     try {
-      await this.channel.assertQueue(this.queueName, {
-        durable: true,
-      });
-      
       // nest_api expects format: { pattern, data }
       const message = Buffer.from(JSON.stringify({ pattern, data }));
       this.channel.sendToQueue(this.queueName, message, {
@@ -190,17 +186,16 @@ export class UpdateHandler {
       });
     } catch (error) {
       console.error(`[ERROR] UpdateHandler: Error publishing to queue ${this.queueName}: ${error}`);
-      
+
       // Try to reconnect and retry once
       if (!this.isConnecting) {
         this.handleConnectionError();
-        
+
         // Wait a bit for reconnection
         await new Promise(resolve => setTimeout(resolve, 1000));
-        
+
         if (this.channel) {
           try {
-            await this.channel.assertQueue(this.queueName, { durable: true });
             const message = Buffer.from(JSON.stringify({ pattern, data }));
             this.channel.sendToQueue(this.queueName, message, { persistent: true });
             console.log(`[DEBUG] UpdateHandler: Retry successful for pattern ${pattern}`);
@@ -210,7 +205,7 @@ export class UpdateHandler {
           }
         }
       }
-      
+
       throw error;
     }
   }
