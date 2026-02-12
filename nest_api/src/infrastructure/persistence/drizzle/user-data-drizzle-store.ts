@@ -167,6 +167,7 @@ export class UserDataDrizzleStore extends UserDataRepository {
       userId: row.userId,
       programId: row.programId,
       maxPrice: row.maxPrice,
+      minQuantity: row.minQuantity,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     };
@@ -209,6 +210,7 @@ export class UserDataDrizzleStore extends UserDataRepository {
           userId,
           programId: mp.programId,
           maxPrice: mp.maxPrice,
+          minQuantity: mp.minQuantity ?? 0,
         })),
       );
     }
@@ -221,11 +223,13 @@ export class UserDataDrizzleStore extends UserDataRepository {
         userId,
         programId: input.programId,
         maxPrice: input.maxPrice,
+        minQuantity: input.minQuantity ?? 0,
       })
       .onConflictDoUpdate({
         target: [userMaxPrices.userId, userMaxPrices.programId],
         set: {
           maxPrice: input.maxPrice,
+          minQuantity: input.minQuantity ?? 0,
           updatedAt: new Date(),
         },
       })

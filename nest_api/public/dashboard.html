@@ -144,12 +144,9 @@
       <button class="px-5 py-3 border-none bg-transparent cursor-pointer text-sm font-medium border-b-3 -mb-0.5 transition-all flex flex-col gap-1 hover:text-primary max-md:px-3 max-md:py-2 max-md:flex-row max-md:items-center max-md:rounded-full max-md:border-0 max-md:mb-0" :class="activeSection === 'prices' ? 'text-primary border-b-primary max-md:bg-primary/10' : 'text-gray-500 border-transparent max-md:bg-gray-100'" @click="activeSection = 'prices'">
         <i class="fa-solid fa-chart-simple"></i> Preços
       </button>
-      <button class="px-5 py-3 border-none bg-transparent cursor-pointer text-sm font-medium border-b-3 -mb-0.5 transition-all flex flex-col gap-1 hover:text-primary max-md:px-3 max-md:py-2 max-md:flex-row max-md:items-center max-md:rounded-full max-md:border-0 max-md:mb-0" :class="activeSection === 'maxPrices' ? 'text-primary border-b-primary max-md:bg-primary/10' : 'text-gray-500 border-transparent max-md:bg-gray-100'"
-        @click="activeSection = 'maxPrices'">
-        <i class="fa-solid fa-lock"></i> Teto
-      </button>
-      <button class="px-5 py-3 border-none bg-transparent cursor-pointer text-sm font-medium border-b-3 -mb-0.5 transition-all flex flex-col gap-1 hover:text-primary max-md:px-3 max-md:py-2 max-md:flex-row max-md:items-center max-md:rounded-full max-md:border-0 max-md:mb-0" :class="activeSection === 'miles' ? 'text-primary border-b-primary max-md:bg-primary/10' : 'text-gray-500 border-transparent max-md:bg-gray-100'" @click="activeSection = 'miles'">
-        <i class="fa-solid fa-box"></i> Estoque
+      <button class="px-5 py-3 border-none bg-transparent cursor-pointer text-sm font-medium border-b-3 -mb-0.5 transition-all flex flex-col gap-1 hover:text-primary max-md:px-3 max-md:py-2 max-md:flex-row max-md:items-center max-md:rounded-full max-md:border-0 max-md:mb-0" :class="activeSection === 'limits' ? 'text-primary border-b-primary max-md:bg-primary/10' : 'text-gray-500 border-transparent max-md:bg-gray-100'"
+        @click="activeSection = 'limits'">
+        <i class="fa-solid fa-sliders"></i> Limites
       </button>
       <button class="px-5 py-3 border-none bg-transparent cursor-pointer text-sm font-medium border-b-3 -mb-0.5 transition-all flex flex-col gap-1 hover:text-primary max-md:px-3 max-md:py-2 max-md:flex-row max-md:items-center max-md:rounded-full max-md:border-0 max-md:mb-0" :class="activeSection === 'counterOffer' ? 'text-primary border-b-primary max-md:bg-primary/10' : 'text-gray-500 border-transparent max-md:bg-gray-100'" @click="activeSection = 'counterOffer'">
         <i class="fa-solid fa-message"></i> Proposta
@@ -247,6 +244,17 @@
             </template>
 
             <button class="add-card-btn w-full p-4 border-2 border-dashed border-primary rounded-xl bg-transparent text-primary text-base font-semibold cursor-pointer flex items-center justify-center gap-2 mt-3 transition-all hover:bg-primary/5 hover:border-secondary" @click="addPriceEntry(prog.id)">+ Adicionar Preço</button>
+
+            <!-- Ceiling Price (Preço Teto) -->
+            <div class="mt-4 p-4 bg-white border border-gray-200 rounded-xl">
+              <label class="block text-xs text-gray-500 mb-1.5 font-medium">Preço Teto (R$)</label>
+              <input type="text" inputmode="decimal"
+                :value="getMaxPrice(prog.id)?.maxPrice || ''"
+                @input="formatInput($event, true); updateMaxPrice(prog.id, $event.target.value)"
+                placeholder="Sem limite"
+                class="w-full p-3 border border-gray-200 rounded-lg text-base text-center transition-all">
+            </div>
+
             <button class="save-program-btn w-full p-4 border-2 border-emerald-500 rounded-xl bg-emerald-50 text-emerald-600 text-base font-semibold cursor-pointer flex items-center justify-center gap-2 mt-3 transition-all hover:bg-emerald-100 disabled:opacity-50 disabled:cursor-not-allowed"
               @click="saveProgramPrices(prog.id)"
               :disabled="savingProgramId === prog.id || !hasValidPricesForProgram(prog.id)">
@@ -258,20 +266,20 @@
 
     </div>
 
-    <!-- Max Prices Section -->
-    <div class="section mb-8 p-5 bg-gray-50 rounded-xl max-md:p-0 max-md:mb-6" x-show="activeSection === 'maxPrices'">
+    <!-- Limits Section (Stock + Minimum Quantity) -->
+    <div class="section mb-8 p-5 bg-gray-50 rounded-xl max-md:p-0 max-md:mb-6" x-show="activeSection === 'limits'">
       <div class="section-header flex justify-between items-center mb-4 max-md:mx-3 max-md:py-3 max-md:border-b max-md:border-gray-200">
-        <h2 class="text-gray-800 text-lg font-semibold flex items-center gap-1 max-md:text-base"><i class="fa-solid fa-lock"></i> Preço Máximo (PREÇO TETO)</h2>
+        <h2 class="text-gray-800 text-lg font-semibold flex items-center gap-1 max-md:text-base"><i class="fa-solid fa-sliders"></i> Limites por Programa</h2>
       </div>
       <p class="section-description text-gray-500 text-sm mb-4">
-        Define o preço máximo que será cobrado para cada programa
+        Configure estoque de milhas e quantidade mínima por programa
       </p>
 
       <!-- Program Tabs -->
       <div class="flex gap-2 mb-4 flex-wrap max-md:mx-3">
         <template x-for="p in normalPrograms" :key="p.id">
-          <button class="px-4 py-2 border-2 rounded-lg cursor-pointer text-sm font-medium transition-all" 
-            :class="selectedProgramId === p.id ? 'bg-linear-135 from-primary to-secondary text-white border-transparent' : 'border-gray-200 bg-white hover:border-primary hover:text-primary'" 
+          <button class="px-4 py-2 border-2 rounded-lg cursor-pointer text-sm font-medium transition-all"
+            :class="selectedProgramId === p.id ? 'bg-linear-135 from-primary to-secondary text-white border-transparent' : 'border-gray-200 bg-white hover:border-primary hover:text-primary'"
             @click="selectProgram(p.id)"
             x-text="p.name">
           </button>
@@ -280,55 +288,7 @@
 
       <div class="data-cards flex flex-col gap-3">
         <template x-for="prog in programsToShow" :key="prog.id">
-          <div class="data-card maxprice-data-card bg-white border border-gray-200 rounded-xl p-4 relative transition-all hover:shadow-md hover:border-gray-300" :data-program-id="prog.id">
-            <div class="data-card-header flex justify-between items-center mb-3">
-              <span class="data-card-title font-semibold text-sm text-gray-800">
-                <span x-text="prog.name"></span>
-                <span x-show="prog.isLiminar" class="inline-block py-0.5 px-2 bg-amber-100 text-amber-700 rounded text-[11px] font-semibold ml-2">LIMINAR</span>
-              </span>
-            </div>
-            <div class="data-card-fields flex gap-3">
-              <div class="data-card-field flex-1">
-                <label class="block text-xs text-gray-500 mb-1.5 font-medium">Preço Máximo (R$)</label>
-                <input type="text" inputmode="decimal" :value="getMaxPrice(prog.id)?.maxPrice || ''"
-                  @input="formatInput($event, true); updateMaxPrice(prog.id, $event.target.value)" placeholder="Sem limite" class="w-full p-3 border border-gray-200 rounded-lg text-base text-center transition-all">
-              </div>
-            </div>
-          </div>
-        </template>
-      </div>
-
-      <div class="btn-group flex gap-2.5 justify-end mt-4 max-md:justify-center">
-        <button type="button" class="bg-linear-135 from-primary to-secondary px-6 py-3 text-sm font-semibold border-none rounded-lg cursor-pointer transition-all text-white disabled:opacity-60 disabled:cursor-not-allowed hover:not-disabled:-translate-y-0.5 hover:not-disabled:shadow-lg" @click="saveMaxPrices()" :disabled="saving">
-          <span x-show="saving" class="spinner mr-2"></span>
-          Salvar Preços Máximos
-        </button>
-      </div>
-    </div>
-
-    <!-- Available Miles Section -->
-    <div class="section mb-8 p-5 bg-gray-50 rounded-xl max-md:p-0 max-md:mb-6" x-show="activeSection === 'miles'">
-      <div class="section-header flex justify-between items-center mb-4 max-md:mx-3 max-md:py-3 max-md:border-b max-md:border-gray-200">
-        <h2 class="text-gray-800 text-lg font-semibold flex items-center gap-1 max-md:text-base"><i class="fa-solid fa-box"></i> Estoque de Milhas</h2>
-      </div>
-      <p class="section-description text-gray-500 text-sm mb-4">
-        Configure a quantidade de milhas disponíveis para cada programa
-      </p>
-
-      <!-- Program Tabs -->
-      <div class="flex gap-2 mb-4 flex-wrap max-md:mx-3">
-        <template x-for="p in normalPrograms" :key="p.id">
-          <button class="px-4 py-2 border-2 rounded-lg cursor-pointer text-sm font-medium transition-all" 
-            :class="selectedProgramId === p.id ? 'bg-linear-135 from-primary to-secondary text-white border-transparent' : 'border-gray-200 bg-white hover:border-primary hover:text-primary'" 
-            @click="selectProgram(p.id)"
-            x-text="p.name">
-          </button>
-        </template>
-      </div>
-
-      <div class="data-cards flex flex-col gap-3">
-        <template x-for="prog in programsToShow" :key="prog.id">
-          <div class="data-card miles-data-card bg-white border border-gray-200 rounded-xl p-4 relative transition-all hover:shadow-md hover:border-gray-300" :data-program-id="prog.id">
+          <div class="data-card bg-white border border-gray-200 rounded-xl p-4 relative transition-all hover:shadow-md hover:border-gray-300" :data-program-id="prog.id">
             <div class="data-card-header flex justify-between items-center mb-3">
               <span class="data-card-title font-semibold text-sm text-gray-800">
                 <span x-text="prog.name"></span>
@@ -338,8 +298,17 @@
             <div class="data-card-fields flex gap-3">
               <div class="data-card-field flex-1">
                 <label class="block text-xs text-gray-500 mb-1.5 font-medium">Milhas Disponíveis</label>
-                <input type="text" inputmode="numeric" :value="getMiles(prog.id)?.availableMiles || ''"
-                  @input="formatInput($event, false); updateMiles(prog.id, $event.target.value)" placeholder="0" class="w-full p-3 border border-gray-200 rounded-lg text-base text-center transition-all">
+                <input type="text" inputmode="numeric"
+                  :value="formatThousands(getMiles(prog.id)?.availableMiles)"
+                  @input="formatThousandsInput($event); updateMiles(prog.id, $event.target.value.replace(/\./g, ''))"
+                  placeholder="0" class="w-full p-3 border border-gray-200 rounded-lg text-base text-center transition-all">
+              </div>
+              <div class="data-card-field flex-1">
+                <label class="block text-xs text-gray-500 mb-1.5 font-medium">Qtd. Mínima</label>
+                <input type="text" inputmode="numeric"
+                  :value="formatThousands(getMinQuantity(prog.id))"
+                  @input="formatThousandsInput($event); updateMinQuantity(prog.id, $event.target.value.replace(/\./g, ''))"
+                  placeholder="Ex: 50.000" class="w-full p-3 border border-gray-200 rounded-lg text-base text-center transition-all">
               </div>
             </div>
           </div>
@@ -347,9 +316,9 @@
       </div>
 
       <div class="btn-group flex gap-2.5 justify-end mt-4 max-md:justify-center">
-        <button type="button" class="bg-linear-135 from-primary to-secondary px-6 py-3 text-sm font-semibold border-none rounded-lg cursor-pointer transition-all text-white disabled:opacity-60 disabled:cursor-not-allowed hover:not-disabled:-translate-y-0.5 hover:not-disabled:shadow-lg" @click="saveMiles()" :disabled="saving">
+        <button type="button" class="bg-linear-135 from-primary to-secondary px-6 py-3 text-sm font-semibold border-none rounded-lg cursor-pointer transition-all text-white disabled:opacity-60 disabled:cursor-not-allowed hover:not-disabled:-translate-y-0.5 hover:not-disabled:shadow-lg" @click="saveLimits()" :disabled="saving">
           <span x-show="saving" class="spinner mr-2"></span>
-          Salvar Estoque
+          Salvar Limites
         </button>
       </div>
     </div>
@@ -787,7 +756,7 @@
         touchStartY: 0,
 
         // Section tabs state
-        activeSection: 'prices', // 'prices' | 'maxPrices' | 'miles'
+        activeSection: 'prices', // 'prices' | 'limits' | 'counterOffer' | 'groups' | 'subscription'
 
         // Price type tab state (for mobile normal/liminar tabs)
         priceTypeTab: 'normal', // 'normal' | 'liminar'
@@ -1710,6 +1679,9 @@
           this.savingProgramId = programId;
           try {
             await this.saveProgramPricesApi(programId, entries);
+            // Also save all max prices (includes ceiling price for this program)
+            const maxPrices = this.collectMaxPrices();
+            await this.saveMaxPricesApi(maxPrices);
             await this.fetchUserData();
             this.showToast('Preços salvos!', 'success');
           } catch (error) {
@@ -1719,28 +1691,15 @@
           }
         },
 
-        async saveMaxPrices() {
-          this.saving = true;
-          try {
-            const maxPrices = this.collectMaxPrices();
-            await this.saveMaxPricesApi(maxPrices);
-            await this.fetchUserData();
-            this.showToast('Preços máximos salvos!', 'success');
-            this.hasUnsavedChanges = false;
-          } catch (error) {
-            this.showToast('Erro ao salvar: ' + error.message, 'error');
-          } finally {
-            this.saving = false;
-          }
-        },
-
-        async saveMiles() {
+        async saveLimits() {
           this.saving = true;
           try {
             const miles = this.collectMiles();
             await this.saveMilesApi(miles);
+            const maxPrices = this.collectMaxPrices();
+            await this.saveMaxPricesApi(maxPrices);
             await this.fetchUserData();
-            this.showToast('Estoque salvo!', 'success');
+            this.showToast('Limites salvos!', 'success');
             this.hasUnsavedChanges = false;
           } catch (error) {
             this.showToast('Erro ao salvar: ' + error.message, 'error');
@@ -1777,8 +1736,8 @@
 
         collectMaxPrices() {
           return this.userData.maxPrices
-            .filter(mp => mp.maxPrice > 0)
-            .map(mp => ({ programId: mp.programId, maxPrice: mp.maxPrice }));
+            .filter(mp => mp.maxPrice > 0 || mp.minQuantity > 0)
+            .map(mp => ({ programId: mp.programId, maxPrice: mp.maxPrice, minQuantity: mp.minQuantity || 0 }));
         },
 
         collectMiles() {
@@ -1962,6 +1921,7 @@
               programId,
               programName: this.programs.find(p => p.id === programId)?.name ?? '',
               maxPrice: 0,
+              minQuantity: 0,
             };
             this.userData.maxPrices.push(entry);
           }
@@ -1971,6 +1931,17 @@
         updateMaxPrice(programId, value) {
           const entry = this.ensureMaxPriceEntry(programId);
           entry.maxPrice = this.parseNumber(value, true) || 0;
+          this.hasUnsavedChanges = true;
+        },
+
+        getMinQuantity(programId) {
+          const entry = this.userData.maxPrices.find(mp => mp.programId === programId);
+          return entry?.minQuantity || '';
+        },
+
+        updateMinQuantity(programId, value) {
+          const entry = this.ensureMaxPriceEntry(programId);
+          entry.minQuantity = parseInt(value, 10) || 0;
           this.hasUnsavedChanges = true;
         },
 
@@ -2110,6 +2081,17 @@
           const normalized = String(value).replace(',', '.').replace(/[^\d.]/g, '');
           const parsed = allowDecimal ? parseFloat(normalized) : parseInt(normalized, 10);
           return Number.isNaN(parsed) ? null : parsed;
+        },
+
+        formatThousands(value) {
+          if (!value || value === 0) return '';
+          return Number(value).toLocaleString('pt-BR');
+        },
+
+        formatThousandsInput(event) {
+          const raw = event.target.value.replace(/\D/g, '');
+          if (raw === '') { event.target.value = ''; return; }
+          event.target.value = Number(raw).toLocaleString('pt-BR');
         },
 
         formatInput(event, allowDecimal = true) {

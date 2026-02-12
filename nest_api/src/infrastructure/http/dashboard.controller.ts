@@ -63,6 +63,7 @@ interface UserDataResponse {
     programId: number;
     programName: string;
     maxPrice: number;
+    minQuantity: number;
   }>;
   availableMiles: Array<{
     programId: number;
@@ -283,6 +284,7 @@ export class DashboardController {
           programId: mp.programId,
           programName: programMap.get(mp.programId) ?? 'Unknown',
           maxPrice: mp.maxPrice,
+          minQuantity: mp.minQuantity,
         })),
         availableMiles: availableMiles.map((am) => ({
           programId: am.programId,

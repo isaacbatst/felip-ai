@@ -102,6 +102,17 @@ export class TelegramPurchaseHandler {
       return;
     }
 
+    // Check minimum quantity filter
+    const minQuantity = await this.priceTableProvider.getMinQuantityForProgram(loggedInUserId, program.id);
+    if (minQuantity && minQuantity > 0 && purchaseRequest.quantity < minQuantity) {
+      this.logger.warn('Purchase quantity below minimum', {
+        quantity: purchaseRequest.quantity,
+        minQuantity,
+        programId: program.id,
+      });
+      return;
+    }
+
     // Determine the effective program ID (normal or liminar) based on miles availability
     const effectiveProgramId = await this.getEffectiveProgramId(
       loggedInUserId,

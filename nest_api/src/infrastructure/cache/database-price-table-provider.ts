@@ -67,6 +67,14 @@ export class DatabasePriceTableProvider extends PriceTableProvider {
   }
 
   /**
+   * Get the minimum quantity (in thousands) for a specific program
+   */
+  async getMinQuantityForProgram(userId: string, programId: number): Promise<number | null> {
+    const data = await this.userDataRepository.getMaxPriceForProgram(userId, programId);
+    return data?.minQuantity ?? null;
+  }
+
+  /**
    * Busca a tabela de preços do usuário diretamente do banco de dados
    * @deprecated Use granular methods instead
    * @param userId ID do usuário para buscar os dados
