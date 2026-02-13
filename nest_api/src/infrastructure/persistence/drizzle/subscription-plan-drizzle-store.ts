@@ -209,10 +209,10 @@ export class SubscriptionPlanDrizzleStore extends SubscriptionPlanRepository {
         if (needsUpdate) {
           await this.updatePlan(existing.id, {
             isActive: plan.isActive,
-            priceInCents: plan.priceInCents,
+            // priceInCents: plan.priceInCents,
+            // promotionalPriceInCents: plan.promotionalPriceInCents,
             groupLimit: plan.groupLimit,
-            promotionalPriceInCents: plan.promotionalPriceInCents,
-            // promotionalMonths: plan.promotionalMonths,
+            promotionalMonths: plan.promotionalMonths,
           });
           this.logger.log(`Updated subscription plan ${plan.name}`);
         }
