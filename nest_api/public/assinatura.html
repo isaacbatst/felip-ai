@@ -188,24 +188,57 @@
           <div class="grid grid-cols-2 gap-4 mb-4">
             <div class="bg-white/50 rounded-xl p-3">
               <p class="text-xs text-gray-500 mb-1">Grupos Ativos</p>
-              <p class="text-lg font-bold text-gray-800">
-                <span x-text="subscription.activeGroupsCount"></span>
-                <template x-if="subscription.totalGroupLimit !== null">
-                  <span>
+              <template x-if="subscription.extraGroups > 0 && subscription.totalGroupLimit !== null">
+                <div>
+                  <p class="text-lg font-bold text-gray-800">
+                    <span x-text="subscription.activeGroupsCount"></span>
                     <span class="text-gray-400 font-normal">/</span>
-                    <span x-text="subscription.totalGroupLimit"></span>
-                  </span>
-                </template>
-                <template x-if="subscription.totalGroupLimit === null">
-                  <span class="text-gray-400 font-normal text-sm"> (ilimitados)</span>
-                </template>
-              </p>
+                    <span x-text="subscription.plan.groupLimit"></span>
+                    <span class="text-primary font-normal text-sm"> + <span x-text="subscription.extraGroups"></span> extras</span>
+                  </p>
+                  <p class="text-xs text-gray-500" x-text="`(${subscription.totalGroupLimit} total)`"></p>
+                </div>
+              </template>
+              <template x-if="subscription.extraGroups === 0 || subscription.totalGroupLimit === null">
+                <p class="text-lg font-bold text-gray-800">
+                  <span x-text="subscription.activeGroupsCount"></span>
+                  <template x-if="subscription.totalGroupLimit !== null">
+                    <span>
+                      <span class="text-gray-400 font-normal">/</span>
+                      <span x-text="subscription.totalGroupLimit"></span>
+                    </span>
+                  </template>
+                  <template x-if="subscription.totalGroupLimit === null">
+                    <span class="text-gray-400 font-normal text-sm"> (ilimitados)</span>
+                  </template>
+                </p>
+              </template>
             </div>
             <div class="bg-white/50 rounded-xl p-3">
               <p class="text-xs text-gray-500 mb-1" x-text="subscription.status === 'trialing' ? 'Será cobrado em' : 'Próxima Cobrança'"></p>
               <p class="text-lg font-bold text-gray-800" x-text="formatDate(subscription.nextBillingDate)"></p>
             </div>
           </div>
+
+          <!-- Extra Groups Actions -->
+          <template x-if="(subscription.status === 'active' || subscription.status === 'trialing') && subscription.totalGroupLimit !== null">
+            <div class="flex flex-wrap gap-2 mb-4">
+              <template x-if="subscription.extraGroups < 5">
+                <button @click="showExtraGroupsModal = true; extraGroupsAction = 'buy'"
+                  class="px-3 py-1.5 rounded-lg text-xs font-medium transition-all bg-primary/10 text-primary hover:bg-primary/20">
+                  <i class="fa-solid fa-plus mr-1"></i>
+                  Comprar mais grupos
+                </button>
+              </template>
+              <template x-if="subscription.extraGroups > 0">
+                <button @click="showExtraGroupsModal = true; extraGroupsAction = 'remove'"
+                  class="px-3 py-1.5 rounded-lg text-xs font-medium transition-all bg-gray-100 text-gray-600 hover:bg-gray-200">
+                  <i class="fa-solid fa-minus mr-1"></i>
+                  Remover grupos extras
+                </button>
+              </template>
+            </div>
+          </template>
 
           <!-- Trial Info -->
           <template x-if="subscription.status === 'trialing'">
@@ -591,6 +624,128 @@
       </div>
     </div>
 
+    <!-- Extra Groups Modal -->
+    <div x-show="showExtraGroupsModal" class="fixed inset-0 z-[900] flex items-center justify-center p-4"
+      x-transition:enter="transition ease-out duration-200"
+      x-transition:enter-start="opacity-0"
+      x-transition:enter-end="opacity-100"
+      x-transition:leave="transition ease-in duration-150"
+      x-transition:leave-start="opacity-100"
+      x-transition:leave-end="opacity-0">
+      <div class="absolute inset-0 bg-black/50" @click="if (!processingExtraGroups) showExtraGroupsModal = false"></div>
+      <div class="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm max-h-[90vh] overflow-y-auto" @click.stop>
+        <div class="p-6">
+          <div class="flex justify-between items-center mb-6">
+            <h2 class="text-xl font-bold text-gray-800">
+              <i class="fa-solid mr-2 text-primary" :class="extraGroupsAction === 'buy' ? 'fa-plus-circle' : 'fa-minus-circle'"></i>
+              <span x-text="extraGroupsAction === 'buy' ? 'Comprar Grupos Extras' : 'Remover Grupos Extras'"></span>
+            </h2>
+            <button @click="if (!processingExtraGroups) showExtraGroupsModal = false" class="text-gray-400 hover:text-gray-600 transition-colors">
+              <i class="fa-solid fa-times text-xl"></i>
+            </button>
+          </div>
+
+          <!-- Buy mode -->
+          <template x-if="extraGroupsAction === 'buy'">
+            <div>
+              <p class="text-sm text-gray-600 mb-4">R$ 29,00/mês por grupo extra. O valor será adicionado à sua próxima cobrança.</p>
+              <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-700 mb-2">Quantidade</label>
+                <div class="flex items-center gap-3">
+                  <button type="button" @click="if (extraGroupsCount > 1) extraGroupsCount--"
+                    class="w-10 h-10 rounded-lg border-2 border-gray-200 flex items-center justify-center text-gray-600 hover:border-primary hover:text-primary transition-colors"
+                    :disabled="extraGroupsCount <= 1 || processingExtraGroups">
+                    <i class="fa-solid fa-minus"></i>
+                  </button>
+                  <span class="text-2xl font-bold text-gray-800 w-8 text-center" x-text="extraGroupsCount"></span>
+                  <button type="button" @click="if (extraGroupsCount < maxExtraGroupsToBuy) extraGroupsCount++"
+                    class="w-10 h-10 rounded-lg border-2 border-gray-200 flex items-center justify-center text-gray-600 hover:border-primary hover:text-primary transition-colors"
+                    :disabled="extraGroupsCount >= maxExtraGroupsToBuy || processingExtraGroups">
+                    <i class="fa-solid fa-plus"></i>
+                  </button>
+                </div>
+              </div>
+              <div class="bg-gray-50 rounded-xl p-4 mb-4">
+                <div class="flex justify-between text-sm mb-1">
+                  <span class="text-gray-500">Adicional mensal</span>
+                  <span class="font-semibold text-gray-800" x-text="`R$ ${(extraGroupsCount * 29).toFixed(2).replace('.', ',')}`"></span>
+                </div>
+                <div class="flex justify-between text-sm">
+                  <span class="text-gray-500">Novo limite de grupos</span>
+                  <span class="font-semibold text-gray-800" x-text="`${(subscription?.plan?.groupLimit ?? 0) + (subscription?.extraGroups ?? 0) + extraGroupsCount}`"></span>
+                </div>
+              </div>
+              <button @click="purchaseExtraGroups()"
+                :disabled="processingExtraGroups"
+                class="w-full px-4 py-3 bg-gradient-to-r from-primary to-secondary text-white font-semibold rounded-xl transition-all hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
+                <span x-show="processingExtraGroups" class="spinner" style="width: 18px; height: 18px;"></span>
+                <span x-show="!processingExtraGroups">
+                  <i class="fa-solid fa-cart-plus mr-1"></i>
+                  Comprar <span x-text="extraGroupsCount"></span> grupo<span x-show="extraGroupsCount > 1">s</span> extra<span x-show="extraGroupsCount > 1">s</span>
+                </span>
+                <span x-show="processingExtraGroups">Processando...</span>
+              </button>
+            </div>
+          </template>
+
+          <!-- Remove mode -->
+          <template x-if="extraGroupsAction === 'remove'">
+            <div>
+              <p class="text-sm text-gray-600 mb-4">O valor será reduzido na sua próxima cobrança.</p>
+              <template x-if="maxExtraGroupsToRemove > 0">
+                <div>
+                  <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Quantidade a remover</label>
+                    <div class="flex items-center gap-3">
+                      <button type="button" @click="if (extraGroupsCount > 1) extraGroupsCount--"
+                        class="w-10 h-10 rounded-lg border-2 border-gray-200 flex items-center justify-center text-gray-600 hover:border-primary hover:text-primary transition-colors"
+                        :disabled="extraGroupsCount <= 1 || processingExtraGroups">
+                        <i class="fa-solid fa-minus"></i>
+                      </button>
+                      <span class="text-2xl font-bold text-gray-800 w-8 text-center" x-text="extraGroupsCount"></span>
+                      <button type="button" @click="if (extraGroupsCount < maxExtraGroupsToRemove) extraGroupsCount++"
+                        class="w-10 h-10 rounded-lg border-2 border-gray-200 flex items-center justify-center text-gray-600 hover:border-primary hover:text-primary transition-colors"
+                        :disabled="extraGroupsCount >= maxExtraGroupsToRemove || processingExtraGroups">
+                        <i class="fa-solid fa-plus"></i>
+                      </button>
+                    </div>
+                  </div>
+                  <div class="bg-gray-50 rounded-xl p-4 mb-4">
+                    <div class="flex justify-between text-sm mb-1">
+                      <span class="text-gray-500">Economia mensal</span>
+                      <span class="font-semibold text-emerald-600" x-text="`- R$ ${(extraGroupsCount * 29).toFixed(2).replace('.', ',')}`"></span>
+                    </div>
+                    <div class="flex justify-between text-sm">
+                      <span class="text-gray-500">Novo limite de grupos</span>
+                      <span class="font-semibold text-gray-800" x-text="`${(subscription?.totalGroupLimit ?? 0) - extraGroupsCount}`"></span>
+                    </div>
+                  </div>
+                  <button @click="removeExtraGroups()"
+                    :disabled="processingExtraGroups"
+                    class="w-full px-4 py-3 bg-red-500 text-white font-semibold rounded-xl transition-all hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
+                    <span x-show="processingExtraGroups" class="spinner" style="width: 18px; height: 18px;"></span>
+                    <span x-show="!processingExtraGroups">
+                      <i class="fa-solid fa-trash mr-1"></i>
+                      Remover <span x-text="extraGroupsCount"></span> grupo<span x-show="extraGroupsCount > 1">s</span> extra<span x-show="extraGroupsCount > 1">s</span>
+                    </span>
+                    <span x-show="processingExtraGroups">Processando...</span>
+                  </button>
+                </div>
+              </template>
+              <template x-if="maxExtraGroupsToRemove <= 0">
+                <div class="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                  <p class="text-sm text-amber-800">
+                    <i class="fa-solid fa-info-circle mr-1"></i>
+                    Não é possível remover grupos extras no momento. Todos os seus grupos estão em uso.
+                  </p>
+                </div>
+              </template>
+            </div>
+          </template>
+        </div>
+      </div>
+    </div>
+
     <!-- Toast Notification -->
     <div class="fixed bottom-[100px] left-1/2 -translate-x-1/2 px-6 py-3 rounded-3xl text-sm z-[1000] text-white transition-all duration-300"
       :class="{
@@ -619,6 +774,10 @@
         loadingPayments: false,
         showChangePlanModal: false,
         changingPlan: false,
+        showExtraGroupsModal: false,
+        extraGroupsAction: 'buy', // 'buy' or 'remove'
+        extraGroupsCount: 1,
+        processingExtraGroups: false,
 
         // Checkout state
         selectedPlan: null,
@@ -950,6 +1109,75 @@
             this.showToast('Erro ao cancelar. Tente novamente.', 'error');
           } finally {
             this.cancelingSubscription = false;
+          }
+        },
+
+        // Extra groups
+        get maxExtraGroupsToBuy() {
+          return 5 - (this.subscription?.extraGroups ?? 0);
+        },
+
+        get maxExtraGroupsToRemove() {
+          if (!this.subscription) return 0;
+          const totalLimit = this.subscription.totalGroupLimit ?? 0;
+          const activeCount = this.subscription.activeGroupsCount ?? 0;
+          const planLimit = this.subscription.plan?.groupLimit ?? 0;
+          // Can remove extras down to the point where limit still covers active groups
+          const minNeededExtras = Math.max(0, activeCount - planLimit);
+          return (this.subscription.extraGroups ?? 0) - minNeededExtras;
+        },
+
+        async purchaseExtraGroups() {
+          if (this.processingExtraGroups) return;
+          this.processingExtraGroups = true;
+          try {
+            const res = await this.authFetch('/subscription/addons/groups', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ count: this.extraGroupsCount }),
+            });
+            const data = await res.json();
+            if (data.success) {
+              this.showExtraGroupsModal = false;
+              this.showToast(`${this.extraGroupsCount} grupo(s) extra(s) adicionado(s)!`, 'success');
+              this.extraGroupsCount = 1;
+              this.loading = true;
+              await this.init();
+            } else {
+              this.showToast(data.error || 'Erro ao comprar grupos extras.', 'error');
+            }
+          } catch (error) {
+            console.error('Extra groups purchase error:', error);
+            this.showToast('Erro ao comprar grupos extras. Tente novamente.', 'error');
+          } finally {
+            this.processingExtraGroups = false;
+          }
+        },
+
+        async removeExtraGroups() {
+          if (this.processingExtraGroups) return;
+          this.processingExtraGroups = true;
+          try {
+            const res = await this.authFetch('/subscription/addons/groups/remove', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ count: this.extraGroupsCount }),
+            });
+            const data = await res.json();
+            if (data.success) {
+              this.showExtraGroupsModal = false;
+              this.showToast(`${this.extraGroupsCount} grupo(s) extra(s) removido(s).`, 'success');
+              this.extraGroupsCount = 1;
+              this.loading = true;
+              await this.init();
+            } else {
+              this.showToast(data.error || 'Erro ao remover grupos extras.', 'error');
+            }
+          } catch (error) {
+            console.error('Extra groups removal error:', error);
+            this.showToast('Erro ao remover grupos extras. Tente novamente.', 'error');
+          } finally {
+            this.processingExtraGroups = false;
           }
         },
 

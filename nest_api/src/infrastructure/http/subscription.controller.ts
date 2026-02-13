@@ -484,6 +484,108 @@ export class SubscriptionController {
   }
 
   /**
+   * POST /subscription/addons/groups - Purchase extra group slots
+   */
+  @Post('addons/groups')
+  async purchaseExtraGroups(
+    @Req() req: AuthenticatedRequest,
+    @Res() res: Response,
+  ): Promise<void> {
+    const userId = req.user.userId;
+    const body = req.body as { count?: number };
+
+    if (!body.count || body.count < 1) {
+      res.status(HttpStatus.BAD_REQUEST).json({
+        success: false,
+        error: 'Quantidade inválida.',
+        code: 'invalid_count',
+      } satisfies ApiResponse);
+      return;
+    }
+
+    try {
+      const updated = await this.subscriptionService.purchaseExtraGroups(userId, body.count);
+      const activeGroups = await this.activeGroupsRepository.getActiveGroups(userId);
+      const activeGroupsCount = activeGroups?.length ?? 0;
+      const daysRemaining = await this.subscriptionService.getDaysRemaining(userId) ?? 0;
+
+      res.status(HttpStatus.OK).json({
+        success: true,
+        data: {
+          subscription: this.formatSubscriptionResponse(updated, activeGroupsCount, daysRemaining),
+        },
+      } satisfies ApiResponse);
+    } catch (error) {
+      if (error instanceof SubscriptionError) {
+        res.status(HttpStatus.BAD_REQUEST).json({
+          success: false,
+          error: error.message,
+          code: error.code,
+        } satisfies ApiResponse);
+        return;
+      }
+
+      this.logger.error('Error purchasing extra groups', { error, userId });
+      res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
+        success: false,
+        error: 'Erro ao comprar grupos extras. Tente novamente.',
+        code: 'extra_groups_failed',
+      } satisfies ApiResponse);
+    }
+  }
+
+  /**
+   * POST /subscription/addons/groups/remove - Remove extra group slots
+   */
+  @Post('addons/groups/remove')
+  async removeExtraGroups(
+    @Req() req: AuthenticatedRequest,
+    @Res() res: Response,
+  ): Promise<void> {
+    const userId = req.user.userId;
+    const body = req.body as { count?: number };
+
+    if (!body.count || body.count < 1) {
+      res.status(HttpStatus.BAD_REQUEST).json({
+        success: false,
+        error: 'Quantidade inválida.',
+        code: 'invalid_count',
+      } satisfies ApiResponse);
+      return;
+    }
+
+    try {
+      const updated = await this.subscriptionService.removeExtraGroups(userId, body.count);
+      const activeGroups = await this.activeGroupsRepository.getActiveGroups(userId);
+      const activeGroupsCount = activeGroups?.length ?? 0;
+      const daysRemaining = await this.subscriptionService.getDaysRemaining(userId) ?? 0;
+
+      res.status(HttpStatus.OK).json({
+        success: true,
+        data: {
+          subscription: this.formatSubscriptionResponse(updated, activeGroupsCount, daysRemaining),
+        },
+      } satisfies ApiResponse);
+    } catch (error) {
+      if (error instanceof SubscriptionError) {
+        res.status(HttpStatus.BAD_REQUEST).json({
+          success: false,
+          error: error.message,
+          code: error.code,
+        } satisfies ApiResponse);
+        return;
+      }
+
+      this.logger.error('Error removing extra groups', { error, userId });
+      res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
+        success: false,
+        error: 'Erro ao remover grupos extras. Tente novamente.',
+        code: 'extra_groups_failed',
+      } satisfies ApiResponse);
+    }
+  }
+
+  /**
    * POST /subscription/checkout - Subscribe to a paid plan via Cielo
    */
   @Post('checkout')
@@ -567,5 +669,43 @@ export class SubscriptionController {
         code: 'checkout_failed',
       } satisfies ApiResponse);
     }
+  }
+
+  private formatSubscriptionResponse(
+    sub: import('@/infrastructure/persistence/subscription.repository').SubscriptionWithPlan,
+    activeGroupsCount: number,
+    daysRemaining: number,
+  ): SubscriptionDataResponse['subscription'] {
+    return {
+      id: sub.id,
+      status: sub.status,
+      startDate: sub.startDate.toISOString(),
+      currentPeriodStart: sub.currentPeriodStart.toISOString(),
+      currentPeriodEnd: sub.currentPeriodEnd.toISOString(),
+      nextBillingDate: sub.nextBillingDate?.toISOString() ?? null,
+      canceledAt: sub.canceledAt?.toISOString() ?? null,
+      cancelReason: sub.cancelReason,
+      trialUsed: sub.trialUsed,
+      extraGroups: sub.extraGroups,
+      promotionalPaymentsRemaining: sub.promotionalPaymentsRemaining,
+      plan: {
+        id: sub.plan.id,
+        name: sub.plan.name,
+        displayName: sub.plan.displayName,
+        priceInCents: sub.plan.priceInCents,
+        groupLimit: sub.plan.groupLimit,
+        durationDays: sub.plan.durationDays,
+        promotionalPriceInCents: sub.plan.promotionalPriceInCents,
+        promotionalMonths: sub.plan.promotionalMonths,
+        features: sub.plan.features,
+      },
+      cardLastFourDigits: sub.cardLastFourDigits,
+      cardBrand: sub.cardBrand,
+      totalGroupLimit: sub.plan.groupLimit !== null
+        ? sub.plan.groupLimit + sub.extraGroups
+        : null,
+      activeGroupsCount,
+      daysRemaining,
+    };
   }
 }

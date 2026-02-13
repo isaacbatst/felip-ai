@@ -8,6 +8,9 @@ import { CieloService } from '@/infrastructure/cielo/cielo.service';
 import type { CheckoutRequestDto, CieloWebhookPayload } from '@/infrastructure/cielo/cielo.types';
 import { CieloTransactionStatus } from '@/infrastructure/cielo/cielo.types';
 
+export const EXTRA_GROUP_PRICE_IN_CENTS = 2900; // R$29/month per extra group
+export const MAX_EXTRA_GROUPS = 5;
+
 /**
  * Error types for subscription operations
  */
@@ -316,9 +319,7 @@ export class SubscriptionService implements OnModuleInit {
     const nextBillingDate = existing.nextBillingDate ?? existing.currentPeriodEnd;
     const startDateStr = nextBillingDate.toISOString().split('T')[0];
 
-    const chargeAmount = existing.promotionalPaymentsRemaining > 0
-      ? (plan.promotionalPriceInCents ?? plan.priceInCents)
-      : plan.priceInCents;
+    const chargeAmount = this.calculateRecurrenceAmount(plan, existing.promotionalPaymentsRemaining, existing.extraGroups);
 
     const merchantOrderId = `UPD-${userId}-${Date.now()}`;
     const cieloRequest = {
@@ -421,9 +422,7 @@ export class SubscriptionService implements OnModuleInit {
 
     // Update Cielo recurrence amount
     if (existing.cieloRecurrentPaymentId) {
-      const newAmount = existing.promotionalPaymentsRemaining > 0
-        ? (newPlan.promotionalPriceInCents ?? newPlan.priceInCents)
-        : newPlan.priceInCents;
+      const newAmount = this.calculateRecurrenceAmount(newPlan, existing.promotionalPaymentsRemaining, existing.extraGroups);
 
       try {
         await this.cieloService.updateRecurrenceAmount(existing.cieloRecurrentPaymentId, newAmount);
@@ -443,6 +442,120 @@ export class SubscriptionService implements OnModuleInit {
     const updated = await this.subscriptionRepository.getWithPlanByUserId(userId);
     if (!updated) {
       throw new SubscriptionError('Erro ao trocar de plano.', 'plan_change_failed');
+    }
+    return updated;
+  }
+
+  /**
+   * Purchase extra group slots for a user
+   */
+  async purchaseExtraGroups(userId: string, count: number): Promise<SubscriptionWithPlan> {
+    if (count < 1) {
+      throw new SubscriptionError('Quantidade inválida.', 'invalid_count');
+    }
+
+    const existing = await this.subscriptionRepository.getByUserId(userId);
+    if (!existing) {
+      throw new SubscriptionError('Nenhuma assinatura encontrada.', 'no_subscription');
+    }
+    if (!this.isSubscriptionActive(existing.status)) {
+      throw new SubscriptionError('Assinatura não está ativa.', 'subscription_not_active');
+    }
+
+    const plan = await this.subscriptionPlanRepository.getPlanById(existing.planId);
+    if (!plan) {
+      throw new SubscriptionError('Plano não encontrado.', 'plan_not_found');
+    }
+    if (plan.groupLimit === null) {
+      throw new SubscriptionError('Plano Scale já possui grupos ilimitados.', 'unlimited_plan');
+    }
+
+    const newExtraGroups = existing.extraGroups + count;
+    if (newExtraGroups > MAX_EXTRA_GROUPS) {
+      throw new SubscriptionError(
+        `Máximo de ${MAX_EXTRA_GROUPS} grupos extras permitido. Você já tem ${existing.extraGroups}.`,
+        'max_extra_groups',
+      );
+    }
+
+    // Update Cielo recurrence amount
+    if (existing.cieloRecurrentPaymentId) {
+      const newAmount = this.calculateRecurrenceAmount(plan, existing.promotionalPaymentsRemaining, newExtraGroups);
+      try {
+        await this.cieloService.updateRecurrenceAmount(existing.cieloRecurrentPaymentId, newAmount);
+        this.logger.log(`Updated recurrence amount to ${newAmount} for extra groups purchase`);
+      } catch (error) {
+        this.logger.error(`Failed to update Cielo amount for extra groups: ${error}`);
+        throw new SubscriptionError('Erro ao atualizar grupos extras na Cielo.', 'extra_groups_failed');
+      }
+    }
+
+    await this.subscriptionRepository.update(existing.id, { extraGroups: newExtraGroups });
+    this.logger.log(`User ${userId} purchased ${count} extra groups (total: ${newExtraGroups})`);
+
+    const updated = await this.subscriptionRepository.getWithPlanByUserId(userId);
+    if (!updated) {
+      throw new SubscriptionError('Erro ao atualizar grupos extras.', 'extra_groups_failed');
+    }
+    return updated;
+  }
+
+  /**
+   * Remove extra group slots for a user
+   */
+  async removeExtraGroups(userId: string, count: number): Promise<SubscriptionWithPlan> {
+    if (count < 1) {
+      throw new SubscriptionError('Quantidade inválida.', 'invalid_count');
+    }
+
+    const existing = await this.subscriptionRepository.getByUserId(userId);
+    if (!existing) {
+      throw new SubscriptionError('Nenhuma assinatura encontrada.', 'no_subscription');
+    }
+    if (!this.isSubscriptionActive(existing.status)) {
+      throw new SubscriptionError('Assinatura não está ativa.', 'subscription_not_active');
+    }
+
+    if (count > existing.extraGroups) {
+      throw new SubscriptionError('Quantidade inválida.', 'invalid_count');
+    }
+
+    const plan = await this.subscriptionPlanRepository.getPlanById(existing.planId);
+    if (!plan) {
+      throw new SubscriptionError('Plano não encontrado.', 'plan_not_found');
+    }
+
+    const newExtraGroups = existing.extraGroups - count;
+    const newLimit = (plan.groupLimit ?? 0) + newExtraGroups;
+
+    // Check if removing would go below active usage
+    const activeGroups = await this.activeGroupsRepository.getActiveGroups(userId);
+    const activeGroupsCount = activeGroups?.length ?? 0;
+    if (activeGroupsCount > newLimit) {
+      throw new SubscriptionError(
+        `Não é possível remover. Você tem ${activeGroupsCount} grupos ativos e o limite seria ${newLimit}.`,
+        'extra_groups_in_use',
+      );
+    }
+
+    // Update Cielo recurrence amount
+    if (existing.cieloRecurrentPaymentId) {
+      const newAmount = this.calculateRecurrenceAmount(plan, existing.promotionalPaymentsRemaining, newExtraGroups);
+      try {
+        await this.cieloService.updateRecurrenceAmount(existing.cieloRecurrentPaymentId, newAmount);
+        this.logger.log(`Updated recurrence amount to ${newAmount} for extra groups removal`);
+      } catch (error) {
+        this.logger.error(`Failed to update Cielo amount for extra groups removal: ${error}`);
+        throw new SubscriptionError('Erro ao atualizar grupos extras na Cielo.', 'extra_groups_failed');
+      }
+    }
+
+    await this.subscriptionRepository.update(existing.id, { extraGroups: newExtraGroups });
+    this.logger.log(`User ${userId} removed ${count} extra groups (remaining: ${newExtraGroups})`);
+
+    const updated = await this.subscriptionRepository.getWithPlanByUserId(userId);
+    if (!updated) {
+      throw new SubscriptionError('Erro ao atualizar grupos extras.', 'extra_groups_failed');
     }
     return updated;
   }
@@ -503,6 +616,20 @@ export class SubscriptionService implements OnModuleInit {
     }
 
     return 'Não foi possível processar o pagamento. Verifique os dados do cartão ou tente outro cartão.';
+  }
+
+  /**
+   * Calculate the total recurrence amount including extra groups
+   */
+  calculateRecurrenceAmount(
+    plan: SubscriptionPlanData,
+    promotionalPaymentsRemaining: number,
+    extraGroups: number,
+  ): number {
+    const baseAmount = promotionalPaymentsRemaining > 0
+      ? (plan.promotionalPriceInCents ?? plan.priceInCents)
+      : plan.priceInCents;
+    return baseAmount + (extraGroups * EXTRA_GROUP_PRICE_IN_CENTS);
   }
 
   /**
@@ -691,12 +818,13 @@ export class SubscriptionService implements OnModuleInit {
             updateData.promotionalPaymentsRemaining = remaining;
 
             if (remaining === 0 && subscription.cieloRecurrentPaymentId) {
-              // Promo ended — switch to full price
+              // Promo ended — switch to full price (including extra groups)
               const plan = await this.subscriptionPlanRepository.getPlanById(subscription.planId);
               if (plan) {
                 try {
-                  await this.cieloService.updateRecurrenceAmount(subscription.cieloRecurrentPaymentId, plan.priceInCents);
-                  this.logger.log(`Switched subscription ${subscription.id} to full price ${plan.priceInCents}`);
+                  const fullAmount = this.calculateRecurrenceAmount(plan, 0, subscription.extraGroups);
+                  await this.cieloService.updateRecurrenceAmount(subscription.cieloRecurrentPaymentId, fullAmount);
+                  this.logger.log(`Switched subscription ${subscription.id} to full price ${fullAmount}`);
                 } catch (error) {
                   this.logger.error(`Failed to update Cielo amount for subscription ${subscription.id}: ${error}`);
                 }
@@ -773,12 +901,13 @@ export class SubscriptionService implements OnModuleInit {
           updateData.promotionalPaymentsRemaining = remaining;
 
           if (remaining === 0 && subscription.cieloRecurrentPaymentId) {
-            // Promo ended — switch to full price
+            // Promo ended — switch to full price (including extra groups)
             const plan = await this.subscriptionPlanRepository.getPlanById(subscription.planId);
             if (plan) {
               try {
-                await this.cieloService.updateRecurrenceAmount(subscription.cieloRecurrentPaymentId, plan.priceInCents);
-                this.logger.log(`Switched subscription ${subscription.id} to full price ${plan.priceInCents}`);
+                const fullAmount = this.calculateRecurrenceAmount(plan, 0, subscription.extraGroups);
+                await this.cieloService.updateRecurrenceAmount(subscription.cieloRecurrentPaymentId, fullAmount);
+                this.logger.log(`Switched subscription ${subscription.id} to full price ${fullAmount}`);
               } catch (error) {
                 this.logger.error(`Failed to update Cielo amount for subscription ${subscription.id}: ${error}`);
               }
