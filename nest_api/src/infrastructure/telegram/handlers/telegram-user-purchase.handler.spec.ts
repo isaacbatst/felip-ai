@@ -440,7 +440,7 @@ describe('TelegramPurchaseHandler', () => {
         );
       });
 
-      it('should not send message when user accepts price lower than calculated and counter offer is disabled', async () => {
+      it('should send calculated price in group when user accepts price lower than calculated and counter offer is disabled', async () => {
         mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
           quantity: 30_000,
           cpfCount: 1,
@@ -451,7 +451,14 @@ describe('TelegramPurchaseHandler', () => {
         // Counter offer disabled (default mock returns null)
         await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF aceito 15');
 
-        expect(mockTdlibUserClient.sendMessage).not.toHaveBeenCalled();
+        expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledTimes(1);
+        expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledWith(
+          telegramUserId,
+          chatId,
+          expect.stringContaining('20'),
+          messageId,
+        );
+        expect(mockTdlibUserClient.sendMessageToUser).not.toHaveBeenCalled();
       });
 
       it('should send default price message in group when user accepts price lower than calculated but difference exceeds threshold', async () => {

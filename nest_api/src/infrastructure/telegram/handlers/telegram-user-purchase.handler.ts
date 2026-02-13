@@ -216,8 +216,9 @@ export class TelegramPurchaseHandler {
 
     const counterOfferSettings = await this.counterOfferSettingsRepository.getSettings(loggedInUserId);
 
-    // Counter offer desabilitado -> ignorar
+    // Counter offer desabilitado -> envia resposta no grupo mas não envia contra-oferta privada
     if (!counterOfferSettings?.isEnabled) {
+      await this.sendGroupAnswer(telegramUserId, chatId, priceResult.price, isLiminar, messageId);
       return;
     }
 
