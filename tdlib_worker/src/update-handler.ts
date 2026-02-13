@@ -52,7 +52,17 @@ export class UpdateHandler {
       }
     });
 
-    await this.channel.assertQueue(this.queueName, { durable: true });
+    // Delete old queue to recreate with new arguments (TTL, max-length)
+    try { await this.channel.deleteQueue(this.queueName); } catch {}
+
+    await this.channel.assertQueue(this.queueName, {
+      durable: true,
+      arguments: {
+        'x-message-ttl': 60000,
+        'x-max-length': 1000,
+        'x-overflow': 'drop-head',
+      },
+    });
     console.log(`[DEBUG] ✅ UpdateHandler: Channel ready for queue: ${this.queueName}`);
   }
 
@@ -94,7 +104,7 @@ export class UpdateHandler {
     try {
       const message = Buffer.from(JSON.stringify({ pattern, data }));
       this.channel.sendToQueue(this.queueName, message, {
-        persistent: true,
+        persistent: false,
       });
     } catch (error) {
       console.error(`[ERROR] UpdateHandler: Error publishing to queue ${this.queueName}: ${error}`);
@@ -107,7 +117,7 @@ export class UpdateHandler {
         try {
           await this.setupChannel();
           const message = Buffer.from(JSON.stringify({ pattern, data }));
-          this.channel!.sendToQueue(this.queueName, message, { persistent: true });
+          this.channel!.sendToQueue(this.queueName, message, { persistent: false });
           console.log(`[DEBUG] UpdateHandler: Retry successful for pattern ${pattern}`);
           return;
         } catch (retryError) {

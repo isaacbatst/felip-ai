@@ -1,6 +1,5 @@
 import { Module } from '@nestjs/common';
 import { RabbitMQPublisherService } from './rabbitmq/rabbitmq-publisher.service';
-import { PersistenceModule } from '@/infrastructure/persistence/persistence.module';
 
 /**
  * Queue Module
@@ -13,7 +12,6 @@ import { PersistenceModule } from '@/infrastructure/persistence/persistence.modu
  * Currently uses RabbitMQ queues with amqplib integration.
  */
 @Module({
-  imports: [PersistenceModule],
   providers: [
     RabbitMQPublisherService,
   ],

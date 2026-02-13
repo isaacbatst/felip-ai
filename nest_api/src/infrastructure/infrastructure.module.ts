@@ -17,7 +17,6 @@ import { TelegramUserMessageProcessor } from './telegram/telegram-user-message-p
 import { WorkersModule } from '@/infrastructure/workers/workers.module';
 import { TdlibCommandResponseHandler } from '@/infrastructure/tdlib/tdlib-command-response.handler';
 import { TelegramUserClientProxyService } from '@/infrastructure/tdlib/telegram-user-client-proxy.service';
-import { TelegramUserQueueProcessorRabbitMQ } from '@/infrastructure/queue/rabbitmq/telegram-user-queue-processor-rabbitmq.service';
 import { TdlibUpdatesWorkerRabbitMQ } from '@/infrastructure/queue/rabbitmq/tdlib-updates-worker-rabbitmq.service';
 import { OtpService } from './auth/otp.service';
 import { RegistrationTokenService } from './auth/registration-token.service';
@@ -61,7 +60,6 @@ import { AuthErrorCacheService } from './tdlib/auth-error-cache.service';
     AuthErrorCacheService,
     OtpService,
     RegistrationTokenService,
-    TelegramUserQueueProcessorRabbitMQ,
     TdlibUpdatesWorkerRabbitMQ,
     // Subscription services
     SubscriptionService,

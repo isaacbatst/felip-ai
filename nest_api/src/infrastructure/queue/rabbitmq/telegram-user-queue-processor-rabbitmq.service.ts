@@ -70,8 +70,17 @@ export class TelegramUserQueueProcessorRabbitMQ implements OnModuleInit, OnModul
       this.channel = await this.connection.createChannel();
       await this.channel.prefetch(10);
 
-      // Assert queue exists
-      await this.channel.assertQueue(this.queueName, this.rabbitmqConfig.queueOptions);
+      // Delete old queue to recreate with new arguments (TTL, max-length)
+      try { await this.channel.deleteQueue(this.queueName); } catch {}
+
+      await this.channel.assertQueue(this.queueName, {
+        ...this.rabbitmqConfig.queueOptions,
+        arguments: {
+          'x-message-ttl': 60000,
+          'x-max-length': 1000,
+          'x-overflow': 'drop-head',
+        },
+      });
       
       this.logger.log(`Connected to RabbitMQ and asserted queue: ${this.queueName}`);
     } catch (error) {
@@ -152,7 +161,7 @@ export class TelegramUserQueueProcessorRabbitMQ implements OnModuleInit, OnModul
     try {
       const message = Buffer.from(JSON.stringify(item));
       this.channel.sendToQueue(this.queueName, message, {
-        persistent: true,
+        persistent: false,
       });
 
       // Log enqueued message
