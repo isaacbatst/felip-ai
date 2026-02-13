@@ -50,7 +50,14 @@ export class RabbitMQPublisher {
       }
     });
 
-    await this.channel.assertQueue(this.queueName, { durable: true });
+    await this.channel.assertQueue(this.queueName, {
+      durable: true,
+      arguments: {
+        'x-message-ttl': 60000,
+        'x-max-length': 1000,
+        'x-overflow': 'drop-head',
+      },
+    });
     console.log(`[DEBUG] ✅ RabbitMQPublisher: Channel ready for queue ${this.queueName}`);
   }
 
@@ -69,7 +76,7 @@ export class RabbitMQPublisher {
     try {
       const message = Buffer.from(JSON.stringify({ pattern, data }));
       this.channel.sendToQueue(this.queueName, message, {
-        persistent: true,
+        persistent: false,
       });
     } catch (error) {
       console.error(`[ERROR] RabbitMQPublisher: Error publishing to queue ${this.queueName}: ${error}`);
@@ -81,7 +88,7 @@ export class RabbitMQPublisher {
         try {
           await this.setupChannel();
           const message = Buffer.from(JSON.stringify({ pattern, data }));
-          this.channel!.sendToQueue(this.queueName, message, { persistent: true });
+          this.channel!.sendToQueue(this.queueName, message, { persistent: false });
           console.log(`[DEBUG] RabbitMQPublisher: Retry successful for pattern ${pattern}`);
           return;
         } catch (retryError) {

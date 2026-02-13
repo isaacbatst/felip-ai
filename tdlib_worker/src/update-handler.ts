@@ -52,9 +52,6 @@ export class UpdateHandler {
       }
     });
 
-    // Delete old queue to recreate with new arguments (TTL, max-length)
-    try { await this.channel.deleteQueue(this.queueName); } catch {}
-
     await this.channel.assertQueue(this.queueName, {
       durable: true,
       arguments: {
@@ -74,6 +71,8 @@ export class UpdateHandler {
       if (typeof update === 'object' && update !== null && '_' in update) {
         const updateType = (update as { _: string })._;
         if (updateType === 'updateNewMessage') {
+          const chatId = (update as { message?: { chat_id?: number } }).message?.chat_id;
+          console.log(`[INFO] UpdateHandler: Received new message | chatId=${chatId} | timestamp=${new Date().toISOString()}`);
           this.publish('new-message', { update, userId: this.userId })
             .catch((error: unknown) => {
               console.error('[ERROR] UpdateHandler: Error enqueueing message to RabbitMQ:', error);

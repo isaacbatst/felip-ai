@@ -70,9 +70,6 @@ export class TelegramUserQueueProcessorRabbitMQ implements OnModuleInit, OnModul
       this.channel = await this.connection.createChannel();
       await this.channel.prefetch(10);
 
-      // Delete old queue to recreate with new arguments (TTL, max-length)
-      try { await this.channel.deleteQueue(this.queueName); } catch {}
-
       await this.channel.assertQueue(this.queueName, {
         ...this.rabbitmqConfig.queueOptions,
         arguments: {
