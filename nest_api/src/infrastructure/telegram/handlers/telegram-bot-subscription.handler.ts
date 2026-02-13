@@ -61,6 +61,9 @@ export class TelegramBotSubscriptionHandler {
       }
 
       const daysRemaining = await this.subscriptionService.getDaysRemaining(userId) ?? 0;
+      const effectiveStatus = (subscription.status !== 'canceled' && subscription.status !== 'expired' && subscription.currentPeriodEnd < new Date())
+        ? 'expired'
+        : subscription.status;
       const statusLabels: Record<string, string> = {
         active: 'Ativo',
         trialing: 'Período de Teste',
@@ -71,7 +74,7 @@ export class TelegramBotSubscriptionHandler {
 
       let message = `Sua assinatura:\n\n`;
       message += `Plano: ${subscription.plan.displayName}\n`;
-      message += `Status: ${statusLabels[subscription.status] || subscription.status}\n`;
+      message += `Status: ${statusLabels[effectiveStatus] || effectiveStatus}\n`;
       message += `Dias restantes: ${daysRemaining}\n\n`;
       message += `Gerencie pelo link:\n${baseUrl}/subscription`;
 

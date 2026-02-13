@@ -27,7 +27,7 @@ export class CieloWebhookController {
     @Req() req: Request,
     @Res() res: Response,
   ): Promise<void> {
-    const secret = req.headers['x-cielo-webhook-secret'] as string | undefined;
+    const secret = req.headers['cielowebhooksecret'] as string | undefined;
     const expectedSecret = this.appConfig.getCieloWebhookSecret();
 
     if (!expectedSecret || secret !== expectedSecret) {

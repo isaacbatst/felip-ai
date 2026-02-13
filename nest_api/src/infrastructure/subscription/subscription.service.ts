@@ -568,8 +568,8 @@ export class SubscriptionService implements OnModuleInit {
     if (!existing) {
       throw new SubscriptionError('Nenhuma assinatura encontrada.', 'no_subscription');
     }
-    if (existing.status === 'canceled' || existing.status === 'expired') {
-      throw new SubscriptionError('Assinatura já está cancelada.', 'already_canceled');
+    if (existing.status === 'canceled' || existing.status === 'expired' || existing.currentPeriodEnd < new Date()) {
+      throw new SubscriptionError('Assinatura já está cancelada ou expirada.', 'already_canceled');
     }
 
     // Deactivate Cielo recurrence if exists
@@ -671,7 +671,7 @@ export class SubscriptionService implements OnModuleInit {
         Type: 'CreditCard' as const,
         Amount: chargeAmount,
         Installments: 1,
-        SoftDescriptor: 'LFViagens ChatBot',
+        SoftDescriptor: 'LFViagensChat',
         RecurrentPayment: recurrentPayment as { AuthorizeNow: boolean; Interval: 'Monthly'; StartDate?: string },
         CreditCard: {
           CardNumber: dto.cardNumber,

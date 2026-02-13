@@ -215,8 +215,18 @@
               </template>
             </div>
             <div class="bg-white/50 rounded-xl p-3">
-              <p class="text-xs text-gray-500 mb-1" x-text="subscription.status === 'trialing' ? 'Será cobrado em' : 'Próxima Cobrança'"></p>
-              <p class="text-lg font-bold text-gray-800" x-text="formatDate(subscription.nextBillingDate)"></p>
+              <template x-if="subscription.nextBillingDate">
+                <div>
+                  <p class="text-xs text-gray-500 mb-1" x-text="subscription.status === 'trialing' ? 'Será cobrado em' : 'Próxima Cobrança'"></p>
+                  <p class="text-lg font-bold text-gray-800" x-text="formatDate(subscription.nextBillingDate)"></p>
+                </div>
+              </template>
+              <template x-if="!subscription.nextBillingDate">
+                <div>
+                  <p class="text-xs text-gray-500 mb-1" x-text="subscription.status === 'trialing' ? 'Teste expira em' : 'Acesso até'"></p>
+                  <p class="text-lg font-bold text-gray-800" x-text="formatDate(subscription.currentPeriodEnd)"></p>
+                </div>
+              </template>
             </div>
           </div>
 
@@ -244,9 +254,16 @@
           <template x-if="subscription.status === 'trialing'">
             <div class="bg-amber-100 border border-amber-300 rounded-lg p-3 flex items-center gap-2">
               <i class="fa-solid fa-info-circle text-amber-600"></i>
-              <p class="text-sm text-amber-800">
-                Período de teste gratuito. A primeira cobrança será em <strong x-text="formatDate(subscription.nextBillingDate)"></strong>.
-              </p>
+              <template x-if="subscription.nextBillingDate">
+                <p class="text-sm text-amber-800">
+                  Período de teste gratuito. A primeira cobrança será em <strong x-text="formatDate(subscription.nextBillingDate)"></strong>.
+                </p>
+              </template>
+              <template x-if="!subscription.nextBillingDate">
+                <p class="text-sm text-amber-800">
+                  Período de teste gratuito. Expira em <strong x-text="formatDate(subscription.currentPeriodEnd)"></strong>.
+                </p>
+              </template>
             </div>
           </template>
         </div>
@@ -440,6 +457,7 @@
                 <label class="block text-sm font-medium text-gray-700 mb-1">Nome no cartão</label>
                 <input type="text" x-model="checkoutForm.holder"
                   placeholder="Como está no cartão"
+                  autocomplete="cc-name"
                   class="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-primary focus:outline-none transition-colors"
                   :disabled="processingCheckout">
               </div>
@@ -486,6 +504,8 @@
                   @input="formatCardNumber($event)"
                   placeholder="0000 0000 0000 0000"
                   maxlength="19"
+                  autocomplete="cc-number"
+                  inputmode="numeric"
                   class="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-primary focus:outline-none transition-colors font-mono"
                   :disabled="processingCheckout">
               </div>
@@ -498,6 +518,8 @@
                     @input="formatExpiration($event)"
                     placeholder="MM/AAAA"
                     maxlength="7"
+                    autocomplete="cc-exp"
+                    inputmode="numeric"
                     class="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-primary focus:outline-none transition-colors font-mono"
                     :disabled="processingCheckout">
                 </div>
@@ -506,6 +528,8 @@
                   <input type="text" x-model="checkoutForm.securityCode"
                     placeholder="123"
                     maxlength="4"
+                    autocomplete="cc-csc"
+                    inputmode="numeric"
                     class="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-primary focus:outline-none transition-colors font-mono"
                     :disabled="processingCheckout">
                 </div>
@@ -830,6 +854,7 @@
             }
 
             this.subscription = tokenData.data.subscription;
+            this.normalizeSubscriptionStatus();
             this.trialUsed = this.subscription?.trialUsed ?? false;
 
             // Fetch available plans
@@ -1178,6 +1203,15 @@
             this.showToast('Erro ao remover grupos extras. Tente novamente.', 'error');
           } finally {
             this.processingExtraGroups = false;
+          }
+        },
+
+        // Normalize status based on dates (don't depend on cron)
+        normalizeSubscriptionStatus() {
+          if (!this.subscription) return;
+          if (this.subscription.status === 'expired' || this.subscription.status === 'canceled') return;
+          if (this.subscription.currentPeriodEnd && new Date(this.subscription.currentPeriodEnd) < new Date()) {
+            this.subscription.status = 'expired';
           }
         },
 

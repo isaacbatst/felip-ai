@@ -212,7 +212,7 @@ export class SubscriptionPlanDrizzleStore extends SubscriptionPlanRepository {
             priceInCents: plan.priceInCents,
             groupLimit: plan.groupLimit,
             promotionalPriceInCents: plan.promotionalPriceInCents,
-            promotionalMonths: plan.promotionalMonths,
+            // promotionalMonths: plan.promotionalMonths,
           });
           this.logger.log(`Updated subscription plan ${plan.name}`);
         }

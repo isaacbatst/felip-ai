@@ -1421,6 +1421,7 @@
             const data = await res.json();
             if (data.success) {
               this.subscriptionData = data.data.subscription;
+              this.normalizeSubscriptionStatus();
               this.subscriptionPageUrl = data.data.subscriptionPageUrl;
               this.subscriptionFetched = true;
             } else {
@@ -1430,6 +1431,14 @@
             console.error('Error fetching subscription:', error);
           } finally {
             this.loadingSubscription = false;
+          }
+        },
+
+        normalizeSubscriptionStatus() {
+          if (!this.subscriptionData) return;
+          if (this.subscriptionData.status === 'expired' || this.subscriptionData.status === 'canceled') return;
+          if (this.subscriptionData.currentPeriodEnd && new Date(this.subscriptionData.currentPeriodEnd) < new Date()) {
+            this.subscriptionData.status = 'expired';
           }
         },
 

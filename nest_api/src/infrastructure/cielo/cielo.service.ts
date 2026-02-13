@@ -47,16 +47,17 @@ export class CieloService {
       body,
     });
 
-    const data = await response.json();
+    const text = await response.text();
 
     if (!response.ok) {
-      this.logger.error(`Cielo API error: ${response.status}`, JSON.stringify(data));
-      throw new Error(`Cielo API error: ${response.status} - ${JSON.stringify(data)}`);
+      this.logger.error(`Cielo API error: ${response.status}`, text);
+      throw new Error(`Cielo API error: ${response.status} - ${text}`);
     }
 
-    this.logger.log(`Recurrent payment created for order ${request.MerchantOrderId}, response JSON: ${JSON.stringify(data)}`);
+    const data = JSON.parse(text) as CieloCreateRecurrentPaymentResponse;
+    this.logger.log(`Recurrent payment created for order ${request.MerchantOrderId}, response JSON: ${text}`);
 
-    return data as CieloCreateRecurrentPaymentResponse;
+    return data;
   }
 
   async queryPayment(paymentId: string): Promise<CieloQueryPaymentResponse> {
@@ -68,14 +69,14 @@ export class CieloService {
       headers: this.getHeaders(),
     });
 
-    const data = await response.json();
+    const text = await response.text();
 
     if (!response.ok) {
-      this.logger.error(`Cielo query API error: ${response.status}`, JSON.stringify(data));
-      throw new Error(`Cielo query API error: ${response.status} - ${JSON.stringify(data)}`);
+      this.logger.error(`Cielo query API error: ${response.status}`, text);
+      throw new Error(`Cielo query API error: ${response.status} - ${text}`);
     }
 
-    return data as CieloQueryPaymentResponse;
+    return JSON.parse(text) as CieloQueryPaymentResponse;
   }
 
   async updateRecurrenceAmount(recurrentPaymentId: string, newAmountInCents: number): Promise<void> {
