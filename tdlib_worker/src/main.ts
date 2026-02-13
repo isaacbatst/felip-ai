@@ -3,6 +3,7 @@ import { TelegramUserClient } from './telegram-user-client';
 import { UpdateHandler } from './update-handler';
 import { CommandProcessor } from './command-processor';
 import { HttpApi } from './http-api';
+import { SharedRabbitMQConnection } from './shared-rabbitmq-connection';
 
 // Load environment variables
 dotenv.config();
@@ -104,10 +105,14 @@ async function main() {
 
   await client.initialize();
 
+  // Initialize shared RabbitMQ connection (single TCP connection for all components)
+  const sharedConnection = new SharedRabbitMQConnection(config.rabbitmq);
+  await sharedConnection.connect();
+
   // Initialize update handler (sends updates to nest_api via RabbitMQ)
   const updateHandler = new UpdateHandler(
     client,
-    config.rabbitmq,
+    sharedConnection,
     config.queues.updates,
     config.userId,
   );
@@ -117,7 +122,7 @@ async function main() {
   // Initialize command processor (receives commands from nest_api via RabbitMQ)
   const commandProcessor = new CommandProcessor(
     client,
-    config.rabbitmq,
+    sharedConnection,
     config.queues.commands,
     config.queues.updates,
     config.userId, // Pass loggedInUserId to LoginSessionManager (USER_ID env var)
@@ -144,6 +149,7 @@ async function main() {
       await httpApi.close();
       await updateHandler.close();
       await commandProcessor.close();
+      await sharedConnection.close();
       await client.close();
       console.log('[DEBUG] TDLib Worker closed successfully');
     } catch (error) {

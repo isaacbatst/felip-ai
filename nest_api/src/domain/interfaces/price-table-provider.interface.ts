@@ -50,6 +50,14 @@ export abstract class PriceTableProvider {
   abstract hasSufficientMiles(userId: string, programId: number, quantity: number): Promise<boolean>;
 
   /**
+   * Get the minimum quantity (in thousands) for a specific program
+   * @param userId - User ID
+   * @param programId - Program ID
+   * @returns Minimum quantity in thousands or null if not configured
+   */
+  abstract getMinQuantityForProgram(userId: string, programId: number): Promise<number | null>;
+
+  /**
    * Get all price table data for a user
    * @deprecated Use granular methods instead (getPriceTableForProgram, getMaxPriceForProgram, etc.)
    */

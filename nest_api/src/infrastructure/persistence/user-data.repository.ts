@@ -21,6 +21,7 @@ export interface UserMaxPriceData {
   userId: string;
   programId: number;
   maxPrice: number;
+  minQuantity: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -52,6 +53,7 @@ export interface PriceEntryInput {
 export interface MaxPriceInput {
   programId: number;
   maxPrice: number;
+  minQuantity?: number;
 }
 
 /**

@@ -130,6 +130,13 @@ export abstract class AbstractPriceTableCache
   }
 
   /**
+   * @deprecated Use DatabasePriceTableProvider instead
+   */
+  async getMinQuantityForProgram(_userId: string, _programId: number): Promise<number | null> {
+    throw new Error('AbstractPriceTableCache is deprecated. Use DatabasePriceTableProvider instead.');
+  }
+
+  /**
    * Implementa o método da interface PriceTableProvider
    * Delega para o método get() da classe base
    * @param _userId ID do usuário (ignorado nesta implementação legada)

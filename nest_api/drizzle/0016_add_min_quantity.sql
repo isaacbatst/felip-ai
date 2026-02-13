@@ -1,0 +1,1 @@
+ALTER TABLE "user_max_prices" ADD COLUMN "min_quantity" integer DEFAULT 0 NOT NULL;

@@ -170,6 +170,7 @@ export const userMaxPrices = pgTable(
     userId: text('user_id').notNull(), // Telegram user ID
     programId: integer('program_id').notNull(), // References miles_programs.id
     maxPrice: real('max_price').notNull(), // Maximum price limit
+    minQuantity: integer('min_quantity').default(0).notNull(), // Minimum quantity in thousands (e.g., 50 = 50k miles)
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },

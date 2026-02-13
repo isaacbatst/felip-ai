@@ -102,6 +102,17 @@ export class TelegramPurchaseHandler {
       return;
     }
 
+    // Check minimum quantity filter
+    const minQuantity = await this.priceTableProvider.getMinQuantityForProgram(loggedInUserId, program.id);
+    if (minQuantity && minQuantity > 0 && purchaseRequest.quantity < minQuantity) {
+      this.logger.warn('Purchase quantity below minimum', {
+        quantity: purchaseRequest.quantity,
+        minQuantity,
+        programId: program.id,
+      });
+      return;
+    }
+
     // Determine the effective program ID (normal or liminar) based on miles availability
     const effectiveProgramId = await this.getEffectiveProgramId(
       loggedInUserId,
@@ -132,7 +143,7 @@ export class TelegramPurchaseHandler {
     }
 
     const maxPrice = await this.priceTableProvider.getMaxPriceForProgram(loggedInUserId, effectiveProgramId);
-    const options = maxPrice !== null ? { customMaxPrice: maxPrice } : undefined;
+    const options = maxPrice !== null && maxPrice > 0 ? { customMaxPrice: maxPrice } : undefined;
 
     const priceResult = this.priceCalculator.calculate(
       purchaseRequest.quantity / 1000, // Convert from units to thousands (price table keys are in thousands)
@@ -205,8 +216,9 @@ export class TelegramPurchaseHandler {
 
     const counterOfferSettings = await this.counterOfferSettingsRepository.getSettings(loggedInUserId);
 
-    // Counter offer desabilitado -> ignorar
+    // Counter offer desabilitado -> envia resposta no grupo mas não envia contra-oferta privada
     if (!counterOfferSettings?.isEnabled) {
+      await this.sendGroupAnswer(telegramUserId, chatId, priceResult.price, isLiminar, messageId);
       return;
     }
 

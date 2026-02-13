@@ -1,5 +1,4 @@
 import { NestFactory } from '@nestjs/core';
-import { MicroserviceOptions, Transport } from '@nestjs/microservices';
 import { AppModule } from './app.module';
 import { ConsoleLogger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -37,36 +36,7 @@ async function bootstrap() {
     prefix: '/public/',
   });
 
-  // Get config service for RabbitMQ connection
   const configService = app.get(ConfigService);
-
-  // Build RabbitMQ connection URL from ConfigService
-  const host = configService.get<string>('RABBITMQ_HOST') || 'localhost';
-  const port = configService.get<string>('RABBITMQ_PORT') || '5672';
-  const user = configService.get<string>('RABBITMQ_USER') || 'guest';
-  const password = configService.get<string>('RABBITMQ_PASSWORD') || 'guest';
-
-  // URL encode username and password to handle special characters
-  const encodedUser = encodeURIComponent(user);
-  const encodedPassword = encodeURIComponent(password);
-  const url = `amqp://${encodedUser}:${encodedPassword}@${host}:${port}`;
-
-  logger.log(`Connecting to RabbitMQ at ${host}:${port} with user ${user}`);
-
-  // Connect RabbitMQ microservice to the hybrid app
-  app.connectMicroservice<MicroserviceOptions>({
-    transport: Transport.RMQ,
-    options: {
-      urls: [url],
-      queue: 'nest-api-queue',
-      queueOptions: {
-        durable: true,
-      },
-      noAck: false, // Manual acknowledgment for reliability
-    },
-  });
-
-  logger.log('Microservice connected successfully');
 
   // Graceful shutdown handler
   let isShuttingDown = false;
@@ -109,10 +79,6 @@ async function bootstrap() {
   process.once('SIGTERM', () => {
     void shutdown('SIGTERM');
   });
-
-  // Start all microservices
-  await app.startAllMicroservices();
-  logger.log('Microservices started successfully');
 
   // Start HTTP server
   const httpPort = configService.get<number>('HTTP_PORT') || 3000;

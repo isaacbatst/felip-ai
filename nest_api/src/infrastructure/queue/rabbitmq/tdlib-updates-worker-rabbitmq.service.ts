@@ -1,10 +1,9 @@
 import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { connect, Connection, Channel } from 'amqplib';
-import { TelegramUserQueueProcessorRabbitMQ } from './telegram-user-queue-processor-rabbitmq.service';
 import { TdlibUpdateJobData } from '../../tdlib/tdlib-update.types';
 import { TdlibCommandResponseHandler } from '../../tdlib/tdlib-command-response.handler';
-import { MessageProcessedLogRepository } from '@/infrastructure/persistence/message-processed-log.repository';
+import { TelegramUserMessageProcessor } from '../../telegram/telegram-user-message-processor';
 
 /**
  * Worker that consumes updates from tdlib_worker via RabbitMQ
@@ -25,9 +24,8 @@ export class TdlibUpdatesWorkerRabbitMQ implements OnModuleInit, OnModuleDestroy
 
   constructor(
     private readonly configService: ConfigService,
-    private readonly telegramUserQueueProcessor: TelegramUserQueueProcessorRabbitMQ,
+    private readonly messageProcessor: TelegramUserMessageProcessor,
     private readonly commandResponseHandler: TdlibCommandResponseHandler,
-    private readonly messageProcessedLogRepository: MessageProcessedLogRepository,
   ) {
     const host = this.configService.get<string>('RABBITMQ_HOST') || 'localhost';
     const port = this.configService.get<string>('RABBITMQ_PORT') || '5672';
@@ -68,9 +66,16 @@ export class TdlibUpdatesWorkerRabbitMQ implements OnModuleInit, OnModuleDestroy
 
       this.connection = await connect(connectionUrl);
       this.channel = await this.connection.createChannel();
+      await this.channel.prefetch(10);
 
-      // Assert queue exists
-      await this.channel.assertQueue(this.queueName, this.rabbitmqConfig.queueOptions);
+      await this.channel.assertQueue(this.queueName, {
+        ...this.rabbitmqConfig.queueOptions,
+        arguments: {
+          'x-message-ttl': 60000,
+          'x-max-length': 1000,
+          'x-overflow': 'drop-head',
+        },
+      });
 
       this.logger.log(`Connected to RabbitMQ and asserted queue: ${this.queueName}`);
     } catch (error) {
@@ -100,39 +105,10 @@ export class TdlibUpdatesWorkerRabbitMQ implements OnModuleInit, OnModuleDestroy
 
           await this.process(jobData.pattern, jobData.data);
 
-          // Log successful processing
-          await this.messageProcessedLogRepository.logProcessedMessage({
-            queueName: this.queueName,
-            messageData: jobData,
-            userId: jobData.data.userId,
-            status: 'success',
-          }).catch((logError) => {
-            this.logger.error(`[ERROR] Failed to log processed message: ${logError}`);
-          });
-
           // Acknowledge message after successful processing
           this.channel?.ack(msg);
         } catch (error) {
           this.logger.error(`[ERROR] Error processing update: ${error}`);
-
-          // Log failed processing
-          try {
-            const jobData = JSON.parse(msg.content.toString()) as {
-              pattern: string;
-              data: TdlibUpdateJobData;
-            };
-            await this.messageProcessedLogRepository.logProcessedMessage({
-              queueName: this.queueName,
-              messageData: jobData,
-              userId: jobData.data.userId,
-              status: 'failed',
-              errorMessage: error instanceof Error ? error.message : String(error),
-            }).catch((logError) => {
-              this.logger.error(`[ERROR] Failed to log failed message: ${logError}`);
-            });
-          } catch (parseError) {
-            this.logger.error(`[ERROR] Failed to parse message for logging: ${parseError}`);
-          }
 
           // Acknowledge message to remove from queue (accept failure)
           this.channel?.ack(msg);
@@ -156,8 +132,8 @@ export class TdlibUpdatesWorkerRabbitMQ implements OnModuleInit, OnModuleDestroy
       case 'new-message': {
         const { update, userId } = jobData;
         if (update) {
-          // Forward update to the queue processor with userId
-          await this.telegramUserQueueProcessor.enqueue({ update, userId: userId?.toString() });
+          // Process message directly (no second queue)
+          await this.messageProcessor.processMessage({ update, userId: userId?.toString() });
         }
         break;
       }
@@ -191,7 +167,6 @@ export class TdlibUpdatesWorkerRabbitMQ implements OnModuleInit, OnModuleDestroy
       }
       case 'command-response': {
         const { requestId, commandType, result, error, context } = jobData;
-        console.log(JSON.stringify(jobData, null, 2));
         if (requestId && context) {
           // Use context from response (echoed back from worker)
           await this.commandResponseHandler.handleResponse({
@@ -220,10 +195,9 @@ export class TdlibUpdatesWorkerRabbitMQ implements OnModuleInit, OnModuleDestroy
     }
 
     try {
-      await this.channel.assertQueue(this.queueName, this.rabbitmqConfig.queueOptions);
       const message = Buffer.from(JSON.stringify({ pattern, data }));
       this.channel.sendToQueue(this.queueName, message, {
-        persistent: true,
+        persistent: false,
       });
     } catch (error) {
       this.logger.error(`[ERROR] Error enqueueing update: ${error}`);

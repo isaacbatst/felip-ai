@@ -23,12 +23,37 @@ Vamos? 🤝`,
 💰 R$ {PRECO}/milheiro
 
 Manda msg se tiver interesse! 👍`,
+
+  4: `Opa, tudo bem? Vamos nessa a R$ {PRECO}?!
+
+✈️{PROGRAMA}
+📊 {QUANTIDADE}K
+👤 {CPF_COUNT} CPF`,
+
+  5: `Opa!
+Tenho {PROGRAMA} a R$ {PRECO}! Vamos?
+
+📊 {QUANTIDADE}K
+👤 {CPF_COUNT} CPF`,
+
+  6: `Olá!
+
+Programa: {PROGRAMA}
+Quantidade: {QUANTIDADE}K
+CPFs: {CPF_COUNT}
+
+Bora a R$ {PRECO}?!`,
+
+  7: `Opa! Posso atender sua demanda {PROGRAMA} a R$ {PRECO}! Faz sentido pra você?
+
+Quantidade: {QUANTIDADE}K
+CPFs: {CPF_COUNT}`,
 };
 
 /**
  * Available template IDs
  */
-export const COUNTER_OFFER_TEMPLATE_IDS = [1, 2, 3] as const;
+export const COUNTER_OFFER_TEMPLATE_IDS = [1, 2, 3, 4, 5, 6, 7] as const;
 
 export type CounterOfferTemplateId = (typeof COUNTER_OFFER_TEMPLATE_IDS)[number];
 
@@ -39,6 +64,10 @@ export const COUNTER_OFFER_TEMPLATE_DESCRIPTIONS: Record<number, string> = {
   1: 'Formal - Com emojis de avião e detalhes estruturados',
   2: 'Direto - Mensagem objetiva e amigável',
   3: 'Informal - Tom descontraído com emojis',
+  4: 'Casual - Preço em destaque com emojis',
+  5: 'Objetivo - Programa e preço direto',
+  6: 'Limpo - Detalhes organizados sem emojis',
+  7: 'Consultivo - Tom de atendimento personalizado',
 };
 
 /**
@@ -92,12 +121,34 @@ Vamos fechar?!`,
 {QUANTIDADE}k {PROGRAMA} {CPF_COUNT} CPF por R$ {PRECO}
 
 Vamos emitir?!`,
+
+  3: `{PROGRAMA}
+{QUANTIDADE}K
+{CPF_COUNT} CPF
+
+R$ {PRECO}
+
+Vamos emitir?!`,
+
+  4: `{PROGRAMA} {QUANTIDADE}K {CPF_COUNT} CPF por R$ {PRECO}
+
+Vamos?!`,
+
+  5: `Opa! Tenho
+
+{PROGRAMA}
+{QUANTIDADE}K
+{CPF_COUNT} CPF
+
+R$ {PRECO}
+
+Bora?`,
 };
 
 /**
  * Available call to action template IDs
  */
-export const CALL_TO_ACTION_TEMPLATE_IDS = [1, 2] as const;
+export const CALL_TO_ACTION_TEMPLATE_IDS = [1, 2, 3, 4, 5] as const;
 
 export type CallToActionTemplateId = (typeof CALL_TO_ACTION_TEMPLATE_IDS)[number];
 
@@ -107,6 +158,9 @@ export type CallToActionTemplateId = (typeof CALL_TO_ACTION_TEMPLATE_IDS)[number
 export const CALL_TO_ACTION_TEMPLATE_DESCRIPTIONS: Record<number, string> = {
   1: 'Estruturado - Detalhes organizados em linhas separadas',
   2: 'Compacto - Direto e objetivo em linha única',
+  3: 'Limpo - Detalhes em lista sem saudação',
+  4: 'Direto - Tudo em uma linha',
+  5: 'Casual - Saudação informal com detalhes',
 };
 
 /**
