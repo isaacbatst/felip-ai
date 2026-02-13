@@ -671,7 +671,7 @@ export class SubscriptionService implements OnModuleInit {
         Type: 'CreditCard' as const,
         Amount: chargeAmount,
         Installments: 1,
-        SoftDescriptor: 'FelipAI',
+        SoftDescriptor: 'LFViagens ChatBot',
         RecurrentPayment: recurrentPayment as { AuthorizeNow: boolean; Interval: 'Monthly'; StartDate?: string },
         CreditCard: {
           CardNumber: dto.cardNumber,
