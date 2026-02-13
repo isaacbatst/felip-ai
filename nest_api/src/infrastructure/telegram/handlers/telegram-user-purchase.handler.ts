@@ -102,11 +102,14 @@ export class TelegramPurchaseHandler {
       return;
     }
 
-    // Check minimum quantity filter
+    // Check minimum quantity filter (per CPF, consistent with price calculation)
     const minQuantity = await this.priceTableProvider.getMinQuantityForProgram(loggedInUserId, program.id);
-    if (minQuantity && minQuantity > 0 && purchaseRequest.quantity < minQuantity) {
-      this.logger.warn('Purchase quantity below minimum', {
+    const quantityPerCpf = purchaseRequest.quantity / purchaseRequest.cpfCount;
+    if (minQuantity && minQuantity > 0 && quantityPerCpf < minQuantity) {
+      this.logger.warn('Purchase quantity per CPF below minimum', {
         quantity: purchaseRequest.quantity,
+        cpfCount: purchaseRequest.cpfCount,
+        quantityPerCpf,
         minQuantity,
         programId: program.id,
       });

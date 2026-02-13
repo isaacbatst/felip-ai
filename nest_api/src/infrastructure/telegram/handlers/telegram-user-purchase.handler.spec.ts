@@ -720,6 +720,42 @@ describe('TelegramPurchaseHandler', () => {
 
         expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledTimes(1);
       });
+
+      it('should not send message when quantity per CPF is below minimum', async () => {
+        // Set min quantity for SMILES to 50000 (50k miles)
+        mockPriceTableProvider.getMinQuantityForProgram.mockImplementation((_userId: string, programId: number) => {
+          if (programId === PROGRAM_IDS.SMILES) return Promise.resolve(50_000);
+          return Promise.resolve(null);
+        });
+
+        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
+          quantity: 50_000, // 50k total but 25k per CPF < 50k minimum
+          cpfCount: 2,
+          airlineId: PROGRAM_IDS.SMILES,
+        }));
+
+        await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 50k 2CPF');
+
+        expect(mockTdlibUserClient.sendMessage).not.toHaveBeenCalled();
+      });
+
+      it('should send message when quantity per CPF meets minimum with multiple CPFs', async () => {
+        // Set min quantity for SMILES to 25000 (25k miles)
+        mockPriceTableProvider.getMinQuantityForProgram.mockImplementation((_userId: string, programId: number) => {
+          if (programId === PROGRAM_IDS.SMILES) return Promise.resolve(25_000);
+          return Promise.resolve(null);
+        });
+
+        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
+          quantity: 50_000, // 50k total, 25k per CPF = 25k minimum
+          cpfCount: 2,
+          airlineId: PROGRAM_IDS.SMILES,
+        }));
+
+        await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 50k 2CPF');
+
+        expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledTimes(1);
+      });
     });
 
     describe('Empty price table', () => {
