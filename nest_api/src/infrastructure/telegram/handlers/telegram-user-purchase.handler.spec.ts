@@ -628,6 +628,28 @@ describe('TelegramPurchaseHandler', () => {
         const sentMessage = mockTdlibUserClient.sendMessage.mock.calls[0][2];
         expect(sentMessage).toBe('19'); // Limited by customMaxPrice
       });
+
+      it('should ignore custom max price when it is 0 (use price table value instead)', async () => {
+        // Simulate the bug scenario: user set minQuantity but not maxPrice → backend stores maxPrice=0
+        mockPriceTableProvider.getMaxPriceForProgram.mockImplementation((_userId: string, programId: number) => {
+          if (programId === PROGRAM_IDS.SMILES) {
+            return Promise.resolve(0); // maxPrice=0 from DB (no max price configured)
+          }
+          return Promise.resolve(maxPrices[programId] ?? null);
+        });
+
+        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
+          quantity: 30_000,
+          cpfCount: 1,
+          airlineId: PROGRAM_IDS.SMILES,
+        }));
+
+        await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF');
+
+        expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledTimes(1);
+        const sentMessage = mockTdlibUserClient.sendMessage.mock.calls[0][2];
+        expect(sentMessage).toBe('20'); // Should use price table value, not 0
+      });
     });
 
     describe('Minimum quantity filter', () => {
