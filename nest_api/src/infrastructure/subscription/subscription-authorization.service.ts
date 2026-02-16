@@ -24,14 +24,15 @@ export class SubscriptionAuthorizationService {
       return false;
     }
 
-    // Check if subscription is in an active status
-    if (subscription.status !== 'active' && subscription.status !== 'trialing') {
+    // Expired status = no access
+    if (subscription.status === 'expired') {
       return false;
     }
 
-    // Check if subscription period has expired
+    // Active and trialing are always authorized (if period hasn't ended)
+    // Canceled and past_due still have access until currentPeriodEnd
     if (subscription.currentPeriodEnd < new Date()) {
-      this.logger.debug(`Subscription expired for user ${userId}`);
+      this.logger.debug(`Subscription period ended for user ${userId}`);
       return false;
     }
 
@@ -56,26 +57,10 @@ export class SubscriptionAuthorizationService {
       };
     }
 
-    if (subscription.status === 'canceled') {
-      return {
-        authorized: false,
-        reason: 'subscription_canceled',
-        status: subscription.status,
-      };
-    }
-
     if (subscription.status === 'expired') {
       return {
         authorized: false,
         reason: 'subscription_expired',
-        status: subscription.status,
-      };
-    }
-
-    if (subscription.status === 'past_due') {
-      return {
-        authorized: false,
-        reason: 'payment_past_due',
         status: subscription.status,
       };
     }
@@ -89,6 +74,7 @@ export class SubscriptionAuthorizationService {
       };
     }
 
+    // Active, trialing, canceled, past_due all have access until currentPeriodEnd
     return {
       authorized: true,
       expiresAt: subscription.currentPeriodEnd,

@@ -20,7 +20,8 @@ import { CounterOfferSettingsRepository, type CounterOfferSettingsInput } from '
 import { ActiveGroupsRepository } from '@/infrastructure/persistence/active-groups.repository';
 import { BotPreferenceRepository } from '@/infrastructure/persistence/bot-status.repository';
 import { TelegramUserClientProxyService } from '@/infrastructure/tdlib/telegram-user-client-proxy.service';
-import { SubscriptionService } from '@/infrastructure/subscription/subscription.service';
+import { SubscriptionService, SubscriptionError } from '@/infrastructure/subscription/subscription.service';
+import type { CheckoutRequestDto } from '@/infrastructure/cielo/cielo.types';
 import { HybridAuthorizationService } from '@/infrastructure/subscription/hybrid-authorization.service';
 import { SessionGuard } from '@/infrastructure/http/guards/session.guard';
 import { WorkerManager } from '@/infrastructure/workers/worker-manager';
@@ -139,6 +140,8 @@ interface ActiveGroupsResponse {
 
 interface AvailableGroupsResponse {
   groups: GroupResponse[];
+  groupLimit: number | null;
+  activeGroupsCount: number;
 }
 
 interface BotStatusResponse {
@@ -178,9 +181,9 @@ interface SubscriptionStatusResponse {
       name: string;
       displayName: string;
       priceInCents: number;
-      groupLimit: number;
+      groupLimit: number | null;
     };
-    totalGroupLimit: number;
+    totalGroupLimit: number | null;
     activeGroupsCount: number;
     daysRemaining: number;
   } | null;
@@ -767,9 +770,12 @@ export class DashboardController {
         isActive: activeGroupsSet.has(group.id),
       }));
 
+      const rawGroupLimit = await this.subscriptionService.getGroupLimit(userId);
+      const groupLimit = rawGroupLimit === Infinity ? null : rawGroupLimit;
+
       res.status(HttpStatus.OK).json({
         success: true,
-        data: { groups },
+        data: { groups, groupLimit, activeGroupsCount: activeGroupIds?.length ?? 0 },
       } satisfies ApiResponse<AvailableGroupsResponse>);
     } catch (error) {
       this.logger.error('Error fetching available groups', { error, userId });
@@ -833,6 +839,23 @@ export class DashboardController {
           error: 'not_a_group',
         } satisfies ApiResponse);
         return;
+      }
+
+      // Check group limit (skip if group is already active — idempotent)
+      const activeGroupIds = await this.activeGroupsRepository.getActiveGroups(userId);
+      const alreadyActive = activeGroupIds?.includes(groupIdNum);
+      if (!alreadyActive) {
+        const activeGroupsCount = activeGroupIds?.length ?? 0;
+        const canAdd = await this.subscriptionService.canAddGroup(userId, activeGroupsCount);
+        if (!canAdd) {
+          const limit = await this.subscriptionService.getGroupLimit(userId);
+          res.status(HttpStatus.FORBIDDEN).json({
+            success: false,
+            error: 'group_limit_reached',
+            data: { currentCount: activeGroupsCount, limit },
+          } satisfies ApiResponse);
+          return;
+        }
       }
 
       // Add to active groups
@@ -1296,7 +1319,9 @@ export class DashboardController {
             priceInCents: subscription.plan.priceInCents,
             groupLimit: subscription.plan.groupLimit,
           },
-          totalGroupLimit: subscription.plan.groupLimit + subscription.extraGroups,
+          totalGroupLimit: subscription.plan.groupLimit !== null
+            ? subscription.plan.groupLimit + subscription.extraGroups
+            : null,
           activeGroupsCount,
           daysRemaining: daysRemaining ?? 0,
         },
@@ -1307,7 +1332,7 @@ export class DashboardController {
   }
 
   /**
-   * POST /dashboard/subscription/trial - Start a free trial
+   * POST /dashboard/subscription/trial - Start a trial with card info
    */
   @Post('subscription/trial')
   async startTrial(
@@ -1315,9 +1340,23 @@ export class DashboardController {
     @Res() res: Response,
   ): Promise<void> {
     const userId = req.user.userId;
+    const body = req.body as Partial<CheckoutRequestDto>;
+
+    // Validate required fields
+    const requiredFields: (keyof CheckoutRequestDto)[] = [
+      'planId', 'cardNumber', 'holder', 'expirationDate', 'securityCode', 'brand', 'customerName',
+    ];
+    const missingFields = requiredFields.filter((f) => !body[f]);
+    if (missingFields.length > 0) {
+      res.status(HttpStatus.BAD_REQUEST).json({
+        success: false,
+        error: `Campos obrigatórios faltando: ${missingFields.join(', ')}`,
+      } satisfies ApiResponse);
+      return;
+    }
 
     try {
-      const result = await this.subscriptionService.startTrial(userId);
+      const result = await this.subscriptionService.startTrial(userId, body as CheckoutRequestDto);
       const daysRemaining = await this.subscriptionService.getDaysRemaining(userId) ?? 0;
 
       this.logger.log(`Trial started via dashboard for user ${userId}`);
@@ -1338,11 +1377,10 @@ export class DashboardController {
         },
       } satisfies ApiResponse);
     } catch (error) {
-      if (error instanceof Error && 'code' in error) {
-        const subscriptionError = error as { message: string; code: string };
+      if (error instanceof SubscriptionError) {
         res.status(HttpStatus.BAD_REQUEST).json({
           success: false,
-          error: subscriptionError.message,
+          error: error.message,
         } satisfies ApiResponse);
         return;
       }

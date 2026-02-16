@@ -6,8 +6,10 @@ export interface SubscriptionPlanData {
   name: string;
   displayName: string;
   priceInCents: number;
-  groupLimit: number;
+  groupLimit: number | null;
   durationDays: number | null;
+  promotionalPriceInCents: number | null;
+  promotionalMonths: number | null;
   features: string[] | null;
   isActive: boolean;
   createdAt: Date;
@@ -21,8 +23,10 @@ export interface SubscriptionPlanInput {
   name: string;
   displayName: string;
   priceInCents: number;
-  groupLimit: number;
+  groupLimit: number | null;
   durationDays?: number | null;
+  promotionalPriceInCents?: number | null;
+  promotionalMonths?: number | null;
   features?: string[];
   isActive?: boolean;
 }

@@ -29,6 +29,9 @@ import { HybridAuthorizationService } from './subscription/hybrid-authorization.
 import { SessionGuard } from './http/guards/session.guard';
 import { LoginController } from './http/login.controller';
 import { RegisterController } from './http/register.controller';
+import { CieloWebhookController } from './http/cielo-webhook.controller';
+import { CieloService } from './cielo/cielo.service';
+import { TelegramBotSubscriptionHandler } from './telegram/handlers/telegram-bot-subscription.handler';
 import { AuthErrorCacheService } from './tdlib/auth-error-cache.service';
 
 /**
@@ -37,7 +40,7 @@ import { AuthErrorCacheService } from './tdlib/auth-error-cache.service';
  */
 @Module({
   imports: [DomainModule, PersistenceModule, QueueModule, WorkersModule],
-  controllers: [LandingController, DashboardController, SubscriptionController, LoginController, RegisterController],
+  controllers: [LandingController, DashboardController, SubscriptionController, LoginController, RegisterController, CieloWebhookController],
   providers: [
     AppConfigService,
     OpenAIService,
@@ -61,10 +64,14 @@ import { AuthErrorCacheService } from './tdlib/auth-error-cache.service';
     OtpService,
     RegistrationTokenService,
     TdlibUpdatesWorkerRabbitMQ,
+    // Cielo
+    CieloService,
     // Subscription services
     SubscriptionService,
     SubscriptionAuthorizationService,
     HybridAuthorizationService,
+    // Telegram handlers
+    TelegramBotSubscriptionHandler,
     // Guards
     SessionGuard,
   ],

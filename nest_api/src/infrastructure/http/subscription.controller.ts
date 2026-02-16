@@ -11,6 +11,7 @@ import {
 import type { Request, Response } from 'express';
 import { join } from 'node:path';
 import { SubscriptionService, SubscriptionError } from '@/infrastructure/subscription/subscription.service';
+import type { CheckoutRequestDto } from '@/infrastructure/cielo/cielo.types';
 import { ActiveGroupsRepository } from '@/infrastructure/persistence/active-groups.repository';
 import { SessionGuard } from '@/infrastructure/http/guards/session.guard';
 
@@ -41,17 +42,23 @@ interface SubscriptionDataResponse {
     cancelReason: string | null;
     trialUsed: boolean;
     extraGroups: number;
+    promotionalPaymentsRemaining: number;
     plan: {
       id: number;
       name: string;
       displayName: string;
       priceInCents: number;
-      groupLimit: number;
+      groupLimit: number | null;
       durationDays: number | null;
+      promotionalPriceInCents: number | null;
+      promotionalMonths: number | null;
       features: string[] | null;
     };
+    // Card info
+    cardLastFourDigits: string | null;
+    cardBrand: string | null;
     // Calculated fields
-    totalGroupLimit: number;
+    totalGroupLimit: number | null;
     activeGroupsCount: number;
     daysRemaining: number;
   } | null;
@@ -63,22 +70,11 @@ interface PlansResponse {
     name: string;
     displayName: string;
     priceInCents: number;
-    groupLimit: number;
+    groupLimit: number | null;
+    promotionalPriceInCents: number | null;
+    promotionalMonths: number | null;
     features: string[] | null;
   }>;
-}
-
-interface TrialResponse {
-  subscription: {
-    id: number;
-    status: string;
-    plan: {
-      name: string;
-      displayName: string;
-    };
-    currentPeriodEnd: string;
-    daysRemaining: number;
-  };
 }
 
 /**
@@ -144,6 +140,7 @@ export class SubscriptionController {
         cancelReason: subscription.cancelReason,
         trialUsed: subscription.trialUsed,
         extraGroups: subscription.extraGroups,
+        promotionalPaymentsRemaining: subscription.promotionalPaymentsRemaining,
         plan: {
           id: subscription.plan.id,
           name: subscription.plan.name,
@@ -151,9 +148,15 @@ export class SubscriptionController {
           priceInCents: subscription.plan.priceInCents,
           groupLimit: subscription.plan.groupLimit,
           durationDays: subscription.plan.durationDays,
+          promotionalPriceInCents: subscription.plan.promotionalPriceInCents,
+          promotionalMonths: subscription.plan.promotionalMonths,
           features: subscription.plan.features,
         },
-        totalGroupLimit: subscription.plan.groupLimit + subscription.extraGroups,
+        cardLastFourDigits: subscription.cardLastFourDigits,
+        cardBrand: subscription.cardBrand,
+        totalGroupLimit: subscription.plan.groupLimit !== null
+          ? subscription.plan.groupLimit + subscription.extraGroups
+          : null,
         activeGroupsCount,
         daysRemaining,
       },
@@ -182,6 +185,8 @@ export class SubscriptionController {
         displayName: p.displayName,
         priceInCents: p.priceInCents,
         groupLimit: p.groupLimit,
+        promotionalPriceInCents: p.promotionalPriceInCents,
+        promotionalMonths: p.promotionalMonths,
         features: p.features,
       })),
     };
@@ -193,7 +198,34 @@ export class SubscriptionController {
   }
 
   /**
-   * POST /subscription/trial - Start a free trial
+   * GET /subscription/payments - Get payment history
+   */
+  @Get('payments')
+  async getPaymentHistory(
+    @Req() req: AuthenticatedRequest,
+    @Res() res: Response,
+  ): Promise<void> {
+    const userId = req.user.userId;
+
+    const payments = await this.subscriptionService.getPaymentHistory(userId);
+
+    res.status(HttpStatus.OK).json({
+      success: true,
+      data: {
+        payments: payments.map(p => ({
+          id: p.id,
+          amountInCents: p.amountInCents,
+          status: p.status,
+          paidAt: p.paidAt?.toISOString() ?? null,
+          failedAt: p.failedAt?.toISOString() ?? null,
+          createdAt: p.createdAt.toISOString(),
+        })),
+      },
+    } satisfies ApiResponse);
+  }
+
+  /**
+   * POST /subscription/trial - Start a trial with card info via Cielo
    */
   @Post('trial')
   async startTrial(
@@ -201,30 +233,66 @@ export class SubscriptionController {
     @Res() res: Response,
   ): Promise<void> {
     const userId = req.user.userId;
+    const body = req.body as Partial<CheckoutRequestDto>;
+
+    // Validate required fields (same as checkout)
+    const requiredFields: (keyof CheckoutRequestDto)[] = [
+      'planId', 'cardNumber', 'holder', 'expirationDate', 'securityCode', 'brand', 'customerName', 'customerIdentity', 'customerIdentityType',
+    ];
+    const missingFields = requiredFields.filter((f) => !body[f]);
+    if (missingFields.length > 0) {
+      res.status(HttpStatus.BAD_REQUEST).json({
+        success: false,
+        error: `Campos obrigatórios faltando: ${missingFields.join(', ')}`,
+        code: 'missing_fields',
+      } satisfies ApiResponse);
+      return;
+    }
 
     try {
-      const result = await this.subscriptionService.startTrial(userId);
+      const result = await this.subscriptionService.startTrial(userId, body as CheckoutRequestDto);
       const daysRemaining = await this.subscriptionService.getDaysRemaining(userId) ?? 0;
-
-      const response: TrialResponse = {
-        subscription: {
-          id: result.subscription.id,
-          status: result.subscription.status,
-          plan: {
-            name: result.subscription.plan.name,
-            displayName: result.subscription.plan.displayName,
-          },
-          currentPeriodEnd: result.subscription.currentPeriodEnd.toISOString(),
-          daysRemaining,
-        },
-      };
+      const activeGroups = await this.activeGroupsRepository.getActiveGroups(userId);
+      const activeGroupsCount = activeGroups?.length ?? 0;
 
       this.logger.log(`Trial started for user ${userId}`);
 
       res.status(HttpStatus.OK).json({
         success: true,
-        data: response,
-      } satisfies ApiResponse<TrialResponse>);
+        data: {
+          subscription: {
+            id: result.subscription.id,
+            status: result.subscription.status,
+            startDate: result.subscription.startDate.toISOString(),
+            currentPeriodStart: result.subscription.currentPeriodStart.toISOString(),
+            currentPeriodEnd: result.subscription.currentPeriodEnd.toISOString(),
+            nextBillingDate: result.subscription.nextBillingDate?.toISOString() ?? null,
+            canceledAt: null,
+            cancelReason: null,
+            trialUsed: result.subscription.trialUsed,
+            extraGroups: result.subscription.extraGroups,
+            promotionalPaymentsRemaining: result.subscription.promotionalPaymentsRemaining,
+            plan: {
+              id: result.subscription.plan.id,
+              name: result.subscription.plan.name,
+              displayName: result.subscription.plan.displayName,
+              priceInCents: result.subscription.plan.priceInCents,
+              groupLimit: result.subscription.plan.groupLimit,
+              durationDays: result.subscription.plan.durationDays,
+              promotionalPriceInCents: result.subscription.plan.promotionalPriceInCents,
+              promotionalMonths: result.subscription.plan.promotionalMonths,
+              features: result.subscription.plan.features,
+            },
+            totalGroupLimit: result.subscription.plan.groupLimit !== null
+              ? result.subscription.plan.groupLimit + result.subscription.extraGroups
+              : null,
+            activeGroupsCount,
+            daysRemaining,
+            cardLastFourDigits: result.subscription.cardLastFourDigits,
+            cardBrand: result.subscription.cardBrand,
+          },
+        },
+      } satisfies ApiResponse);
     } catch (error) {
       if (error instanceof SubscriptionError) {
         res.status(HttpStatus.BAD_REQUEST).json({
@@ -242,5 +310,402 @@ export class SubscriptionController {
         code: 'internal_error',
       } satisfies ApiResponse);
     }
+  }
+
+  /**
+   * POST /subscription/update-payment - Update payment method
+   */
+  @Post('update-payment')
+  async updatePaymentMethod(
+    @Req() req: AuthenticatedRequest,
+    @Res() res: Response,
+  ): Promise<void> {
+    const userId = req.user.userId;
+    const body = req.body as Partial<CheckoutRequestDto>;
+
+    const requiredFields: (keyof CheckoutRequestDto)[] = [
+      'cardNumber', 'holder', 'expirationDate', 'securityCode', 'brand', 'customerName', 'customerIdentity', 'customerIdentityType',
+    ];
+    const missingFields = requiredFields.filter((f) => !body[f]);
+    if (missingFields.length > 0) {
+      res.status(HttpStatus.BAD_REQUEST).json({
+        success: false,
+        error: `Campos obrigatórios faltando: ${missingFields.join(', ')}`,
+        code: 'missing_fields',
+      } satisfies ApiResponse);
+      return;
+    }
+
+    try {
+      const updated = await this.subscriptionService.updatePaymentMethod(userId, body as CheckoutRequestDto);
+
+      res.status(HttpStatus.OK).json({
+        success: true,
+        data: {
+          cardLastFourDigits: updated.cardLastFourDigits,
+          cardBrand: updated.cardBrand,
+        },
+      } satisfies ApiResponse);
+    } catch (error) {
+      if (error instanceof SubscriptionError) {
+        res.status(HttpStatus.BAD_REQUEST).json({
+          success: false,
+          error: error.message,
+          code: error.code,
+        } satisfies ApiResponse);
+        return;
+      }
+
+      this.logger.error('Error updating payment method', { error, userId });
+      res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
+        success: false,
+        error: 'Erro ao atualizar forma de pagamento. Tente novamente.',
+        code: 'update_payment_failed',
+      } satisfies ApiResponse);
+    }
+  }
+
+  /**
+   * POST /subscription/cancel - Cancel trial or subscription
+   */
+  @Post('cancel')
+  async cancelSubscription(
+    @Req() req: AuthenticatedRequest,
+    @Res() res: Response,
+  ): Promise<void> {
+    const userId = req.user.userId;
+
+    try {
+      await this.subscriptionService.cancelSubscription(userId);
+
+      this.logger.log(`Subscription canceled for user ${userId}`);
+
+      res.status(HttpStatus.OK).json({
+        success: true,
+      } satisfies ApiResponse);
+    } catch (error) {
+      if (error instanceof SubscriptionError) {
+        res.status(HttpStatus.BAD_REQUEST).json({
+          success: false,
+          error: error.message,
+          code: error.code,
+        } satisfies ApiResponse);
+        return;
+      }
+
+      this.logger.error('Error canceling subscription', { error, userId });
+      res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
+        success: false,
+        error: 'Erro ao cancelar assinatura. Tente novamente.',
+        code: 'cancel_failed',
+      } satisfies ApiResponse);
+    }
+  }
+
+  /**
+   * POST /subscription/change-plan - Change subscription plan
+   */
+  @Post('change-plan')
+  async changePlan(
+    @Req() req: AuthenticatedRequest,
+    @Res() res: Response,
+  ): Promise<void> {
+    const userId = req.user.userId;
+    const body = req.body as { planId?: number };
+
+    if (!body.planId) {
+      res.status(HttpStatus.BAD_REQUEST).json({
+        success: false,
+        error: 'planId é obrigatório.',
+        code: 'missing_fields',
+      } satisfies ApiResponse);
+      return;
+    }
+
+    try {
+      const updated = await this.subscriptionService.changePlan(userId, body.planId);
+      const activeGroups = await this.activeGroupsRepository.getActiveGroups(userId);
+      const activeGroupsCount = activeGroups?.length ?? 0;
+      const daysRemaining = await this.subscriptionService.getDaysRemaining(userId) ?? 0;
+
+      res.status(HttpStatus.OK).json({
+        success: true,
+        data: {
+          subscription: {
+            id: updated.id,
+            status: updated.status,
+            startDate: updated.startDate.toISOString(),
+            currentPeriodStart: updated.currentPeriodStart.toISOString(),
+            currentPeriodEnd: updated.currentPeriodEnd.toISOString(),
+            nextBillingDate: updated.nextBillingDate?.toISOString() ?? null,
+            canceledAt: updated.canceledAt?.toISOString() ?? null,
+            cancelReason: updated.cancelReason,
+            trialUsed: updated.trialUsed,
+            extraGroups: updated.extraGroups,
+            promotionalPaymentsRemaining: updated.promotionalPaymentsRemaining,
+            plan: {
+              id: updated.plan.id,
+              name: updated.plan.name,
+              displayName: updated.plan.displayName,
+              priceInCents: updated.plan.priceInCents,
+              groupLimit: updated.plan.groupLimit,
+              durationDays: updated.plan.durationDays,
+              promotionalPriceInCents: updated.plan.promotionalPriceInCents,
+              promotionalMonths: updated.plan.promotionalMonths,
+              features: updated.plan.features,
+            },
+            totalGroupLimit: updated.plan.groupLimit !== null
+              ? updated.plan.groupLimit + updated.extraGroups
+              : null,
+            activeGroupsCount,
+            daysRemaining,
+            cardLastFourDigits: updated.cardLastFourDigits,
+            cardBrand: updated.cardBrand,
+          },
+        },
+      } satisfies ApiResponse);
+    } catch (error) {
+      if (error instanceof SubscriptionError) {
+        res.status(HttpStatus.BAD_REQUEST).json({
+          success: false,
+          error: error.message,
+          code: error.code,
+        } satisfies ApiResponse);
+        return;
+      }
+
+      this.logger.error('Error changing plan', { error, userId });
+      res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
+        success: false,
+        error: 'Erro ao trocar de plano. Tente novamente.',
+        code: 'plan_change_failed',
+      } satisfies ApiResponse);
+    }
+  }
+
+  /**
+   * POST /subscription/addons/groups - Purchase extra group slots
+   */
+  @Post('addons/groups')
+  async purchaseExtraGroups(
+    @Req() req: AuthenticatedRequest,
+    @Res() res: Response,
+  ): Promise<void> {
+    const userId = req.user.userId;
+    const body = req.body as { count?: number };
+
+    if (!body.count || body.count < 1) {
+      res.status(HttpStatus.BAD_REQUEST).json({
+        success: false,
+        error: 'Quantidade inválida.',
+        code: 'invalid_count',
+      } satisfies ApiResponse);
+      return;
+    }
+
+    try {
+      const updated = await this.subscriptionService.purchaseExtraGroups(userId, body.count);
+      const activeGroups = await this.activeGroupsRepository.getActiveGroups(userId);
+      const activeGroupsCount = activeGroups?.length ?? 0;
+      const daysRemaining = await this.subscriptionService.getDaysRemaining(userId) ?? 0;
+
+      res.status(HttpStatus.OK).json({
+        success: true,
+        data: {
+          subscription: this.formatSubscriptionResponse(updated, activeGroupsCount, daysRemaining),
+        },
+      } satisfies ApiResponse);
+    } catch (error) {
+      if (error instanceof SubscriptionError) {
+        res.status(HttpStatus.BAD_REQUEST).json({
+          success: false,
+          error: error.message,
+          code: error.code,
+        } satisfies ApiResponse);
+        return;
+      }
+
+      this.logger.error('Error purchasing extra groups', { error, userId });
+      res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
+        success: false,
+        error: 'Erro ao comprar grupos extras. Tente novamente.',
+        code: 'extra_groups_failed',
+      } satisfies ApiResponse);
+    }
+  }
+
+  /**
+   * POST /subscription/addons/groups/remove - Remove extra group slots
+   */
+  @Post('addons/groups/remove')
+  async removeExtraGroups(
+    @Req() req: AuthenticatedRequest,
+    @Res() res: Response,
+  ): Promise<void> {
+    const userId = req.user.userId;
+    const body = req.body as { count?: number };
+
+    if (!body.count || body.count < 1) {
+      res.status(HttpStatus.BAD_REQUEST).json({
+        success: false,
+        error: 'Quantidade inválida.',
+        code: 'invalid_count',
+      } satisfies ApiResponse);
+      return;
+    }
+
+    try {
+      const updated = await this.subscriptionService.removeExtraGroups(userId, body.count);
+      const activeGroups = await this.activeGroupsRepository.getActiveGroups(userId);
+      const activeGroupsCount = activeGroups?.length ?? 0;
+      const daysRemaining = await this.subscriptionService.getDaysRemaining(userId) ?? 0;
+
+      res.status(HttpStatus.OK).json({
+        success: true,
+        data: {
+          subscription: this.formatSubscriptionResponse(updated, activeGroupsCount, daysRemaining),
+        },
+      } satisfies ApiResponse);
+    } catch (error) {
+      if (error instanceof SubscriptionError) {
+        res.status(HttpStatus.BAD_REQUEST).json({
+          success: false,
+          error: error.message,
+          code: error.code,
+        } satisfies ApiResponse);
+        return;
+      }
+
+      this.logger.error('Error removing extra groups', { error, userId });
+      res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
+        success: false,
+        error: 'Erro ao remover grupos extras. Tente novamente.',
+        code: 'extra_groups_failed',
+      } satisfies ApiResponse);
+    }
+  }
+
+  /**
+   * POST /subscription/checkout - Subscribe to a paid plan via Cielo
+   */
+  @Post('checkout')
+  async checkout(
+    @Req() req: AuthenticatedRequest,
+    @Res() res: Response,
+  ): Promise<void> {
+    const userId = req.user.userId;
+    const body = req.body as Partial<CheckoutRequestDto>;
+
+    // Validate required fields
+    const requiredFields: (keyof CheckoutRequestDto)[] = [
+      'planId', 'cardNumber', 'holder', 'expirationDate', 'securityCode', 'brand', 'customerName', 'customerIdentity', 'customerIdentityType',
+    ];
+    const missingFields = requiredFields.filter((f) => !body[f]);
+    if (missingFields.length > 0) {
+      res.status(HttpStatus.BAD_REQUEST).json({
+        success: false,
+        error: `Campos obrigatórios faltando: ${missingFields.join(', ')}`,
+        code: 'missing_fields',
+      } satisfies ApiResponse);
+      return;
+    }
+
+    try {
+      const result = await this.subscriptionService.checkout(userId, body as CheckoutRequestDto);
+      const daysRemaining = await this.subscriptionService.getDaysRemaining(userId) ?? 0;
+      const activeGroups = await this.activeGroupsRepository.getActiveGroups(userId);
+      const activeGroupsCount = activeGroups?.length ?? 0;
+
+      res.status(HttpStatus.OK).json({
+        success: true,
+        data: {
+          subscription: {
+            id: result.subscription.id,
+            status: result.subscription.status,
+            startDate: result.subscription.startDate.toISOString(),
+            currentPeriodStart: result.subscription.currentPeriodStart.toISOString(),
+            currentPeriodEnd: result.subscription.currentPeriodEnd.toISOString(),
+            nextBillingDate: result.subscription.nextBillingDate?.toISOString() ?? null,
+            canceledAt: null,
+            cancelReason: null,
+            trialUsed: result.subscription.trialUsed,
+            extraGroups: result.subscription.extraGroups,
+            promotionalPaymentsRemaining: result.subscription.promotionalPaymentsRemaining,
+            plan: {
+              id: result.subscription.plan.id,
+              name: result.subscription.plan.name,
+              displayName: result.subscription.plan.displayName,
+              priceInCents: result.subscription.plan.priceInCents,
+              groupLimit: result.subscription.plan.groupLimit,
+              durationDays: result.subscription.plan.durationDays,
+              promotionalPriceInCents: result.subscription.plan.promotionalPriceInCents,
+              promotionalMonths: result.subscription.plan.promotionalMonths,
+              features: result.subscription.plan.features,
+            },
+            totalGroupLimit: result.subscription.plan.groupLimit !== null
+              ? result.subscription.plan.groupLimit + result.subscription.extraGroups
+              : null,
+            activeGroupsCount,
+            daysRemaining,
+            cardLastFourDigits: result.subscription.cardLastFourDigits,
+            cardBrand: result.subscription.cardBrand,
+          },
+        },
+      } satisfies ApiResponse);
+    } catch (error) {
+      if (error instanceof SubscriptionError) {
+        res.status(HttpStatus.BAD_REQUEST).json({
+          success: false,
+          error: error.message,
+          code: error.code,
+        } satisfies ApiResponse);
+        return;
+      }
+
+      this.logger.error('Error during checkout', { error, userId });
+      res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
+        success: false,
+        error: 'Erro ao processar pagamento. Tente novamente.',
+        code: 'checkout_failed',
+      } satisfies ApiResponse);
+    }
+  }
+
+  private formatSubscriptionResponse(
+    sub: import('@/infrastructure/persistence/subscription.repository').SubscriptionWithPlan,
+    activeGroupsCount: number,
+    daysRemaining: number,
+  ): SubscriptionDataResponse['subscription'] {
+    return {
+      id: sub.id,
+      status: sub.status,
+      startDate: sub.startDate.toISOString(),
+      currentPeriodStart: sub.currentPeriodStart.toISOString(),
+      currentPeriodEnd: sub.currentPeriodEnd.toISOString(),
+      nextBillingDate: sub.nextBillingDate?.toISOString() ?? null,
+      canceledAt: sub.canceledAt?.toISOString() ?? null,
+      cancelReason: sub.cancelReason,
+      trialUsed: sub.trialUsed,
+      extraGroups: sub.extraGroups,
+      promotionalPaymentsRemaining: sub.promotionalPaymentsRemaining,
+      plan: {
+        id: sub.plan.id,
+        name: sub.plan.name,
+        displayName: sub.plan.displayName,
+        priceInCents: sub.plan.priceInCents,
+        groupLimit: sub.plan.groupLimit,
+        durationDays: sub.plan.durationDays,
+        promotionalPriceInCents: sub.plan.promotionalPriceInCents,
+        promotionalMonths: sub.plan.promotionalMonths,
+        features: sub.plan.features,
+      },
+      cardLastFourDigits: sub.cardLastFourDigits,
+      cardBrand: sub.cardBrand,
+      totalGroupLimit: sub.plan.groupLimit !== null
+        ? sub.plan.groupLimit + sub.extraGroups
+        : null,
+      activeGroupsCount,
+      daysRemaining,
+    };
   }
 }

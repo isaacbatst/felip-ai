@@ -26,6 +26,8 @@ export interface SubscriptionData {
   cancelReason: string | null;
   // Trial
   trialUsed: boolean;
+  // Promotional
+  promotionalPaymentsRemaining: number;
   // Add-ons
   extraGroups: number;
   // Timestamps
@@ -42,8 +44,10 @@ export interface SubscriptionWithPlan extends SubscriptionData {
     name: string;
     displayName: string;
     priceInCents: number;
-    groupLimit: number;
+    groupLimit: number | null;
     durationDays: number | null;
+    promotionalPriceInCents: number | null;
+    promotionalMonths: number | null;
     features: string[] | null;
   };
 }
@@ -57,6 +61,7 @@ export interface CreateSubscriptionInput {
   status: SubscriptionStatus;
   currentPeriodEnd: Date;
   trialUsed?: boolean;
+  promotionalPaymentsRemaining?: number;
   // Cielo payment fields (optional, for paid subscriptions)
   cieloRecurrentPaymentId?: string;
   cieloCardToken?: string;
@@ -81,6 +86,7 @@ export interface UpdateSubscriptionInput {
   canceledAt?: Date | null;
   cancelReason?: string | null;
   trialUsed?: boolean;
+  promotionalPaymentsRemaining?: number;
   extraGroups?: number;
 }
 
@@ -147,4 +153,9 @@ export abstract class SubscriptionRepository {
    * Delete a subscription by user ID
    */
   abstract deleteByUserId(userId: string): Promise<void>;
+
+  /**
+   * Get a subscription by Cielo recurrent payment ID
+   */
+  abstract getByCieloRecurrentPaymentId(recurrentPaymentId: string): Promise<SubscriptionData | null>;
 }

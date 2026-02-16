@@ -28,6 +28,10 @@ import { UserRepository } from "@/infrastructure/persistence/user.repository";
 import { UserDrizzleStore } from "@/infrastructure/persistence/drizzle/user-drizzle-store";
 import { OtpRepository } from "@/infrastructure/persistence/otp.repository";
 import { OtpDrizzleStore } from "@/infrastructure/persistence/drizzle/otp-drizzle-store";
+import { SubscriptionPaymentRepository } from "@/infrastructure/persistence/subscription-payment.repository";
+import { SubscriptionPaymentDrizzleStore } from "@/infrastructure/persistence/drizzle/subscription-payment-drizzle-store";
+import { CieloWebhookEventRepository } from "@/infrastructure/persistence/cielo-webhook-event.repository";
+import { CieloWebhookEventDrizzleStore } from "@/infrastructure/persistence/drizzle/cielo-webhook-event-drizzle-store";
 
 @Module({
   imports: [DatabaseModule],
@@ -88,6 +92,14 @@ import { OtpDrizzleStore } from "@/infrastructure/persistence/drizzle/otp-drizzl
       provide: OtpRepository,
       useClass: OtpDrizzleStore,
     },
+    {
+      provide: SubscriptionPaymentRepository,
+      useClass: SubscriptionPaymentDrizzleStore,
+    },
+    {
+      provide: CieloWebhookEventRepository,
+      useClass: CieloWebhookEventDrizzleStore,
+    },
   ],
   exports: [
     ActiveGroupsRepository,
@@ -104,6 +116,8 @@ import { OtpDrizzleStore } from "@/infrastructure/persistence/drizzle/otp-drizzl
     WebSessionRepository,
     UserRepository,
     OtpRepository,
+    SubscriptionPaymentRepository,
+    CieloWebhookEventRepository,
   ],
 })
 export class PersistenceModule {}

@@ -46,6 +46,7 @@ export class SubscriptionDrizzleStore extends SubscriptionRepository {
       canceledAt: row.canceledAt,
       cancelReason: row.cancelReason,
       trialUsed: row.trialUsed,
+      promotionalPaymentsRemaining: row.promotionalPaymentsRemaining,
       extraGroups: row.extraGroups,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
@@ -91,6 +92,8 @@ export class SubscriptionDrizzleStore extends SubscriptionRepository {
         priceInCents: plan.priceInCents,
         groupLimit: plan.groupLimit,
         durationDays: plan.durationDays,
+        promotionalPriceInCents: plan.promotionalPriceInCents,
+        promotionalMonths: plan.promotionalMonths,
         features: plan.features as string[] | null,
       },
     };
@@ -119,6 +122,7 @@ export class SubscriptionDrizzleStore extends SubscriptionRepository {
         status: input.status,
         currentPeriodEnd: input.currentPeriodEnd,
         trialUsed: input.trialUsed ?? false,
+        promotionalPaymentsRemaining: input.promotionalPaymentsRemaining ?? 0,
         cieloRecurrentPaymentId: input.cieloRecurrentPaymentId ?? null,
         cieloCardToken: input.cieloCardToken ?? null,
         cardLastFourDigits: input.cardLastFourDigits ?? null,
@@ -148,6 +152,7 @@ export class SubscriptionDrizzleStore extends SubscriptionRepository {
     if (input.canceledAt !== undefined) updateData.canceledAt = input.canceledAt;
     if (input.cancelReason !== undefined) updateData.cancelReason = input.cancelReason;
     if (input.trialUsed !== undefined) updateData.trialUsed = input.trialUsed;
+    if (input.promotionalPaymentsRemaining !== undefined) updateData.promotionalPaymentsRemaining = input.promotionalPaymentsRemaining;
     if (input.extraGroups !== undefined) updateData.extraGroups = input.extraGroups;
 
     const result = await this.db
@@ -237,5 +242,19 @@ export class SubscriptionDrizzleStore extends SubscriptionRepository {
   async deleteByUserId(userId: string): Promise<void> {
     await this.db.delete(subscriptions).where(eq(subscriptions.userId, userId));
     this.logger.log(`Deleted subscription for user ${userId}`);
+  }
+
+  async getByCieloRecurrentPaymentId(recurrentPaymentId: string): Promise<SubscriptionData | null> {
+    const result = await this.db
+      .select()
+      .from(subscriptions)
+      .where(eq(subscriptions.cieloRecurrentPaymentId, recurrentPaymentId))
+      .limit(1);
+
+    if (result.length === 0) {
+      return null;
+    }
+
+    return this.mapToSubscriptionData(result[0]);
   }
 }

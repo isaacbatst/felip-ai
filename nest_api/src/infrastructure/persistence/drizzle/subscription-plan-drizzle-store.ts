@@ -20,12 +20,14 @@ const DEFAULT_PLANS: SubscriptionPlanInput[] = [
     groupLimit: 3,
     durationDays: 7,
     features: ['3 grupos ativos', 'Todas as funcionalidades', 'Suporte por email'],
-    isActive: true,
+    isActive: false,
   },
   {
     name: 'starter',
     displayName: 'Starter',
-    priceInCents: 13900, // R$139
+    priceInCents: 19900, // R$199
+    promotionalPriceInCents: 13900, // R$139 (30% OFF)
+    promotionalMonths: 3,
     groupLimit: 3,
     durationDays: null,
     features: ['3 grupos ativos', 'Todas as funcionalidades', 'Suporte por email'],
@@ -34,19 +36,23 @@ const DEFAULT_PLANS: SubscriptionPlanInput[] = [
   {
     name: 'pro',
     displayName: 'Pro',
-    priceInCents: 20900, // R$209
-    groupLimit: 7,
+    priceInCents: 29900, // R$299
+    promotionalPriceInCents: 20900, // R$209 (30% OFF)
+    promotionalMonths: 3,
+    groupLimit: 6,
     durationDays: null,
-    features: ['7 grupos ativos', 'Todas as funcionalidades', 'Suporte prioritário'],
+    features: ['6 grupos ativos', 'Todas as funcionalidades', 'Suporte prioritário'],
     isActive: true,
   },
   {
     name: 'scale',
     displayName: 'Scale',
-    priceInCents: 34900, // R$349
-    groupLimit: 15,
+    priceInCents: 49900, // R$499
+    promotionalPriceInCents: 34900, // R$349 (30% OFF)
+    promotionalMonths: 3,
+    groupLimit: null, // Unlimited
     durationDays: null,
-    features: ['15 grupos ativos', 'Todas as funcionalidades', 'Suporte prioritário', 'Onboarding dedicado'],
+    features: ['Grupos ilimitados', 'Todas as funcionalidades', 'Suporte prioritário', 'Onboarding dedicado'],
     isActive: true,
   },
 ];
@@ -76,6 +82,8 @@ export class SubscriptionPlanDrizzleStore extends SubscriptionPlanRepository {
       priceInCents: row.priceInCents,
       groupLimit: row.groupLimit,
       durationDays: row.durationDays,
+      promotionalPriceInCents: row.promotionalPriceInCents,
+      promotionalMonths: row.promotionalMonths,
       features: row.features as string[] | null,
       isActive: row.isActive,
       createdAt: row.createdAt,
@@ -134,6 +142,8 @@ export class SubscriptionPlanDrizzleStore extends SubscriptionPlanRepository {
         priceInCents: input.priceInCents,
         groupLimit: input.groupLimit,
         durationDays: input.durationDays ?? null,
+        promotionalPriceInCents: input.promotionalPriceInCents ?? null,
+        promotionalMonths: input.promotionalMonths ?? null,
         features: input.features ?? null,
         isActive: input.isActive ?? true,
       })
@@ -153,6 +163,8 @@ export class SubscriptionPlanDrizzleStore extends SubscriptionPlanRepository {
     if (input.priceInCents !== undefined) updateData.priceInCents = input.priceInCents;
     if (input.groupLimit !== undefined) updateData.groupLimit = input.groupLimit;
     if (input.durationDays !== undefined) updateData.durationDays = input.durationDays;
+    if (input.promotionalPriceInCents !== undefined) updateData.promotionalPriceInCents = input.promotionalPriceInCents;
+    if (input.promotionalMonths !== undefined) updateData.promotionalMonths = input.promotionalMonths;
     if (input.features !== undefined) updateData.features = input.features;
     if (input.isActive !== undefined) updateData.isActive = input.isActive;
 
@@ -185,6 +197,25 @@ export class SubscriptionPlanDrizzleStore extends SubscriptionPlanRepository {
       if (!existing) {
         await this.createPlan(plan);
         this.logger.log(`Seeded subscription plan: ${plan.name}`);
+      } else {
+        // Sync all plan fields
+        const needsUpdate =
+          existing.isActive !== plan.isActive ||
+          existing.priceInCents !== plan.priceInCents ||
+          existing.groupLimit !== plan.groupLimit ||
+          existing.promotionalPriceInCents !== (plan.promotionalPriceInCents ?? null) ||
+          existing.promotionalMonths !== (plan.promotionalMonths ?? null);
+
+        if (needsUpdate) {
+          await this.updatePlan(existing.id, {
+            isActive: plan.isActive,
+            // priceInCents: plan.priceInCents,
+            // promotionalPriceInCents: plan.promotionalPriceInCents,
+            groupLimit: plan.groupLimit,
+            promotionalMonths: plan.promotionalMonths,
+          });
+          this.logger.log(`Updated subscription plan ${plan.name}`);
+        }
       }
     }
   }

@@ -10,6 +10,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/public/output.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/@alpinejs/mask@3.x.x/dist/cdn.min.js"></script>
   <script defer src="https://unpkg.com/alpinejs@3.13.3/dist/cdn.min.js"></script>
 </head>
 
@@ -51,65 +52,89 @@
     </div>
 
     <!-- No Subscription State -->
-    <template x-if="!subscription">
+    <template x-if="!subscription || subscription.status === 'expired' || subscription.status === 'canceled'">
       <div>
-        <!-- Trial CTA -->
-        <div class="bg-gradient-to-br from-primary/10 to-secondary/10 border-2 border-primary/20 rounded-2xl p-6 mb-6 text-center">
-          <div class="w-16 h-16 mx-auto mb-4 rounded-full bg-primary/20 flex items-center justify-center">
-            <i class="fa-solid fa-gift text-primary text-2xl"></i>
+        <!-- Trial CTA banner (only for brand-new users with no subscription) -->
+        <template x-if="!subscription && !trialUsed">
+          <div class="bg-gradient-to-br from-primary/10 to-secondary/10 border-2 border-primary/20 rounded-2xl p-6 mb-6 text-center">
+            <div class="w-16 h-16 mx-auto mb-4 rounded-full bg-primary/20 flex items-center justify-center">
+              <i class="fa-solid fa-gift text-primary text-2xl"></i>
+            </div>
+            <h2 class="text-xl font-bold text-gray-800 mb-2">Teste Gratuito de 7 Dias</h2>
+            <p class="text-gray-600 mb-2">Escolha seu plano abaixo e experimente gratuitamente por 7 dias.</p>
+            <p class="text-sm text-gray-500">O cartao sera cadastrado mas a cobranca so ocorre apos o periodo de teste.</p>
           </div>
-          <h2 class="text-xl font-bold text-gray-800 mb-2">Comece seu Período de Teste</h2>
-          <p class="text-gray-600 mb-4">Experimente todas as funcionalidades gratuitamente por 7 dias.</p>
+        </template>
 
-          <ul class="text-left mb-6 space-y-2 max-w-xs mx-auto">
-            <li class="flex items-center gap-2 text-gray-700">
-              <i class="fa-solid fa-check text-emerald-500"></i>
-              <span>3 grupos ativos</span>
-            </li>
-            <li class="flex items-center gap-2 text-gray-700">
-              <i class="fa-solid fa-check text-emerald-500"></i>
-              <span>Todas as funcionalidades</span>
-            </li>
-            <li class="flex items-center gap-2 text-gray-700">
-              <i class="fa-solid fa-check text-emerald-500"></i>
-              <span>Configuração via dashboard</span>
-            </li>
-            <li class="flex items-center gap-2 text-gray-700">
-              <i class="fa-solid fa-check text-emerald-500"></i>
-              <span>Sem compromisso</span>
-            </li>
-          </ul>
+        <!-- Expired/Canceled banner -->
+        <template x-if="subscription && (subscription.status === 'expired' || subscription.status === 'canceled')">
+          <div class="bg-red-50 border-2 border-red-200 rounded-2xl p-6 mb-6">
+            <div class="flex items-center gap-3 mb-2">
+              <i class="fa-solid fa-times-circle text-red-600 text-xl"></i>
+              <h2 class="text-lg font-bold text-red-800" x-text="subscription.status === 'expired' ? 'Assinatura Expirada' : 'Assinatura Cancelada'"></h2>
+            </div>
+            <template x-if="subscription.status === 'canceled' && subscription.currentPeriodEnd && new Date(subscription.currentPeriodEnd) > new Date()">
+              <p class="text-red-700 text-sm mb-2">Acesso disponivel ate <strong x-text="formatDate(subscription.currentPeriodEnd)"></strong>.</p>
+            </template>
+            <p class="text-red-700 text-sm">Escolha um plano abaixo para reativar sua assinatura.</p>
+          </div>
+        </template>
 
-          <button
-            @click="startTrial()"
-            :disabled="startingTrial || trialUsed"
-            class="w-full max-w-xs px-6 py-4 bg-gradient-to-r from-primary to-secondary text-white font-semibold rounded-xl transition-all hover:shadow-lg hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:shadow-none">
-            <span x-show="startingTrial" class="spinner mr-2" style="width: 16px; height: 16px;"></span>
-            <span x-show="!startingTrial && !trialUsed">
-              <i class="fa-solid fa-rocket mr-2"></i>
-              Começar Teste Gratuito
-            </span>
-            <span x-show="trialUsed && !startingTrial">
-              <i class="fa-solid fa-times-circle mr-2"></i>
-              Teste já utilizado
-            </span>
-          </button>
-        </div>
+        <!-- Payment History (canceled/expired) -->
+        <template x-if="payments.length > 0">
+          <div class="border-2 border-gray-200 rounded-xl p-5 mb-6">
+            <h3 class="font-semibold text-gray-800 mb-3 flex items-center gap-2">
+              <i class="fa-solid fa-receipt text-primary"></i>
+              Historico de Pagamentos
+            </h3>
+            <div class="space-y-2">
+              <template x-for="payment in payments" :key="payment.id">
+                <div class="flex items-center justify-between py-2 border-b border-gray-100 last:border-0">
+                  <div>
+                    <p class="text-sm text-gray-800 font-medium" x-text="`R$ ${(payment.amountInCents / 100).toFixed(2).replace('.', ',')}`"></p>
+                    <p class="text-xs text-gray-500" x-text="formatDate(payment.paidAt || payment.failedAt || payment.createdAt)"></p>
+                  </div>
+                  <span class="px-2 py-0.5 rounded-full text-xs font-semibold"
+                    :class="getPaymentStatusClass(payment.status)"
+                    x-text="getPaymentStatusLabel(payment.status)"></span>
+                </div>
+              </template>
+            </div>
+          </div>
+        </template>
 
-        <!-- Plans Preview (for future slices) -->
+        <!-- Plans Grid -->
         <div class="border-t-2 border-gray-100 pt-6">
           <h3 class="text-lg font-semibold text-gray-800 mb-4 text-center">Planos Disponíveis</h3>
           <div class="grid gap-4 md:grid-cols-3">
             <template x-for="plan in plans" :key="plan.id">
-              <div class="border-2 border-gray-200 rounded-xl p-4 hover:border-primary/50 transition-all">
+              <div class="border-2 rounded-xl p-4 transition-all cursor-pointer"
+                :class="selectedPlan?.id === plan.id ? 'border-primary bg-primary/5' : 'border-gray-200 hover:border-primary/50'"
+                @click="selectPlan(plan, !subscription && !trialUsed)">
                 <h4 class="font-bold text-gray-800" x-text="plan.displayName"></h4>
-                <p class="text-2xl font-bold text-primary my-2">
-                  R$ <span x-text="(plan.priceInCents / 100).toFixed(0)"></span>
-                  <span class="text-sm font-normal text-gray-500">/mês</span>
-                </p>
-                <p class="text-sm text-gray-600" x-text="`${plan.groupLimit} grupos ativos`"></p>
-                <button disabled class="w-full mt-4 px-4 py-2 bg-gray-100 text-gray-400 rounded-lg cursor-not-allowed">
-                  Em breve
+                <template x-if="plan.promotionalPriceInCents">
+                  <div class="my-2">
+                    <span class="text-sm text-gray-400 line-through">R$ <span x-text="(plan.priceInCents / 100).toFixed(0)"></span></span>
+                    <p class="text-2xl font-bold text-primary">
+                      R$ <span x-text="(plan.promotionalPriceInCents / 100).toFixed(0)"></span>
+                      <span class="text-sm font-normal text-gray-500">/mês</span>
+                    </p>
+                    <span class="inline-block mt-1 px-2 py-0.5 bg-emerald-100 text-emerald-700 text-xs font-semibold rounded-full">30% OFF por <span x-text="plan.promotionalMonths"></span> meses</span>
+                  </div>
+                </template>
+                <template x-if="!plan.promotionalPriceInCents">
+                  <p class="text-2xl font-bold text-primary my-2">
+                    R$ <span x-text="(plan.priceInCents / 100).toFixed(0)"></span>
+                    <span class="text-sm font-normal text-gray-500">/mês</span>
+                  </p>
+                </template>
+                <p class="text-sm text-gray-600" x-text="plan.groupLimit ? `${plan.groupLimit} grupos ativos` : 'Grupos ilimitados'"></p>
+                <!-- Trial button or Subscribe button -->
+                <button
+                  @click.stop="selectPlan(plan, !subscription && !trialUsed)"
+                  class="w-full mt-4 px-4 py-2 rounded-lg transition-all font-medium"
+                  :class="selectedPlan?.id === plan.id ? 'bg-primary text-white' : 'bg-primary/10 text-primary hover:bg-primary/20'">
+                  <span x-text="!subscription && !trialUsed ? 'Teste Grátis 7 Dias' : (selectedPlan?.id === plan.id ? 'Selecionado' : (subscription ? 'Reativar' : 'Assinar'))"></span>
                 </button>
               </div>
             </template>
@@ -118,15 +143,14 @@
       </div>
     </template>
 
-    <!-- Active Subscription State -->
-    <template x-if="subscription">
+    <!-- Active Subscription State (active, trialing, past_due) -->
+    <template x-if="subscription && subscription.status !== 'expired' && subscription.status !== 'canceled'">
       <div>
         <!-- Status Card -->
         <div class="border-2 rounded-2xl p-6 mb-6"
           :class="{
             'border-emerald-200 bg-emerald-50': subscription.status === 'active',
             'border-amber-200 bg-amber-50': subscription.status === 'trialing',
-            'border-red-200 bg-red-50': subscription.status === 'canceled' || subscription.status === 'expired',
             'border-orange-200 bg-orange-50': subscription.status === 'past_due'
           }">
 
@@ -138,26 +162,23 @@
                   :class="{
                     'bg-emerald-200 text-emerald-800': subscription.status === 'active',
                     'bg-amber-200 text-amber-800': subscription.status === 'trialing',
-                    'bg-red-200 text-red-800': subscription.status === 'canceled' || subscription.status === 'expired',
                     'bg-orange-200 text-orange-800': subscription.status === 'past_due'
                   }"
                   x-text="getStatusLabel(subscription.status)">
                 </span>
               </div>
-              <p class="text-gray-600 text-sm" x-text="subscription.plan.priceInCents === 0 ? 'Gratuito' : `R$ ${(subscription.plan.priceInCents / 100).toFixed(2)}/mês`"></p>
+              <p class="text-gray-600 text-sm" x-text="subscription.status === 'trialing' ? `R$ 0 agora, depois R$ ${((subscription.plan.promotionalPriceInCents || subscription.plan.priceInCents) / 100).toFixed(2)}/mês` : `R$ ${(subscription.plan.priceInCents / 100).toFixed(2)}/mês`"></p>
             </div>
             <div class="w-12 h-12 rounded-full flex items-center justify-center"
               :class="{
                 'bg-emerald-200 text-emerald-600': subscription.status === 'active',
                 'bg-amber-200 text-amber-600': subscription.status === 'trialing',
-                'bg-red-200 text-red-600': subscription.status === 'canceled' || subscription.status === 'expired',
                 'bg-orange-200 text-orange-600': subscription.status === 'past_due'
               }">
               <i class="fa-solid text-xl"
                 :class="{
                   'fa-check': subscription.status === 'active',
                   'fa-clock': subscription.status === 'trialing',
-                  'fa-times': subscription.status === 'canceled' || subscription.status === 'expired',
                   'fa-exclamation': subscription.status === 'past_due'
                 }"></i>
             </div>
@@ -167,38 +188,111 @@
           <div class="grid grid-cols-2 gap-4 mb-4">
             <div class="bg-white/50 rounded-xl p-3">
               <p class="text-xs text-gray-500 mb-1">Grupos Ativos</p>
-              <p class="text-lg font-bold text-gray-800">
-                <span x-text="subscription.activeGroupsCount"></span>
-                <span class="text-gray-400 font-normal">/</span>
-                <span x-text="subscription.totalGroupLimit"></span>
-              </p>
+              <template x-if="subscription.extraGroups > 0 && subscription.totalGroupLimit !== null">
+                <div>
+                  <p class="text-lg font-bold text-gray-800">
+                    <span x-text="subscription.activeGroupsCount"></span>
+                    <span class="text-gray-400 font-normal">/</span>
+                    <span x-text="subscription.plan.groupLimit"></span>
+                    <span class="text-primary font-normal text-sm"> + <span x-text="subscription.extraGroups"></span> extras</span>
+                  </p>
+                  <p class="text-xs text-gray-500" x-text="`(${subscription.totalGroupLimit} total)`"></p>
+                </div>
+              </template>
+              <template x-if="subscription.extraGroups === 0 || subscription.totalGroupLimit === null">
+                <p class="text-lg font-bold text-gray-800">
+                  <span x-text="subscription.activeGroupsCount"></span>
+                  <template x-if="subscription.totalGroupLimit !== null">
+                    <span>
+                      <span class="text-gray-400 font-normal">/</span>
+                      <span x-text="subscription.totalGroupLimit"></span>
+                    </span>
+                  </template>
+                  <template x-if="subscription.totalGroupLimit === null">
+                    <span class="text-gray-400 font-normal text-sm"> (ilimitados)</span>
+                  </template>
+                </p>
+              </template>
             </div>
             <div class="bg-white/50 rounded-xl p-3">
-              <p class="text-xs text-gray-500 mb-1" x-text="subscription.status === 'trialing' ? 'Dias Restantes' : 'Próxima Cobrança'"></p>
-              <p class="text-lg font-bold text-gray-800" x-text="subscription.status === 'trialing' ? subscription.daysRemaining + ' dias' : formatDate(subscription.nextBillingDate)"></p>
+              <template x-if="subscription.nextBillingDate">
+                <div>
+                  <p class="text-xs text-gray-500 mb-1" x-text="subscription.status === 'trialing' ? 'Será cobrado em' : 'Próxima Cobrança'"></p>
+                  <p class="text-lg font-bold text-gray-800" x-text="formatDate(subscription.nextBillingDate)"></p>
+                </div>
+              </template>
+              <template x-if="!subscription.nextBillingDate">
+                <div>
+                  <p class="text-xs text-gray-500 mb-1" x-text="subscription.status === 'trialing' ? 'Teste expira em' : 'Acesso até'"></p>
+                  <p class="text-lg font-bold text-gray-800" x-text="formatDate(subscription.currentPeriodEnd)"></p>
+                </div>
+              </template>
             </div>
           </div>
 
-          <!-- Trial Warning -->
-          <template x-if="subscription.status === 'trialing' && subscription.daysRemaining <= 3">
-            <div class="bg-amber-100 border border-amber-300 rounded-lg p-3 flex items-center gap-2">
-              <i class="fa-solid fa-exclamation-triangle text-amber-600"></i>
-              <p class="text-sm text-amber-800">
-                Seu período de teste expira em <strong x-text="subscription.daysRemaining"></strong> dias.
-              </p>
+          <!-- Extra Groups Actions -->
+          <template x-if="(subscription.status === 'active' || subscription.status === 'trialing') && subscription.totalGroupLimit !== null">
+            <div class="flex flex-wrap gap-2 mb-4">
+              <template x-if="subscription.extraGroups < 5">
+                <button @click="showExtraGroupsModal = true; extraGroupsAction = 'buy'"
+                  class="px-3 py-1.5 rounded-lg text-xs font-medium transition-all bg-primary/10 text-primary hover:bg-primary/20">
+                  <i class="fa-solid fa-plus mr-1"></i>
+                  Comprar mais grupos
+                </button>
+              </template>
+              <template x-if="subscription.extraGroups > 0">
+                <button @click="showExtraGroupsModal = true; extraGroupsAction = 'remove'"
+                  class="px-3 py-1.5 rounded-lg text-xs font-medium transition-all bg-gray-100 text-gray-600 hover:bg-gray-200">
+                  <i class="fa-solid fa-minus mr-1"></i>
+                  Remover grupos extras
+                </button>
+              </template>
             </div>
           </template>
 
-          <!-- Expired Trial -->
-          <template x-if="subscription.status === 'expired'">
-            <div class="bg-red-100 border border-red-300 rounded-lg p-3 flex items-center gap-2">
-              <i class="fa-solid fa-times-circle text-red-600"></i>
-              <p class="text-sm text-red-800">
-                Seu período de teste expirou. Assine um plano para continuar usando.
-              </p>
+          <!-- Trial Info -->
+          <template x-if="subscription.status === 'trialing'">
+            <div class="bg-amber-100 border border-amber-300 rounded-lg p-3 flex items-center gap-2">
+              <i class="fa-solid fa-info-circle text-amber-600"></i>
+              <template x-if="subscription.nextBillingDate">
+                <p class="text-sm text-amber-800">
+                  Período de teste gratuito. A primeira cobrança será em <strong x-text="formatDate(subscription.nextBillingDate)"></strong>.
+                </p>
+              </template>
+              <template x-if="!subscription.nextBillingDate">
+                <p class="text-sm text-amber-800">
+                  Período de teste gratuito. Expira em <strong x-text="formatDate(subscription.currentPeriodEnd)"></strong>.
+                </p>
+              </template>
             </div>
           </template>
         </div>
+
+        <!-- Card Info -->
+        <template x-if="subscription.cardLastFourDigits">
+          <div class="border-2 border-gray-200 rounded-xl p-5 mb-6">
+            <h3 class="font-semibold text-gray-800 mb-3 flex items-center gap-2">
+              <i class="fa-solid fa-credit-card text-primary"></i>
+              Forma de Pagamento
+            </h3>
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-3">
+                <div class="w-10 h-7 bg-gray-100 rounded flex items-center justify-center">
+                  <i class="fa-brands text-lg"
+                    :class="{
+                      'fa-cc-visa text-blue-600': subscription.cardBrand?.toLowerCase() === 'visa',
+                      'fa-cc-mastercard text-red-500': subscription.cardBrand?.toLowerCase() === 'master' || subscription.cardBrand?.toLowerCase() === 'mastercard',
+                      'fa-credit-card text-gray-500': !['visa', 'master', 'mastercard'].includes(subscription.cardBrand?.toLowerCase() || '')
+                    }"></i>
+                </div>
+                <span class="text-gray-800 font-medium" x-text="`${subscription.cardBrand} **** ${subscription.cardLastFourDigits}`"></span>
+              </div>
+              <button @click="openUpdateCard()" class="text-sm text-primary hover:text-primary/80 transition-colors font-medium">
+                <i class="fa-solid fa-pen mr-1"></i>Alterar
+              </button>
+            </div>
+          </div>
+        </template>
 
         <!-- Features List -->
         <div class="border-2 border-gray-200 rounded-xl p-5 mb-6">
@@ -217,7 +311,7 @@
         </div>
 
         <!-- Subscription Details -->
-        <div class="border-2 border-gray-200 rounded-xl p-5">
+        <div class="border-2 border-gray-200 rounded-xl p-5 mb-6">
           <h3 class="font-semibold text-gray-800 mb-3 flex items-center gap-2">
             <i class="fa-solid fa-info-circle text-primary"></i>
             Detalhes da Assinatura
@@ -227,20 +321,454 @@
               <span class="text-gray-500">Início</span>
               <span class="text-gray-800" x-text="formatDate(subscription.startDate)"></span>
             </div>
-            <div class="flex justify-between">
-              <span class="text-gray-500">Período Atual</span>
-              <span class="text-gray-800" x-text="`${formatDate(subscription.currentPeriodStart)} - ${formatDate(subscription.currentPeriodEnd)}`"></span>
-            </div>
+            <template x-if="subscription.status !== 'trialing'">
+              <div class="flex justify-between">
+                <span class="text-gray-500">Período Atual</span>
+                <span class="text-gray-800" x-text="`${formatDate(subscription.currentPeriodStart)} - ${formatDate(subscription.currentPeriodEnd)}`"></span>
+              </div>
+            </template>
             <template x-if="subscription.nextBillingDate">
               <div class="flex justify-between">
-                <span class="text-gray-500">Próxima Cobrança</span>
+                <span class="text-gray-500" x-text="subscription.status === 'trialing' ? 'Primeira Cobrança' : 'Próxima Cobrança'"></span>
                 <span class="text-gray-800" x-text="formatDate(subscription.nextBillingDate)"></span>
               </div>
             </template>
           </div>
         </div>
+
+        <!-- Change Plan button -->
+        <template x-if="subscription.status === 'active' || subscription.status === 'trialing'">
+          <div class="text-center mb-6">
+            <button @click="showChangePlanModal = true"
+              class="px-4 py-2 rounded-lg text-sm font-medium transition-all bg-primary/10 text-primary hover:bg-primary/20">
+              <i class="fa-solid fa-exchange-alt mr-1"></i>
+              Trocar Plano
+            </button>
+          </div>
+        </template>
+
+        <!-- Payment History -->
+        <template x-if="payments.length > 0">
+          <div class="border-2 border-gray-200 rounded-xl p-5 mb-6">
+            <h3 class="font-semibold text-gray-800 mb-3 flex items-center gap-2">
+              <i class="fa-solid fa-receipt text-primary"></i>
+              Historico de Pagamentos
+            </h3>
+            <div class="space-y-2">
+              <template x-for="payment in payments" :key="payment.id">
+                <div class="flex items-center justify-between py-2 border-b border-gray-100 last:border-0">
+                  <div>
+                    <p class="text-sm text-gray-800 font-medium" x-text="`R$ ${(payment.amountInCents / 100).toFixed(2).replace('.', ',')}`"></p>
+                    <p class="text-xs text-gray-500" x-text="formatDate(payment.paidAt || payment.failedAt || payment.createdAt)"></p>
+                  </div>
+                  <span class="px-2 py-0.5 rounded-full text-xs font-semibold"
+                    :class="getPaymentStatusClass(payment.status)"
+                    x-text="getPaymentStatusLabel(payment.status)"></span>
+                </div>
+              </template>
+            </div>
+          </div>
+        </template>
+
+        <!-- Cancel action -->
+        <template x-if="subscription.status === 'trialing' || subscription.status === 'active' || subscription.status === 'past_due'">
+          <div class="text-center pt-4">
+            <button
+              @click="cancelSubscription()"
+              :disabled="cancelingSubscription"
+              class="text-sm text-red-500 hover:text-red-700 transition-colors disabled:opacity-50">
+              <i class="fa-solid fa-times-circle mr-1"></i>
+              <span x-show="!cancelingSubscription" x-text="subscription.status === 'trialing' ? 'Cancelar Teste' : 'Cancelar Assinatura'"></span>
+              <span x-show="cancelingSubscription">Cancelando...</span>
+            </button>
+          </div>
+        </template>
       </div>
     </template>
+
+    <!-- Checkout Modal -->
+    <div x-show="showCheckoutModal" class="fixed inset-0 z-[900] flex items-center justify-center p-4"
+      x-transition:enter="transition ease-out duration-200"
+      x-transition:enter-start="opacity-0"
+      x-transition:enter-end="opacity-100"
+      x-transition:leave="transition ease-in duration-150"
+      x-transition:leave-start="opacity-100"
+      x-transition:leave-end="opacity-0">
+      <!-- Backdrop -->
+      <div class="absolute inset-0 bg-black/50" @click="closeCheckoutModal()"></div>
+
+      <!-- Modal Content -->
+      <div class="relative bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto"
+        @click.stop>
+        <div class="p-6">
+          <!-- Modal Header -->
+          <div class="flex justify-between items-center mb-6">
+            <h2 class="text-xl font-bold text-gray-800">
+              <i class="fa-solid mr-2 text-primary" :class="updateCardMode ? 'fa-credit-card' : (isTrial ? 'fa-gift' : 'fa-lock')"></i>
+              <span x-text="updateCardMode ? 'Alterar Cartao' : (isTrial ? 'Iniciar Teste Gratuito' : 'Checkout')"></span>
+            </h2>
+            <button @click="closeCheckoutModal()" class="text-gray-400 hover:text-gray-600 transition-colors">
+              <i class="fa-solid fa-times text-xl"></i>
+            </button>
+          </div>
+
+          <!-- Plan Summary -->
+          <div class="bg-gray-50 rounded-xl p-4 mb-6" x-show="!updateCardMode">
+            <div class="flex justify-between items-center">
+              <div>
+                <p class="font-semibold text-gray-800" x-text="selectedPlan?.displayName"></p>
+                <p class="text-sm text-gray-500" x-text="selectedPlan?.groupLimit ? `${selectedPlan.groupLimit} grupos ativos` : 'Grupos ilimitados'"></p>
+              </div>
+              <div class="text-right">
+                <template x-if="isTrial">
+                  <div>
+                    <p class="text-xl font-bold text-emerald-600">R$ 0</p>
+                    <p class="text-xs text-gray-500">nos primeiros 7 dias</p>
+                    <p class="text-xs text-gray-400">depois R$ <span x-text="selectedPlan ? ((selectedPlan.promotionalPriceInCents || selectedPlan.priceInCents) / 100).toFixed(2).replace('.', ',') : ''"></span>/mês</p>
+                  </div>
+                </template>
+                <template x-if="!isTrial">
+                  <div>
+                    <template x-if="selectedPlan?.promotionalPriceInCents">
+                      <div>
+                        <span class="text-sm text-gray-400 line-through">R$ <span x-text="selectedPlan ? (selectedPlan.priceInCents / 100).toFixed(2).replace('.', ',') : ''"></span></span>
+                        <p class="text-xl font-bold text-primary">
+                          R$ <span x-text="selectedPlan ? (selectedPlan.promotionalPriceInCents / 100).toFixed(2).replace('.', ',') : ''"></span><span class="text-sm font-normal text-gray-500">/mês</span>
+                        </p>
+                        <p class="text-xs text-emerald-600">por <span x-text="selectedPlan?.promotionalMonths"></span> meses</p>
+                      </div>
+                    </template>
+                    <template x-if="!selectedPlan?.promotionalPriceInCents">
+                      <p class="text-xl font-bold text-primary">
+                        R$ <span x-text="selectedPlan ? (selectedPlan.priceInCents / 100).toFixed(2).replace('.', ',') : ''"></span><span class="text-sm font-normal text-gray-500">/mês</span>
+                      </p>
+                    </template>
+                  </div>
+                </template>
+              </div>
+            </div>
+          </div>
+
+          <!-- Card Form -->
+          <form @submit.prevent="processCheckout()">
+            <div class="space-y-4">
+              <!-- Customer Name -->
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Nome no cartão</label>
+                <input type="text" x-model="checkoutForm.holder"
+                  placeholder="Como está no cartão"
+                  autocomplete="cc-name"
+                  class="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-primary focus:outline-none transition-colors"
+                  :disabled="processingCheckout">
+              </div>
+
+              <!-- CPF / CNPJ -->
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1" x-text="checkoutForm.customerIdentityType"></label>
+                <div class="flex mb-2 rounded-lg overflow-hidden border-2 border-gray-200">
+                  <button type="button"
+                    @click="checkoutForm.customerIdentityType = 'CPF'; checkoutForm.customerIdentity = ''"
+                    class="flex-1 px-3 py-1.5 text-sm font-medium transition-colors"
+                    :class="checkoutForm.customerIdentityType === 'CPF' ? 'bg-primary text-white' : 'bg-white text-gray-600 hover:bg-gray-50'"
+                    :disabled="processingCheckout">
+                    CPF
+                  </button>
+                  <button type="button"
+                    @click="checkoutForm.customerIdentityType = 'CNPJ'; checkoutForm.customerIdentity = ''"
+                    class="flex-1 px-3 py-1.5 text-sm font-medium transition-colors"
+                    :class="checkoutForm.customerIdentityType === 'CNPJ' ? 'bg-primary text-white' : 'bg-white text-gray-600 hover:bg-gray-50'"
+                    :disabled="processingCheckout">
+                    CNPJ
+                  </button>
+                </div>
+                <template x-if="checkoutForm.customerIdentityType === 'CPF'">
+                  <input type="text" x-model="checkoutForm.customerIdentity"
+                    x-mask="999.999.999-99"
+                    placeholder="000.000.000-00"
+                    class="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-primary focus:outline-none transition-colors font-mono"
+                    :disabled="processingCheckout">
+                </template>
+                <template x-if="checkoutForm.customerIdentityType === 'CNPJ'">
+                  <input type="text" x-model="checkoutForm.customerIdentity"
+                    x-mask="99.999.999/9999-99"
+                    placeholder="00.000.000/0000-00"
+                    class="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-primary focus:outline-none transition-colors font-mono"
+                    :disabled="processingCheckout">
+                </template>
+              </div>
+
+              <!-- Card Number -->
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Número do cartão</label>
+                <input type="text" x-model="checkoutForm.cardNumberFormatted"
+                  @input="formatCardNumber($event)"
+                  placeholder="0000 0000 0000 0000"
+                  maxlength="19"
+                  autocomplete="cc-number"
+                  inputmode="numeric"
+                  class="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-primary focus:outline-none transition-colors font-mono"
+                  :disabled="processingCheckout">
+              </div>
+
+              <!-- Expiration + CVV row -->
+              <div class="grid grid-cols-2 gap-4">
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Validade</label>
+                  <input type="text" x-model="checkoutForm.expirationDate"
+                    @input="formatExpiration($event)"
+                    placeholder="MM/AAAA"
+                    maxlength="7"
+                    autocomplete="cc-exp"
+                    inputmode="numeric"
+                    class="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-primary focus:outline-none transition-colors font-mono"
+                    :disabled="processingCheckout">
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">CVV</label>
+                  <input type="text" x-model="checkoutForm.securityCode"
+                    placeholder="123"
+                    maxlength="4"
+                    autocomplete="off"
+                    inputmode="numeric"
+                    class="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-primary focus:outline-none transition-colors font-mono"
+                    :disabled="processingCheckout">
+                </div>
+              </div>
+
+              <!-- Brand (auto-detected) -->
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Bandeira</label>
+                <div class="w-full px-4 py-3 border-2 rounded-xl transition-colors flex items-center gap-2"
+                  :class="checkoutForm.brand ? 'border-gray-200 bg-gray-50' : 'border-gray-200 bg-gray-50'">
+                  <template x-if="checkoutForm.brand">
+                    <span class="flex items-center gap-2">
+                      <i class="fa-brands text-lg"
+                        :class="{
+                          'fa-cc-visa text-blue-600': checkoutForm.brand === 'Visa',
+                          'fa-cc-mastercard text-red-500': checkoutForm.brand === 'Master',
+                          'fa-cc-amex text-blue-500': checkoutForm.brand === 'Amex',
+                          'fa-credit-card text-gray-500': !['Visa', 'Master', 'Amex'].includes(checkoutForm.brand)
+                        }"></i>
+                      <span class="text-gray-800 font-medium" x-text="getBrandDisplayName(checkoutForm.brand)"></span>
+                    </span>
+                  </template>
+                  <template x-if="!checkoutForm.brand">
+                    <span class="text-gray-400">Detectada automaticamente</span>
+                  </template>
+                </div>
+              </div>
+            </div>
+
+            <!-- Submit -->
+            <button type="submit"
+              :disabled="processingCheckout"
+              class="w-full mt-6 px-6 py-4 bg-gradient-to-r from-primary to-secondary text-white font-semibold rounded-xl transition-all hover:shadow-lg hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:shadow-none flex items-center justify-center gap-2">
+              <span x-show="processingCheckout" class="spinner" style="width: 18px; height: 18px;"></span>
+              <span x-show="!processingCheckout">
+                <i class="fa-solid mr-2" :class="updateCardMode ? 'fa-credit-card' : (isTrial ? 'fa-rocket' : 'fa-lock')"></i>
+                <span x-text="updateCardMode ? 'Atualizar Cartao' : (isTrial ? 'Iniciar Teste Gratuito' : 'Assinar')"></span>
+              </span>
+              <span x-show="processingCheckout">Processando...</span>
+            </button>
+
+            <p class="text-xs text-gray-400 text-center mt-3">
+              <i class="fa-solid fa-shield-halved mr-1"></i>
+              <span x-text="updateCardMode ? 'Seu novo cartao sera usado nas proximas cobranças.' : (isTrial ? 'Seu cartão será cadastrado mas não será cobrado agora.' : 'Pagamento processado com segurança pela Cielo')"></span>
+            </p>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- Change Plan Modal -->
+    <div x-show="showChangePlanModal" class="fixed inset-0 z-[900] flex items-center justify-center p-4"
+      x-transition:enter="transition ease-out duration-200"
+      x-transition:enter-start="opacity-0"
+      x-transition:enter-end="opacity-100"
+      x-transition:leave="transition ease-in duration-150"
+      x-transition:leave-start="opacity-100"
+      x-transition:leave-end="opacity-0">
+      <div class="absolute inset-0 bg-black/50" @click="if (!changingPlan) showChangePlanModal = false"></div>
+      <div class="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto" @click.stop>
+        <div class="p-6">
+          <div class="flex justify-between items-center mb-6">
+            <h2 class="text-xl font-bold text-gray-800">
+              <i class="fa-solid fa-exchange-alt mr-2 text-primary"></i>
+              Trocar Plano
+            </h2>
+            <button @click="if (!changingPlan) showChangePlanModal = false" class="text-gray-400 hover:text-gray-600 transition-colors">
+              <i class="fa-solid fa-times text-xl"></i>
+            </button>
+          </div>
+
+          <p class="text-sm text-gray-500 mb-4">Plano atual: <strong x-text="subscription?.plan?.displayName"></strong></p>
+
+          <div class="grid gap-3">
+            <template x-for="plan in plans" :key="plan.id">
+              <div class="border-2 rounded-xl p-4 transition-all"
+                :class="plan.id === subscription?.plan?.id ? 'border-gray-300 bg-gray-50' : 'border-gray-200 hover:border-primary/50 cursor-pointer'"
+                @click="if (plan.id !== subscription?.plan?.id && !changingPlan) submitChangePlan(plan.id)">
+                <div class="flex items-center justify-between">
+                  <div>
+                    <h4 class="font-bold text-gray-800 flex items-center gap-2">
+                      <span x-text="plan.displayName"></span>
+                      <template x-if="plan.id === subscription?.plan?.id">
+                        <span class="px-2 py-0.5 bg-primary/10 text-primary text-xs font-semibold rounded-full">Atual</span>
+                      </template>
+                      <template x-if="plan.id !== subscription?.plan?.id && plan.priceInCents > (subscription?.plan?.priceInCents ?? 0)">
+                        <span class="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-xs font-semibold rounded-full">Upgrade</span>
+                      </template>
+                      <template x-if="plan.id !== subscription?.plan?.id && plan.priceInCents < (subscription?.plan?.priceInCents ?? 0)">
+                        <span class="px-2 py-0.5 bg-amber-100 text-amber-700 text-xs font-semibold rounded-full">Downgrade</span>
+                      </template>
+                    </h4>
+                    <p class="text-sm text-gray-600" x-text="plan.groupLimit ? `${plan.groupLimit} grupos ativos` : 'Grupos ilimitados'"></p>
+                  </div>
+                  <div class="text-right">
+                    <template x-if="plan.promotionalPriceInCents">
+                      <div>
+                        <span class="text-sm text-gray-400 line-through">R$ <span x-text="(plan.priceInCents / 100).toFixed(0)"></span></span>
+                        <p class="text-lg font-bold text-primary">R$ <span x-text="(plan.promotionalPriceInCents / 100).toFixed(0)"></span><span class="text-sm font-normal text-gray-500">/mes</span></p>
+                      </div>
+                    </template>
+                    <template x-if="!plan.promotionalPriceInCents">
+                      <p class="text-lg font-bold text-primary">R$ <span x-text="(plan.priceInCents / 100).toFixed(0)"></span><span class="text-sm font-normal text-gray-500">/mes</span></p>
+                    </template>
+                  </div>
+                </div>
+              </div>
+            </template>
+          </div>
+
+          <div x-show="changingPlan" class="text-center mt-4">
+            <div class="spinner" style="width: 24px; height: 24px; border-width: 3px; margin: 0 auto;"></div>
+            <p class="text-sm text-gray-500 mt-2">Trocando plano...</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Extra Groups Modal -->
+    <div x-show="showExtraGroupsModal" class="fixed inset-0 z-[900] flex items-center justify-center p-4"
+      x-transition:enter="transition ease-out duration-200"
+      x-transition:enter-start="opacity-0"
+      x-transition:enter-end="opacity-100"
+      x-transition:leave="transition ease-in duration-150"
+      x-transition:leave-start="opacity-100"
+      x-transition:leave-end="opacity-0">
+      <div class="absolute inset-0 bg-black/50" @click="if (!processingExtraGroups) showExtraGroupsModal = false"></div>
+      <div class="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm max-h-[90vh] overflow-y-auto" @click.stop>
+        <div class="p-6">
+          <div class="flex justify-between items-center mb-6">
+            <h2 class="text-xl font-bold text-gray-800">
+              <i class="fa-solid mr-2 text-primary" :class="extraGroupsAction === 'buy' ? 'fa-plus-circle' : 'fa-minus-circle'"></i>
+              <span x-text="extraGroupsAction === 'buy' ? 'Comprar Grupos Extras' : 'Remover Grupos Extras'"></span>
+            </h2>
+            <button @click="if (!processingExtraGroups) showExtraGroupsModal = false" class="text-gray-400 hover:text-gray-600 transition-colors">
+              <i class="fa-solid fa-times text-xl"></i>
+            </button>
+          </div>
+
+          <!-- Buy mode -->
+          <template x-if="extraGroupsAction === 'buy'">
+            <div>
+              <p class="text-sm text-gray-600 mb-4">R$ 29,00/mês por grupo extra. O valor será adicionado à sua próxima cobrança.</p>
+              <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-700 mb-2">Quantidade</label>
+                <div class="flex items-center gap-3">
+                  <button type="button" @click="if (extraGroupsCount > 1) extraGroupsCount--"
+                    class="w-10 h-10 rounded-lg border-2 border-gray-200 flex items-center justify-center text-gray-600 hover:border-primary hover:text-primary transition-colors"
+                    :disabled="extraGroupsCount <= 1 || processingExtraGroups">
+                    <i class="fa-solid fa-minus"></i>
+                  </button>
+                  <span class="text-2xl font-bold text-gray-800 w-8 text-center" x-text="extraGroupsCount"></span>
+                  <button type="button" @click="if (extraGroupsCount < maxExtraGroupsToBuy) extraGroupsCount++"
+                    class="w-10 h-10 rounded-lg border-2 border-gray-200 flex items-center justify-center text-gray-600 hover:border-primary hover:text-primary transition-colors"
+                    :disabled="extraGroupsCount >= maxExtraGroupsToBuy || processingExtraGroups">
+                    <i class="fa-solid fa-plus"></i>
+                  </button>
+                </div>
+              </div>
+              <div class="bg-gray-50 rounded-xl p-4 mb-4">
+                <div class="flex justify-between text-sm mb-1">
+                  <span class="text-gray-500">Adicional mensal</span>
+                  <span class="font-semibold text-gray-800" x-text="`R$ ${(extraGroupsCount * 29).toFixed(2).replace('.', ',')}`"></span>
+                </div>
+                <div class="flex justify-between text-sm">
+                  <span class="text-gray-500">Novo limite de grupos</span>
+                  <span class="font-semibold text-gray-800" x-text="`${(subscription?.plan?.groupLimit ?? 0) + (subscription?.extraGroups ?? 0) + extraGroupsCount}`"></span>
+                </div>
+              </div>
+              <button @click="purchaseExtraGroups()"
+                :disabled="processingExtraGroups"
+                class="w-full px-4 py-3 bg-gradient-to-r from-primary to-secondary text-white font-semibold rounded-xl transition-all hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
+                <span x-show="processingExtraGroups" class="spinner" style="width: 18px; height: 18px;"></span>
+                <span x-show="!processingExtraGroups">
+                  <i class="fa-solid fa-cart-plus mr-1"></i>
+                  Comprar <span x-text="extraGroupsCount"></span> grupo<span x-show="extraGroupsCount > 1">s</span> extra<span x-show="extraGroupsCount > 1">s</span>
+                </span>
+                <span x-show="processingExtraGroups">Processando...</span>
+              </button>
+            </div>
+          </template>
+
+          <!-- Remove mode -->
+          <template x-if="extraGroupsAction === 'remove'">
+            <div>
+              <p class="text-sm text-gray-600 mb-4">O valor será reduzido na sua próxima cobrança.</p>
+              <template x-if="maxExtraGroupsToRemove > 0">
+                <div>
+                  <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Quantidade a remover</label>
+                    <div class="flex items-center gap-3">
+                      <button type="button" @click="if (extraGroupsCount > 1) extraGroupsCount--"
+                        class="w-10 h-10 rounded-lg border-2 border-gray-200 flex items-center justify-center text-gray-600 hover:border-primary hover:text-primary transition-colors"
+                        :disabled="extraGroupsCount <= 1 || processingExtraGroups">
+                        <i class="fa-solid fa-minus"></i>
+                      </button>
+                      <span class="text-2xl font-bold text-gray-800 w-8 text-center" x-text="extraGroupsCount"></span>
+                      <button type="button" @click="if (extraGroupsCount < maxExtraGroupsToRemove) extraGroupsCount++"
+                        class="w-10 h-10 rounded-lg border-2 border-gray-200 flex items-center justify-center text-gray-600 hover:border-primary hover:text-primary transition-colors"
+                        :disabled="extraGroupsCount >= maxExtraGroupsToRemove || processingExtraGroups">
+                        <i class="fa-solid fa-plus"></i>
+                      </button>
+                    </div>
+                  </div>
+                  <div class="bg-gray-50 rounded-xl p-4 mb-4">
+                    <div class="flex justify-between text-sm mb-1">
+                      <span class="text-gray-500">Economia mensal</span>
+                      <span class="font-semibold text-emerald-600" x-text="`- R$ ${(extraGroupsCount * 29).toFixed(2).replace('.', ',')}`"></span>
+                    </div>
+                    <div class="flex justify-between text-sm">
+                      <span class="text-gray-500">Novo limite de grupos</span>
+                      <span class="font-semibold text-gray-800" x-text="`${(subscription?.totalGroupLimit ?? 0) - extraGroupsCount}`"></span>
+                    </div>
+                  </div>
+                  <button @click="removeExtraGroups()"
+                    :disabled="processingExtraGroups"
+                    class="w-full px-4 py-3 bg-red-500 text-white font-semibold rounded-xl transition-all hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
+                    <span x-show="processingExtraGroups" class="spinner" style="width: 18px; height: 18px;"></span>
+                    <span x-show="!processingExtraGroups">
+                      <i class="fa-solid fa-trash mr-1"></i>
+                      Remover <span x-text="extraGroupsCount"></span> grupo<span x-show="extraGroupsCount > 1">s</span> extra<span x-show="extraGroupsCount > 1">s</span>
+                    </span>
+                    <span x-show="processingExtraGroups">Processando...</span>
+                  </button>
+                </div>
+              </template>
+              <template x-if="maxExtraGroupsToRemove <= 0">
+                <div class="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                  <p class="text-sm text-amber-800">
+                    <i class="fa-solid fa-info-circle mr-1"></i>
+                    Não é possível remover grupos extras no momento. Todos os seus grupos estão em uso.
+                  </p>
+                </div>
+              </template>
+            </div>
+          </template>
+        </div>
+      </div>
+    </div>
 
     <!-- Toast Notification -->
     <div class="fixed bottom-[100px] left-1/2 -translate-x-1/2 px-6 py-3 rounded-3xl text-sm z-[1000] text-white transition-all duration-300"
@@ -264,8 +792,32 @@
         subscription: null,
         plans: [],
         trialUsed: false,
-        startingTrial: false,
         loggingOut: false,
+        cancelingSubscription: false,
+        payments: [],
+        loadingPayments: false,
+        showChangePlanModal: false,
+        changingPlan: false,
+        showExtraGroupsModal: false,
+        extraGroupsAction: 'buy', // 'buy' or 'remove'
+        extraGroupsCount: 1,
+        processingExtraGroups: false,
+
+        // Checkout state
+        selectedPlan: null,
+        showCheckoutModal: false,
+        processingCheckout: false,
+        isTrial: false,
+        updateCardMode: false,
+        checkoutForm: {
+          holder: '',
+          customerIdentity: '',
+          customerIdentityType: 'CPF',
+          cardNumberFormatted: '',
+          expirationDate: '',
+          securityCode: '',
+          brand: '',
+        },
 
         // Toast
         toast: { visible: false, message: '', type: 'success' },
@@ -302,10 +854,16 @@
             }
 
             this.subscription = tokenData.data.subscription;
+            this.normalizeSubscriptionStatus();
             this.trialUsed = this.subscription?.trialUsed ?? false;
 
             // Fetch available plans
             await this.fetchPlans();
+
+            // Fetch payment history
+            if (this.subscription) {
+              this.fetchPayments();
+            }
 
             this.loading = false;
           } catch (error) {
@@ -326,31 +884,334 @@
           }
         },
 
-        async startTrial() {
-          if (this.startingTrial || this.trialUsed) return;
-
-          this.startingTrial = true;
+        async fetchPayments() {
+          this.loadingPayments = true;
           try {
-            const res = await this.authFetch('/subscription/trial', {
+            const res = await this.authFetch('/subscription/payments');
+            const data = await res.json();
+            if (data.success) {
+              this.payments = data.data.payments;
+            }
+          } catch (error) {
+            console.warn('Failed to fetch payments:', error);
+          } finally {
+            this.loadingPayments = false;
+          }
+        },
+
+        getPaymentStatusLabel(status) {
+          const labels = { 'paid': 'Pago', 'failed': 'Falhou', 'pending': 'Pendente', 'refunded': 'Reembolsado' };
+          return labels[status] || status;
+        },
+
+        getPaymentStatusClass(status) {
+          const classes = {
+            'paid': 'bg-emerald-100 text-emerald-700',
+            'failed': 'bg-red-100 text-red-700',
+            'pending': 'bg-amber-100 text-amber-700',
+            'refunded': 'bg-blue-100 text-blue-700',
+          };
+          return classes[status] || 'bg-gray-100 text-gray-700';
+        },
+
+        // Checkout / Trial
+        selectPlan(plan, asTrial = false) {
+          this.selectedPlan = plan;
+          this.isTrial = asTrial;
+          this.showCheckoutModal = true;
+          this.checkoutForm = {
+            holder: '',
+            customerIdentity: '',
+            customerIdentityType: 'CPF',
+            cardNumberFormatted: '',
+            expirationDate: '',
+            securityCode: '',
+            brand: '',
+          };
+        },
+
+        openUpdateCard() {
+          this.updateCardMode = true;
+          this.selectedPlan = this.subscription?.plan ?? null;
+          this.showCheckoutModal = true;
+          this.isTrial = false;
+          this.checkoutForm = {
+            holder: '',
+            customerIdentity: '',
+            customerIdentityType: 'CPF',
+            cardNumberFormatted: '',
+            expirationDate: '',
+            securityCode: '',
+            brand: '',
+          };
+        },
+
+        closeCheckoutModal() {
+          if (this.processingCheckout) return;
+          this.showCheckoutModal = false;
+          this.selectedPlan = null;
+          this.isTrial = false;
+          this.updateCardMode = false;
+        },
+
+        detectCardBrand(cardNumber) {
+          const digits = cardNumber.replace(/\D/g, '');
+          if (!digits) return '';
+          if (/^(636368|438935|504175|451416|636297)/.test(digits)) return 'Elo';
+          if (/^(5067|4576|4011)/.test(digits)) return 'Elo';
+          if (/^(606282|3841)/.test(digits)) return 'Hipercard';
+          if (/^3[47]/.test(digits)) return 'Amex';
+          if (/^(5[1-5]|2[2-7])/.test(digits)) return 'Master';
+          if (/^4/.test(digits)) return 'Visa';
+          return '';
+        },
+
+        getBrandDisplayName(brand) {
+          const names = {
+            'Visa': 'Visa',
+            'Master': 'Mastercard',
+            'Amex': 'American Express',
+            'Elo': 'Elo',
+            'Hipercard': 'Hipercard',
+          };
+          return names[brand] || '';
+        },
+
+        formatCardNumber(event) {
+          let value = event.target.value.replace(/\D/g, '');
+          value = value.substring(0, 16);
+          const parts = [];
+          for (let i = 0; i < value.length; i += 4) {
+            parts.push(value.substring(i, i + 4));
+          }
+          this.checkoutForm.cardNumberFormatted = parts.join(' ');
+          this.checkoutForm.brand = this.detectCardBrand(value);
+        },
+
+        formatExpiration(event) {
+          let value = event.target.value.replace(/\D/g, '');
+          value = value.substring(0, 6);
+          if (value.length > 2) {
+            this.checkoutForm.expirationDate = value.substring(0, 2) + '/' + value.substring(2);
+          } else {
+            this.checkoutForm.expirationDate = value;
+          }
+        },
+
+        async processCheckout() {
+          if (this.processingCheckout || !this.selectedPlan) return;
+
+          const { holder, customerIdentity, cardNumberFormatted, expirationDate, securityCode, brand } = this.checkoutForm;
+
+          if (!holder || !customerIdentity || !cardNumberFormatted || !expirationDate || !securityCode) {
+            this.showToast('Preencha todos os campos do cartão.', 'error');
+            return;
+          }
+
+          const identityDigits = customerIdentity.replace(/\D/g, '');
+          const expectedLength = this.checkoutForm.customerIdentityType === 'CPF' ? 11 : 14;
+          if (identityDigits.length !== expectedLength) {
+            this.showToast(`${this.checkoutForm.customerIdentityType} inválido. Informe os ${expectedLength} dígitos.`, 'error');
+            return;
+          }
+
+          if (!brand) {
+            this.showToast('Bandeira não reconhecida. Verifique o número do cartão.', 'error');
+            return;
+          }
+
+          const cardNumber = cardNumberFormatted.replace(/\s/g, '');
+          if (cardNumber.length < 13) {
+            this.showToast('Número do cartão inválido.', 'error');
+            return;
+          }
+
+          if (!/^\d{2}\/\d{4}$/.test(expirationDate)) {
+            this.showToast('Validade inválida. Use o formato MM/AAAA.', 'error');
+            return;
+          }
+
+          const endpoint = this.updateCardMode
+            ? '/subscription/update-payment'
+            : (this.isTrial ? '/subscription/trial' : '/subscription/checkout');
+
+          this.processingCheckout = true;
+          try {
+            const res = await this.authFetch(endpoint, {
               method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                planId: this.selectedPlan.id,
+                cardNumber,
+                holder,
+                expirationDate,
+                securityCode,
+                brand,
+                customerName: holder,
+                customerIdentity: identityDigits,
+                customerIdentityType: this.checkoutForm.customerIdentityType,
+              }),
             });
             const data = await res.json();
 
             if (data.success) {
-              this.showToast('Período de teste iniciado!', 'success');
-              // Reload subscription data
+              this.showCheckoutModal = false;
+              this.selectedPlan = null;
+              const msg = this.updateCardMode
+                ? 'Cartao atualizado com sucesso!'
+                : (this.isTrial ? 'Período de teste iniciado!' : 'Assinatura ativada com sucesso!');
+              this.isTrial = false;
+              this.updateCardMode = false;
+              this.showToast(msg, 'success');
+              // Reload data
+              this.loading = true;
               await this.init();
             } else {
-              this.showToast(data.error || 'Erro ao iniciar teste', 'error');
+              this.showToast(data.error || 'Erro ao processar. Tente novamente.', 'error');
               if (data.code === 'trial_already_used') {
                 this.trialUsed = true;
               }
             }
           } catch (error) {
-            console.error('Error starting trial:', error);
-            this.showToast('Erro ao iniciar teste. Tente novamente.', 'error');
+            console.error('Checkout error:', error);
+            this.showToast('Erro ao processar. Tente novamente.', 'error');
           } finally {
-            this.startingTrial = false;
+            this.processingCheckout = false;
+          }
+        },
+
+        async submitChangePlan(planId) {
+          if (this.changingPlan) return;
+          this.changingPlan = true;
+          try {
+            const res = await this.authFetch('/subscription/change-plan', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ planId }),
+            });
+            const data = await res.json();
+
+            if (data.success) {
+              this.showChangePlanModal = false;
+              this.showToast('Plano alterado com sucesso!', 'success');
+              this.loading = true;
+              await this.init();
+            } else {
+              this.showToast(data.error || 'Erro ao trocar de plano.', 'error');
+            }
+          } catch (error) {
+            console.error('Change plan error:', error);
+            this.showToast('Erro ao trocar de plano. Tente novamente.', 'error');
+          } finally {
+            this.changingPlan = false;
+          }
+        },
+
+        async cancelSubscription() {
+          if (this.cancelingSubscription) return;
+
+          const cancelMsg = this.subscription.status === 'trialing'
+            ? 'Tem certeza que deseja cancelar o teste? Você perderá o acesso ao plano.'
+            : `Tem certeza que deseja cancelar? Você terá acesso até ${this.formatDate(this.subscription.currentPeriodEnd)}.`;
+          if (!confirm(cancelMsg)) return;
+
+          this.cancelingSubscription = true;
+          try {
+            const res = await this.authFetch('/subscription/cancel', {
+              method: 'POST',
+            });
+            const data = await res.json();
+
+            if (data.success) {
+              this.showToast('Assinatura cancelada.', 'success');
+              this.loading = true;
+              await this.init();
+            } else {
+              this.showToast(data.error || 'Erro ao cancelar.', 'error');
+            }
+          } catch (error) {
+            console.error('Cancel error:', error);
+            this.showToast('Erro ao cancelar. Tente novamente.', 'error');
+          } finally {
+            this.cancelingSubscription = false;
+          }
+        },
+
+        // Extra groups
+        get maxExtraGroupsToBuy() {
+          return 5 - (this.subscription?.extraGroups ?? 0);
+        },
+
+        get maxExtraGroupsToRemove() {
+          if (!this.subscription) return 0;
+          const totalLimit = this.subscription.totalGroupLimit ?? 0;
+          const activeCount = this.subscription.activeGroupsCount ?? 0;
+          const planLimit = this.subscription.plan?.groupLimit ?? 0;
+          // Can remove extras down to the point where limit still covers active groups
+          const minNeededExtras = Math.max(0, activeCount - planLimit);
+          return (this.subscription.extraGroups ?? 0) - minNeededExtras;
+        },
+
+        async purchaseExtraGroups() {
+          if (this.processingExtraGroups) return;
+          this.processingExtraGroups = true;
+          try {
+            const res = await this.authFetch('/subscription/addons/groups', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ count: this.extraGroupsCount }),
+            });
+            const data = await res.json();
+            if (data.success) {
+              this.showExtraGroupsModal = false;
+              this.showToast(`${this.extraGroupsCount} grupo(s) extra(s) adicionado(s)!`, 'success');
+              this.extraGroupsCount = 1;
+              this.loading = true;
+              await this.init();
+            } else {
+              this.showToast(data.error || 'Erro ao comprar grupos extras.', 'error');
+            }
+          } catch (error) {
+            console.error('Extra groups purchase error:', error);
+            this.showToast('Erro ao comprar grupos extras. Tente novamente.', 'error');
+          } finally {
+            this.processingExtraGroups = false;
+          }
+        },
+
+        async removeExtraGroups() {
+          if (this.processingExtraGroups) return;
+          this.processingExtraGroups = true;
+          try {
+            const res = await this.authFetch('/subscription/addons/groups/remove', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ count: this.extraGroupsCount }),
+            });
+            const data = await res.json();
+            if (data.success) {
+              this.showExtraGroupsModal = false;
+              this.showToast(`${this.extraGroupsCount} grupo(s) extra(s) removido(s).`, 'success');
+              this.extraGroupsCount = 1;
+              this.loading = true;
+              await this.init();
+            } else {
+              this.showToast(data.error || 'Erro ao remover grupos extras.', 'error');
+            }
+          } catch (error) {
+            console.error('Extra groups removal error:', error);
+            this.showToast('Erro ao remover grupos extras. Tente novamente.', 'error');
+          } finally {
+            this.processingExtraGroups = false;
+          }
+        },
+
+        // Normalize status based on dates (don't depend on cron)
+        normalizeSubscriptionStatus() {
+          if (!this.subscription) return;
+          if (this.subscription.status === 'expired' || this.subscription.status === 'canceled') return;
+          if (this.subscription.currentPeriodEnd && new Date(this.subscription.currentPeriodEnd) < new Date()) {
+            this.subscription.status = 'expired';
           }
         },
 
@@ -380,7 +1241,7 @@
           this.toast = { visible: true, message, type };
           setTimeout(() => {
             this.toast.visible = false;
-          }, 3000);
+          }, type === 'error' ? 5000 : 3000);
         },
       };
     }

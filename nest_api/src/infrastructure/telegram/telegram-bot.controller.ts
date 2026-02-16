@@ -3,6 +3,7 @@ import { type RunnerHandle, run } from '@grammyjs/runner';
 import { Injectable, Logger, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
 import { type Context } from 'grammy';
 import { TelegramBotRegistrationHandler } from './handlers/telegram-bot-registration.handler';
+import { TelegramBotSubscriptionHandler } from './handlers/telegram-bot-subscription.handler';
 
 /**
  * Service responsável por gerenciar o bot do Telegram
@@ -15,6 +16,7 @@ export class TelegramBotController implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(TelegramBotController.name);
   constructor(
     private readonly registrationHandler: TelegramBotRegistrationHandler,
+    private readonly subscriptionHandler: TelegramBotSubscriptionHandler,
     private readonly botService: TelegramBotService,
   ) {}
 
@@ -47,6 +49,14 @@ export class TelegramBotController implements OnModuleInit, OnModuleDestroy {
     // Register /start command handler (registration flow)
     this.botService.bot.command('start', async (ctx: Context) => {
       await this.registrationHandler.handleStart(ctx);
+    });
+
+    this.botService.bot.command('assinar', async (ctx: Context) => {
+      await this.subscriptionHandler.handleAssinar(ctx);
+    });
+
+    this.botService.bot.command('assinatura', async (ctx: Context) => {
+      await this.subscriptionHandler.handleAssinatura(ctx);
     });
 
     // Error handler
