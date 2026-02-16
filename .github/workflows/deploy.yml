@@ -84,6 +84,12 @@ jobs:
           echo "RABBITMQ_PORT=${{ secrets.RABBITMQ_PORT }}" >> envfile
           echo "RABBITMQ_USER=${{ secrets.RABBITMQ_USER }}" >> envfile
           echo "RABBITMQ_PASSWORD=${{ secrets.RABBITMQ_PASSWORD }}" >> envfile
+          echo "AUTHORIZATION_MODE=${{ secrets.AUTHORIZATION_MODE }}" >> envfile
+          echo "FEATURE_CIELO_ENABLED=${{ secrets.FEATURE_CIELO_ENABLED }}" >> envfile
+          echo "CIELO_ENVIRONMENT=${{ secrets.CIELO_ENVIRONMENT }}" >> envfile
+          echo "CIELO_MERCHANT_ID=${{ secrets.CIELO_MERCHANT_ID }}" >> envfile
+          echo "CIELO_MERCHANT_KEY=${{ secrets.CIELO_MERCHANT_KEY }}" >> envfile
+          echo "CIELO_WEBHOOK_SECRET=${{ secrets.CIELO_WEBHOOK_SECRET }}" >> envfile
           echo "APP_BASE_URL=https://chatbot.lfviagens.com" >> envfile
       - name: Docker Stack Deploy
         uses: cssnr/stack-deploy-action@v1
@@ -95,6 +101,7 @@ jobs:
           ssh_key: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}
           env_file: ./envfile
 
+      # Alternative to use docker stack deploy action
       # - name: Update Nest API service only
       #   run: |
       #     ssh -i ~/.ssh/deploy_key felip-ai@congressosimulator.com.br << 'ENDSSH'
@@ -114,6 +121,12 @@ jobs:
       #       --env-add "RABBITMQ_USER=${{ secrets.RABBITMQ_USER }}" \
       #       --env-add "RABBITMQ_PASSWORD=${{ secrets.RABBITMQ_PASSWORD }}" \
       #       --env-add "APP_BASE_URL=https://chatbot.lfviagens.com" \
+      #       --env-add "FEATURE_CIELO_ENABLED=${{ secrets.FEATURE_CIELO_ENABLED }}" \
+      #       --env-add "CIELO_ENVIRONMENT=${{ secrets.CIELO_ENVIRONMENT }}" \
+      #       --env-add "CIELO_MERCHANT_ID=${{ secrets.CIELO_MERCHANT_ID }}" \
+      #       --env-add "CIELO_MERCHANT_KEY=${{ secrets.CIELO_MERCHANT_KEY }}" \
+      #       --env-add "CIELO_WEBHOOK_SECRET=${{ secrets.CIELO_WEBHOOK_SECRET }}" \
+      #       --env-add "AUTHORIZATION_MODE=${{ secrets.AUTHORIZATION_MODE }}" \
       #       felip-ai_nest_api
       #     docker system prune -af --filter "until=24h"
       #     ENDSSH
