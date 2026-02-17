@@ -1320,7 +1320,7 @@ export class DashboardController {
             groupLimit: subscription.plan.groupLimit,
           },
           totalGroupLimit: subscription.plan.groupLimit !== null
-            ? subscription.plan.groupLimit + subscription.extraGroups
+            ? subscription.plan.groupLimit + subscription.extraGroups + subscription.bonusGroups
             : null,
           activeGroupsCount,
           daysRemaining: daysRemaining ?? 0,
