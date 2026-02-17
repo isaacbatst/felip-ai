@@ -33,6 +33,7 @@ import { CieloWebhookController } from './http/cielo-webhook.controller';
 import { CieloService } from './cielo/cielo.service';
 import { TelegramBotSubscriptionHandler } from './telegram/handlers/telegram-bot-subscription.handler';
 import { AuthErrorCacheService } from './tdlib/auth-error-cache.service';
+import { CouponService } from './subscription/coupon.service';
 
 /**
  * Module responsável por serviços de infraestrutura
@@ -68,6 +69,7 @@ import { AuthErrorCacheService } from './tdlib/auth-error-cache.service';
     CieloService,
     // Subscription services
     SubscriptionService,
+    CouponService,
     SubscriptionAuthorizationService,
     HybridAuthorizationService,
     // Telegram handlers
