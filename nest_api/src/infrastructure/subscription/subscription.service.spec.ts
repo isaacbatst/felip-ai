@@ -443,6 +443,101 @@ describe('SubscriptionService', () => {
     });
   });
 
+  describe('checkout', () => {
+    const checkoutDto = {
+      planId: 1,
+      cardNumber: '4111111111111111',
+      holder: 'Test User',
+      expirationDate: '12/2030',
+      securityCode: '123',
+      brand: 'Visa',
+      customerName: 'Test User',
+      customerIdentity: '12345678900',
+      customerIdentityType: 'CPF' as const,
+    };
+
+    const cieloResponse = {
+      Payment: {
+        RecurrentPayment: { RecurrentPaymentId: 'new-recur-123' },
+        PaymentId: 'pay-123',
+        CreditCard: { CardToken: 'new-token-123' },
+        Amount: 4900,
+        Status: 1,
+      },
+    };
+
+    it('should defer charge when user has active trial', async () => {
+      const trialEnd = new Date(Date.now() + 5 * 24 * 60 * 60 * 1000); // 5 days from now
+      const trialSub = makeSubscription({
+        status: 'trialing',
+        currentPeriodEnd: trialEnd,
+        cieloRecurrentPaymentId: 'trial-recur-123',
+        trialUsed: true,
+      });
+
+      subscriptionRepo.getByUserId.mockResolvedValue(trialSub);
+      planRepo.getPlanById.mockResolvedValue(starterPlan);
+      cieloService.deactivateRecurrence.mockResolvedValue(undefined);
+      cieloService.createRecurrentPayment.mockResolvedValue(cieloResponse);
+      subscriptionRepo.delete.mockResolvedValue(undefined);
+      subscriptionRepo.create.mockResolvedValue(makeSubscription({ status: 'trialing' }));
+      subscriptionRepo.getWithPlanByUserId.mockResolvedValue(makeSubscriptionWithPlan({ status: 'trialing' }));
+
+      await service.checkout('user1', checkoutDto);
+
+      const cieloCall = cieloService.createRecurrentPayment.mock.calls[0][0];
+      expect(cieloCall.Payment.RecurrentPayment.AuthorizeNow).toBe(false);
+      expect(cieloCall.Payment.RecurrentPayment.StartDate).toBe(trialEnd.toISOString().split('T')[0]);
+
+      const createCall = subscriptionRepo.create.mock.calls[0];
+      expect(createCall[0]).toMatchObject({ status: 'trialing' });
+    });
+
+    it('should charge immediately when trial is expired', async () => {
+      const expiredTrialEnd = new Date(Date.now() - 1 * 24 * 60 * 60 * 1000); // 1 day ago
+      const expiredTrialSub = makeSubscription({
+        status: 'trialing',
+        currentPeriodEnd: expiredTrialEnd,
+        cieloRecurrentPaymentId: 'trial-recur-123',
+        trialUsed: true,
+      });
+
+      subscriptionRepo.getByUserId.mockResolvedValue(expiredTrialSub);
+      planRepo.getPlanById.mockResolvedValue(starterPlan);
+      cieloService.deactivateRecurrence.mockResolvedValue(undefined);
+      cieloService.createRecurrentPayment.mockResolvedValue(cieloResponse);
+      subscriptionRepo.delete.mockResolvedValue(undefined);
+      subscriptionRepo.create.mockResolvedValue(makeSubscription({ status: 'active' }));
+      subscriptionRepo.getWithPlanByUserId.mockResolvedValue(makeSubscriptionWithPlan({ status: 'active' }));
+
+      await service.checkout('user1', checkoutDto);
+
+      const cieloCall = cieloService.createRecurrentPayment.mock.calls[0][0];
+      expect(cieloCall.Payment.RecurrentPayment.AuthorizeNow).toBe(true);
+      expect(cieloCall.Payment.RecurrentPayment.StartDate).toBeUndefined();
+
+      const createCall = subscriptionRepo.create.mock.calls[0];
+      expect(createCall[0]).toMatchObject({ status: 'active' });
+    });
+
+    it('should charge immediately when no existing subscription', async () => {
+      subscriptionRepo.getByUserId.mockResolvedValue(null);
+      planRepo.getPlanById.mockResolvedValue(starterPlan);
+      cieloService.createRecurrentPayment.mockResolvedValue(cieloResponse);
+      subscriptionRepo.create.mockResolvedValue(makeSubscription({ status: 'active' }));
+      subscriptionRepo.getWithPlanByUserId.mockResolvedValue(makeSubscriptionWithPlan({ status: 'active' }));
+
+      await service.checkout('user1', checkoutDto);
+
+      const cieloCall = cieloService.createRecurrentPayment.mock.calls[0][0];
+      expect(cieloCall.Payment.RecurrentPayment.AuthorizeNow).toBe(true);
+      expect(cieloCall.Payment.RecurrentPayment.StartDate).toBeUndefined();
+
+      const createCall = subscriptionRepo.create.mock.calls[0];
+      expect(createCall[0]).toMatchObject({ status: 'active' });
+    });
+  });
+
   describe('removeExtraGroups', () => {
     it('should decrement extraGroups when groups not in use', async () => {
       const sub = makeSubscription({ extraGroups: 3 });

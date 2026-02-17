@@ -297,17 +297,35 @@ export class SubscriptionService implements OnModuleInit {
       coupon = await this.couponService.validateCoupon(couponCode, userId, plan.id);
     }
 
+    // Detect active trial — defer first charge to trial end
+    const isActiveTrial = existing?.status === 'trialing'
+      && existing.currentPeriodEnd
+      && new Date(existing.currentPeriodEnd) > new Date();
+
+    let authorizeNow = true;
+    let subscriptionStatus: SubscriptionStatus = 'active';
+    let startDate: string | undefined;
     const currentPeriodEnd = new Date();
-    currentPeriodEnd.setDate(currentPeriodEnd.getDate() + 30);
+
+    if (isActiveTrial) {
+      authorizeNow = false;
+      subscriptionStatus = 'trialing';
+      currentPeriodEnd.setTime(new Date(existing.currentPeriodEnd).getTime());
+      startDate = currentPeriodEnd.toISOString().split('T')[0];
+      this.logger.log(`Checkout during active trial — deferring charge to ${startDate}`);
+    } else {
+      currentPeriodEnd.setDate(currentPeriodEnd.getDate() + 30);
+    }
 
     const result = await this.createCieloSubscription({
       userId,
       dto,
       plan,
-      authorizeNow: true,
-      subscriptionStatus: 'active',
+      authorizeNow,
+      subscriptionStatus,
       existing,
       currentPeriodEnd,
+      startDate,
       coupon,
     });
 
