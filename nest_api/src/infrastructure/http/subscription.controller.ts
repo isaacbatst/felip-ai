@@ -11,6 +11,7 @@ import {
 import type { Request, Response } from 'express';
 import { join } from 'node:path';
 import { SubscriptionService, SubscriptionError } from '@/infrastructure/subscription/subscription.service';
+import { CouponService } from '@/infrastructure/subscription/coupon.service';
 import type { CheckoutRequestDto } from '@/infrastructure/cielo/cielo.types';
 import { ActiveGroupsRepository } from '@/infrastructure/persistence/active-groups.repository';
 import { SessionGuard } from '@/infrastructure/http/guards/session.guard';
@@ -42,6 +43,8 @@ interface SubscriptionDataResponse {
     cancelReason: string | null;
     trialUsed: boolean;
     extraGroups: number;
+    bonusGroups: number;
+    couponDiscountMonthsRemaining: number;
     promotionalPaymentsRemaining: number;
     plan: {
       id: number;
@@ -88,6 +91,7 @@ export class SubscriptionController {
 
   constructor(
     private readonly subscriptionService: SubscriptionService,
+    private readonly couponService: CouponService,
     private readonly activeGroupsRepository: ActiveGroupsRepository,
   ) {}
 
@@ -140,6 +144,8 @@ export class SubscriptionController {
         cancelReason: subscription.cancelReason,
         trialUsed: subscription.trialUsed,
         extraGroups: subscription.extraGroups,
+        bonusGroups: subscription.bonusGroups,
+        couponDiscountMonthsRemaining: subscription.couponDiscountMonthsRemaining,
         promotionalPaymentsRemaining: subscription.promotionalPaymentsRemaining,
         plan: {
           id: subscription.plan.id,
@@ -155,7 +161,7 @@ export class SubscriptionController {
         cardLastFourDigits: subscription.cardLastFourDigits,
         cardBrand: subscription.cardBrand,
         totalGroupLimit: subscription.plan.groupLimit !== null
-          ? subscription.plan.groupLimit + subscription.extraGroups
+          ? subscription.plan.groupLimit + subscription.extraGroups + subscription.bonusGroups
           : null,
         activeGroupsCount,
         daysRemaining,
@@ -250,7 +256,8 @@ export class SubscriptionController {
     }
 
     try {
-      const result = await this.subscriptionService.startTrial(userId, body as CheckoutRequestDto);
+      const dto = body as CheckoutRequestDto;
+      const result = await this.subscriptionService.startTrial(userId, dto, dto.couponCode);
       const daysRemaining = await this.subscriptionService.getDaysRemaining(userId) ?? 0;
       const activeGroups = await this.activeGroupsRepository.getActiveGroups(userId);
       const activeGroupsCount = activeGroups?.length ?? 0;
@@ -271,6 +278,8 @@ export class SubscriptionController {
             cancelReason: null,
             trialUsed: result.subscription.trialUsed,
             extraGroups: result.subscription.extraGroups,
+            bonusGroups: result.subscription.bonusGroups,
+            couponDiscountMonthsRemaining: result.subscription.couponDiscountMonthsRemaining,
             promotionalPaymentsRemaining: result.subscription.promotionalPaymentsRemaining,
             plan: {
               id: result.subscription.plan.id,
@@ -284,7 +293,7 @@ export class SubscriptionController {
               features: result.subscription.plan.features,
             },
             totalGroupLimit: result.subscription.plan.groupLimit !== null
-              ? result.subscription.plan.groupLimit + result.subscription.extraGroups
+              ? result.subscription.plan.groupLimit + result.subscription.extraGroups + result.subscription.bonusGroups
               : null,
             activeGroupsCount,
             daysRemaining,
@@ -366,6 +375,84 @@ export class SubscriptionController {
   }
 
   /**
+   * POST /subscription/validate-coupon - Validate a coupon and return preview
+   */
+  @Post('validate-coupon')
+  async validateCoupon(
+    @Req() req: AuthenticatedRequest,
+    @Res() res: Response,
+  ): Promise<void> {
+    const userId = req.user.userId;
+    const body = req.body as { couponCode?: string; planId?: number };
+
+    if (!body.couponCode || !body.planId) {
+      res.status(HttpStatus.BAD_REQUEST).json({
+        success: false,
+        error: 'couponCode e planId são obrigatórios.',
+        code: 'missing_fields',
+      } satisfies ApiResponse);
+      return;
+    }
+
+    try {
+      const coupon = await this.couponService.validateCoupon(body.couponCode, userId, body.planId);
+
+      // Get plan to calculate preview
+      const plans = await this.subscriptionService.getActivePlans();
+      const plan = plans.find(p => p.id === body.planId);
+      if (!plan) {
+        res.status(HttpStatus.BAD_REQUEST).json({
+          success: false,
+          error: 'Plano não encontrado.',
+          code: 'plan_not_found',
+        } satisfies ApiResponse);
+        return;
+      }
+
+      // Calculate discounted price preview
+      const originalPrice = plan.promotionalPriceInCents ?? plan.priceInCents;
+      const discountedPrice = coupon.discountType ? this.couponService.applyPlanDiscount(originalPrice, coupon) : originalPrice;
+      const extraGroupPrice = this.couponService.getExtraGroupPrice(coupon);
+
+      res.status(HttpStatus.OK).json({
+        success: true,
+        data: {
+          coupon: {
+            code: coupon.code,
+            discountType: coupon.discountType,
+            discountValue: coupon.discountValue,
+            discountDurationMonths: coupon.discountDurationMonths,
+            extraGroupPriceInCents: coupon.extraGroupPriceInCents,
+            bonusGroups: coupon.bonusGroups,
+          },
+          preview: {
+            originalPriceInCents: originalPrice,
+            discountedPriceInCents: discountedPrice,
+            extraGroupPriceInCents: extraGroupPrice,
+            bonusGroups: coupon.bonusGroups,
+          },
+        },
+      } satisfies ApiResponse);
+    } catch (error) {
+      if (error instanceof SubscriptionError) {
+        res.status(HttpStatus.BAD_REQUEST).json({
+          success: false,
+          error: error.message,
+          code: error.code,
+        } satisfies ApiResponse);
+        return;
+      }
+
+      this.logger.error('Error validating coupon', { error, userId });
+      res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
+        success: false,
+        error: 'Erro ao validar cupom. Tente novamente.',
+        code: 'coupon_validation_failed',
+      } satisfies ApiResponse);
+    }
+  }
+
+  /**
    * POST /subscription/cancel - Cancel trial or subscription
    */
   @Post('cancel')
@@ -442,6 +529,8 @@ export class SubscriptionController {
             cancelReason: updated.cancelReason,
             trialUsed: updated.trialUsed,
             extraGroups: updated.extraGroups,
+            bonusGroups: updated.bonusGroups,
+            couponDiscountMonthsRemaining: updated.couponDiscountMonthsRemaining,
             promotionalPaymentsRemaining: updated.promotionalPaymentsRemaining,
             plan: {
               id: updated.plan.id,
@@ -455,7 +544,7 @@ export class SubscriptionController {
               features: updated.plan.features,
             },
             totalGroupLimit: updated.plan.groupLimit !== null
-              ? updated.plan.groupLimit + updated.extraGroups
+              ? updated.plan.groupLimit + updated.extraGroups + updated.bonusGroups
               : null,
             activeGroupsCount,
             daysRemaining,
@@ -611,7 +700,8 @@ export class SubscriptionController {
     }
 
     try {
-      const result = await this.subscriptionService.checkout(userId, body as CheckoutRequestDto);
+      const checkoutDto = body as CheckoutRequestDto;
+      const result = await this.subscriptionService.checkout(userId, checkoutDto, checkoutDto.couponCode);
       const daysRemaining = await this.subscriptionService.getDaysRemaining(userId) ?? 0;
       const activeGroups = await this.activeGroupsRepository.getActiveGroups(userId);
       const activeGroupsCount = activeGroups?.length ?? 0;
@@ -630,6 +720,8 @@ export class SubscriptionController {
             cancelReason: null,
             trialUsed: result.subscription.trialUsed,
             extraGroups: result.subscription.extraGroups,
+            bonusGroups: result.subscription.bonusGroups,
+            couponDiscountMonthsRemaining: result.subscription.couponDiscountMonthsRemaining,
             promotionalPaymentsRemaining: result.subscription.promotionalPaymentsRemaining,
             plan: {
               id: result.subscription.plan.id,
@@ -643,7 +735,7 @@ export class SubscriptionController {
               features: result.subscription.plan.features,
             },
             totalGroupLimit: result.subscription.plan.groupLimit !== null
-              ? result.subscription.plan.groupLimit + result.subscription.extraGroups
+              ? result.subscription.plan.groupLimit + result.subscription.extraGroups + result.subscription.bonusGroups
               : null,
             activeGroupsCount,
             daysRemaining,
@@ -687,6 +779,8 @@ export class SubscriptionController {
       cancelReason: sub.cancelReason,
       trialUsed: sub.trialUsed,
       extraGroups: sub.extraGroups,
+      bonusGroups: sub.bonusGroups,
+      couponDiscountMonthsRemaining: sub.couponDiscountMonthsRemaining,
       promotionalPaymentsRemaining: sub.promotionalPaymentsRemaining,
       plan: {
         id: sub.plan.id,
@@ -702,7 +796,7 @@ export class SubscriptionController {
       cardLastFourDigits: sub.cardLastFourDigits,
       cardBrand: sub.cardBrand,
       totalGroupLimit: sub.plan.groupLimit !== null
-        ? sub.plan.groupLimit + sub.extraGroups
+        ? sub.plan.groupLimit + sub.extraGroups + sub.bonusGroups
         : null,
       activeGroupsCount,
       daysRemaining,

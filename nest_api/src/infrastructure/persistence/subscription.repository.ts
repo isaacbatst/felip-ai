@@ -30,6 +30,10 @@ export interface SubscriptionData {
   promotionalPaymentsRemaining: number;
   // Add-ons
   extraGroups: number;
+  // Coupon
+  couponId: number | null;
+  bonusGroups: number;
+  couponDiscountMonthsRemaining: number;
   // Timestamps
   createdAt: Date;
   updatedAt: Date;
@@ -68,6 +72,10 @@ export interface CreateSubscriptionInput {
   cardLastFourDigits?: string;
   cardBrand?: string;
   nextBillingDate?: Date;
+  // Coupon fields
+  couponId?: number;
+  bonusGroups?: number;
+  couponDiscountMonthsRemaining?: number;
 }
 
 /**
@@ -88,6 +96,10 @@ export interface UpdateSubscriptionInput {
   trialUsed?: boolean;
   promotionalPaymentsRemaining?: number;
   extraGroups?: number;
+  // Coupon fields
+  couponId?: number | null;
+  bonusGroups?: number;
+  couponDiscountMonthsRemaining?: number;
 }
 
 /**

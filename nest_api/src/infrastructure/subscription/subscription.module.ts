@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { PersistenceModule } from '@/infrastructure/persistence/persistence.module';
 import { ConfigModule } from '@nestjs/config';
 import { SubscriptionService } from './subscription.service';
+import { CouponService } from './coupon.service';
 import { SubscriptionAuthorizationService } from './subscription-authorization.service';
 import { HybridAuthorizationService } from './hybrid-authorization.service';
 import { PhoneWhitelistService } from '@/infrastructure/telegram/phone-whitelist.service';
@@ -11,6 +12,7 @@ import { AppConfigService } from '@/config/app.config';
   imports: [PersistenceModule, ConfigModule],
   providers: [
     SubscriptionService,
+    CouponService,
     SubscriptionAuthorizationService,
     HybridAuthorizationService,
     PhoneWhitelistService,
@@ -18,6 +20,7 @@ import { AppConfigService } from '@/config/app.config';
   ],
   exports: [
     SubscriptionService,
+    CouponService,
     SubscriptionAuthorizationService,
     HybridAuthorizationService,
   ],

@@ -125,4 +125,5 @@ export interface CheckoutRequestDto {
   customerName: string;
   customerIdentity: string;
   customerIdentityType: 'CPF' | 'CNPJ';
+  couponCode?: string;
 }

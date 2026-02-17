@@ -295,6 +295,10 @@ export const subscriptions = pgTable(
     promotionalPaymentsRemaining: integer('promotional_payments_remaining').default(0).notNull(),
     // Extra groups add-on
     extraGroups: integer('extra_groups').default(0).notNull(),
+    // Coupon fields
+    couponId: integer('coupon_id'),
+    bonusGroups: integer('bonus_groups').default(0).notNull(),
+    couponDiscountMonthsRemaining: integer('coupon_discount_months_remaining').default(0).notNull(),
     // Timestamps
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
@@ -359,6 +363,46 @@ export const cieloWebhookEvents = pgTable(
     index('cielo_webhook_events_created_at_idx').on(table.createdAt),
   ],
 );
+
+// ============================================================================
+// Coupons Table
+// ============================================================================
+
+/**
+ * Coupons table - discount coupons with 3 benefit axes:
+ * 1. Plan discount (percentage or fixed amount, with duration)
+ * 2. Custom extra group price (override of default R$29/group)
+ * 3. Bonus groups (free groups added to limit)
+ */
+export const coupons = pgTable('coupons', {
+  id: integer('id').primaryKey().generatedAlwaysAsIdentity(),
+  code: text('code').notNull().unique(),
+  // Axis 1: Plan discount
+  discountType: text('discount_type'),              // 'percentage' | 'fixed' | null
+  discountValue: integer('discount_value'),          // % (0-100) or cents
+  discountDurationMonths: integer('discount_duration_months'), // null = permanent
+  // Axis 2: Custom extra group price
+  extraGroupPriceInCents: integer('extra_group_price_in_cents'), // null = use default R$29
+  // Axis 3: Bonus groups
+  bonusGroups: integer('bonus_groups').default(0).notNull(),
+  // Restrictions
+  restrictedToUserId: text('restricted_to_user_id'), // null = any user
+  restrictedToPlanId: integer('restricted_to_plan_id'), // null = any plan
+  // Validity
+  validFrom: timestamp('valid_from').defaultNow().notNull(),
+  validUntil: timestamp('valid_until'),              // null = no expiration
+  // Limits
+  maxRedemptions: integer('max_redemptions'),         // null = unlimited
+  currentRedemptions: integer('current_redemptions').default(0).notNull(),
+  // Status
+  isActive: boolean('is_active').default(true).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => [
+  index('coupons_code_idx').on(table.code),
+  index('coupons_is_active_idx').on(table.isActive),
+  index('coupons_restricted_to_user_id_idx').on(table.restrictedToUserId),
+]);
 
 // ============================================================================
 // Users & OTP Tables

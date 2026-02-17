@@ -188,18 +188,23 @@
           <div class="grid grid-cols-2 gap-4 mb-4">
             <div class="bg-white/50 rounded-xl p-3">
               <p class="text-xs text-gray-500 mb-1">Grupos Ativos</p>
-              <template x-if="subscription.extraGroups > 0 && subscription.totalGroupLimit !== null">
+              <template x-if="(subscription.extraGroups > 0 || subscription.bonusGroups > 0) && subscription.totalGroupLimit !== null">
                 <div>
                   <p class="text-lg font-bold text-gray-800">
                     <span x-text="subscription.activeGroupsCount"></span>
                     <span class="text-gray-400 font-normal">/</span>
                     <span x-text="subscription.plan.groupLimit"></span>
-                    <span class="text-primary font-normal text-sm"> + <span x-text="subscription.extraGroups"></span> extras</span>
+                    <template x-if="subscription.extraGroups > 0">
+                      <span class="text-primary font-normal text-sm"> + <span x-text="subscription.extraGroups"></span> extras</span>
+                    </template>
+                    <template x-if="subscription.bonusGroups > 0">
+                      <span class="text-emerald-600 font-normal text-sm"> + <span x-text="subscription.bonusGroups"></span> bonus</span>
+                    </template>
                   </p>
                   <p class="text-xs text-gray-500" x-text="`(${subscription.totalGroupLimit} total)`"></p>
                 </div>
               </template>
-              <template x-if="subscription.extraGroups === 0 || subscription.totalGroupLimit === null">
+              <template x-if="subscription.extraGroups === 0 && subscription.bonusGroups === 0 || subscription.totalGroupLimit === null">
                 <p class="text-lg font-bold text-gray-800">
                   <span x-text="subscription.activeGroupsCount"></span>
                   <template x-if="subscription.totalGroupLimit !== null">
@@ -559,6 +564,52 @@
               </div>
             </div>
 
+            <!-- Coupon Code (not shown in update card mode) -->
+            <div x-show="!updateCardMode" class="mt-4">
+              <label class="block text-sm font-medium text-gray-700 mb-1">Cupom de desconto (opcional)</label>
+              <div class="flex gap-2">
+                <input type="text" x-model="checkoutForm.couponCode"
+                  @input="couponPreview = null; couponError = null"
+                  placeholder="Ex: DESCONTO20"
+                  class="flex-1 px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-primary focus:outline-none transition-colors uppercase"
+                  :disabled="processingCheckout || validatingCoupon">
+                <button type="button" @click="validateCoupon()"
+                  :disabled="!checkoutForm.couponCode || validatingCoupon || processingCheckout"
+                  class="px-4 py-3 rounded-xl text-sm font-medium transition-all bg-primary/10 text-primary hover:bg-primary/20 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap">
+                  <span x-show="!validatingCoupon">Aplicar</span>
+                  <span x-show="validatingCoupon" class="flex items-center gap-1">
+                    <span class="spinner" style="width: 14px; height: 14px; border-width: 2px;"></span>
+                  </span>
+                </button>
+              </div>
+              <!-- Coupon Error -->
+              <p x-show="couponError" class="mt-2 text-sm text-red-600" x-text="couponError"></p>
+              <!-- Coupon Preview -->
+              <div x-show="couponPreview" class="mt-2 bg-emerald-50 border border-emerald-200 rounded-xl p-3">
+                <div class="flex items-center gap-2 mb-1">
+                  <i class="fa-solid fa-check-circle text-emerald-600"></i>
+                  <span class="text-sm font-semibold text-emerald-800">Cupom aplicado!</span>
+                </div>
+                <div class="text-sm text-emerald-700 space-y-1">
+                  <template x-if="couponPreview.discountedPriceInCents !== couponPreview.originalPriceInCents">
+                    <p>
+                      Valor: <span class="line-through text-gray-400">R$ <span x-text="(couponPreview.originalPriceInCents / 100).toFixed(2).replace('.', ',')"></span></span>
+                      <span class="font-bold"> R$ <span x-text="(couponPreview.discountedPriceInCents / 100).toFixed(2).replace('.', ',')"></span>/mes</span>
+                      <template x-if="couponPreview.coupon?.discountDurationMonths">
+                        <span class="text-xs"> (por <span x-text="couponPreview.coupon.discountDurationMonths"></span> meses)</span>
+                      </template>
+                    </p>
+                  </template>
+                  <template x-if="couponPreview.bonusGroups > 0">
+                    <p><i class="fa-solid fa-gift mr-1"></i> +<span x-text="couponPreview.bonusGroups"></span> grupo(s) bonus</p>
+                  </template>
+                  <template x-if="couponPreview.coupon?.extraGroupPriceInCents !== null && couponPreview.coupon?.extraGroupPriceInCents !== undefined">
+                    <p><i class="fa-solid fa-tag mr-1"></i> Grupo extra: R$ <span x-text="(couponPreview.extraGroupPriceInCents / 100).toFixed(2).replace('.', ',')"></span>/mes</p>
+                  </template>
+                </div>
+              </div>
+            </div>
+
             <!-- Submit -->
             <button type="submit"
               :disabled="processingCheckout"
@@ -817,7 +868,13 @@
           expirationDate: '',
           securityCode: '',
           brand: '',
+          couponCode: '',
         },
+
+        // Coupon state
+        couponPreview: null,
+        validatingCoupon: false,
+        couponError: null,
 
         // Toast
         toast: { visible: false, message: '', type: 'success' },
@@ -919,6 +976,8 @@
           this.selectedPlan = plan;
           this.isTrial = asTrial;
           this.showCheckoutModal = true;
+          this.couponPreview = null;
+          this.couponError = null;
           this.checkoutForm = {
             holder: '',
             customerIdentity: '',
@@ -927,6 +986,7 @@
             expirationDate: '',
             securityCode: '',
             brand: '',
+            couponCode: '',
           };
         },
 
@@ -935,6 +995,8 @@
           this.selectedPlan = this.subscription?.plan ?? null;
           this.showCheckoutModal = true;
           this.isTrial = false;
+          this.couponPreview = null;
+          this.couponError = null;
           this.checkoutForm = {
             holder: '',
             customerIdentity: '',
@@ -943,6 +1005,7 @@
             expirationDate: '',
             securityCode: '',
             brand: '',
+            couponCode: '',
           };
         },
 
@@ -952,6 +1015,8 @@
           this.selectedPlan = null;
           this.isTrial = false;
           this.updateCardMode = false;
+          this.couponPreview = null;
+          this.couponError = null;
         },
 
         detectCardBrand(cardNumber) {
@@ -995,6 +1060,35 @@
             this.checkoutForm.expirationDate = value.substring(0, 2) + '/' + value.substring(2);
           } else {
             this.checkoutForm.expirationDate = value;
+          }
+        },
+
+        async validateCoupon() {
+          if (!this.checkoutForm.couponCode || !this.selectedPlan) return;
+          this.validatingCoupon = true;
+          this.couponError = null;
+          this.couponPreview = null;
+          try {
+            const res = await this.authFetch('/subscription/validate-coupon', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                couponCode: this.checkoutForm.couponCode.toUpperCase(),
+                planId: this.selectedPlan.id,
+              }),
+            });
+            const data = await res.json();
+            if (data.success) {
+              this.couponPreview = data.data.preview;
+              this.couponPreview.coupon = data.data.coupon;
+            } else {
+              this.couponError = data.error || 'Cupom invalido.';
+            }
+          } catch (error) {
+            console.error('Coupon validation error:', error);
+            this.couponError = 'Erro ao validar cupom. Tente novamente.';
+          } finally {
+            this.validatingCoupon = false;
           }
         },
 
@@ -1050,6 +1144,7 @@
                 customerName: holder,
                 customerIdentity: identityDigits,
                 customerIdentityType: this.checkoutForm.customerIdentityType,
+                couponCode: this.couponPreview ? this.checkoutForm.couponCode.toUpperCase() : undefined,
               }),
             });
             const data = await res.json();

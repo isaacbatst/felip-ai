@@ -48,6 +48,9 @@ export class SubscriptionDrizzleStore extends SubscriptionRepository {
       trialUsed: row.trialUsed,
       promotionalPaymentsRemaining: row.promotionalPaymentsRemaining,
       extraGroups: row.extraGroups,
+      couponId: row.couponId,
+      bonusGroups: row.bonusGroups,
+      couponDiscountMonthsRemaining: row.couponDiscountMonthsRemaining,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     };
@@ -128,6 +131,9 @@ export class SubscriptionDrizzleStore extends SubscriptionRepository {
         cardLastFourDigits: input.cardLastFourDigits ?? null,
         cardBrand: input.cardBrand ?? null,
         nextBillingDate: input.nextBillingDate ?? null,
+        couponId: input.couponId ?? null,
+        bonusGroups: input.bonusGroups ?? 0,
+        couponDiscountMonthsRemaining: input.couponDiscountMonthsRemaining ?? 0,
       })
       .returning();
 
@@ -154,6 +160,9 @@ export class SubscriptionDrizzleStore extends SubscriptionRepository {
     if (input.trialUsed !== undefined) updateData.trialUsed = input.trialUsed;
     if (input.promotionalPaymentsRemaining !== undefined) updateData.promotionalPaymentsRemaining = input.promotionalPaymentsRemaining;
     if (input.extraGroups !== undefined) updateData.extraGroups = input.extraGroups;
+    if (input.couponId !== undefined) updateData.couponId = input.couponId;
+    if (input.bonusGroups !== undefined) updateData.bonusGroups = input.bonusGroups;
+    if (input.couponDiscountMonthsRemaining !== undefined) updateData.couponDiscountMonthsRemaining = input.couponDiscountMonthsRemaining;
 
     const result = await this.db
       .update(subscriptions)

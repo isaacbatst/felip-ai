@@ -32,6 +32,8 @@ import { SubscriptionPaymentRepository } from "@/infrastructure/persistence/subs
 import { SubscriptionPaymentDrizzleStore } from "@/infrastructure/persistence/drizzle/subscription-payment-drizzle-store";
 import { CieloWebhookEventRepository } from "@/infrastructure/persistence/cielo-webhook-event.repository";
 import { CieloWebhookEventDrizzleStore } from "@/infrastructure/persistence/drizzle/cielo-webhook-event-drizzle-store";
+import { CouponRepository } from "@/infrastructure/persistence/coupon.repository";
+import { CouponDrizzleStore } from "@/infrastructure/persistence/drizzle/coupon-drizzle-store";
 
 @Module({
   imports: [DatabaseModule],
@@ -100,6 +102,10 @@ import { CieloWebhookEventDrizzleStore } from "@/infrastructure/persistence/driz
       provide: CieloWebhookEventRepository,
       useClass: CieloWebhookEventDrizzleStore,
     },
+    {
+      provide: CouponRepository,
+      useClass: CouponDrizzleStore,
+    },
   ],
   exports: [
     ActiveGroupsRepository,
@@ -118,6 +124,7 @@ import { CieloWebhookEventDrizzleStore } from "@/infrastructure/persistence/driz
     OtpRepository,
     SubscriptionPaymentRepository,
     CieloWebhookEventRepository,
+    CouponRepository,
   ],
 })
 export class PersistenceModule {}

@@ -1,9 +1,11 @@
 import { Test, type TestingModule } from '@nestjs/testing';
 import { SubscriptionService, SubscriptionError, EXTRA_GROUP_PRICE_IN_CENTS, MAX_EXTRA_GROUPS } from './subscription.service';
+import { CouponService } from './coupon.service';
 import { SubscriptionRepository, type SubscriptionData, type SubscriptionWithPlan } from '@/infrastructure/persistence/subscription.repository';
 import { SubscriptionPlanRepository, type SubscriptionPlanData } from '@/infrastructure/persistence/subscription-plan.repository';
 import { SubscriptionPaymentRepository } from '@/infrastructure/persistence/subscription-payment.repository';
 import { ActiveGroupsRepository } from '@/infrastructure/persistence/active-groups.repository';
+import { CouponRepository, type CouponData } from '@/infrastructure/persistence/coupon.repository';
 import { AppConfigService } from '@/config/app.config';
 import { CieloService } from '@/infrastructure/cielo/cielo.service';
 
@@ -57,6 +59,9 @@ function makeSubscription(overrides: Partial<SubscriptionData> = {}): Subscripti
     trialUsed: false,
     promotionalPaymentsRemaining: 0,
     extraGroups: 0,
+    couponId: null,
+    bonusGroups: 0,
+    couponDiscountMonthsRemaining: 0,
     createdAt: new Date(),
     updatedAt: new Date(),
     ...overrides,
@@ -88,12 +93,14 @@ describe('SubscriptionService', () => {
   let subscriptionRepo: jest.Mocked<SubscriptionRepository>;
   let planRepo: jest.Mocked<SubscriptionPlanRepository>;
   let activeGroupsRepo: jest.Mocked<ActiveGroupsRepository>;
+  let couponRepo: jest.Mocked<CouponRepository>;
   let cieloService: jest.Mocked<CieloService>;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         SubscriptionService,
+        CouponService,
         {
           provide: SubscriptionRepository,
           useValue: {
@@ -139,6 +146,14 @@ describe('SubscriptionService', () => {
           },
         },
         {
+          provide: CouponRepository,
+          useValue: {
+            getByCode: jest.fn(),
+            getById: jest.fn(),
+            incrementRedemptions: jest.fn(),
+          },
+        },
+        {
           provide: AppConfigService,
           useValue: {
             getTrialDurationDays: jest.fn().mockReturnValue(7),
@@ -163,6 +178,7 @@ describe('SubscriptionService', () => {
     subscriptionRepo = module.get(SubscriptionRepository);
     planRepo = module.get(SubscriptionPlanRepository);
     activeGroupsRepo = module.get(ActiveGroupsRepository);
+    couponRepo = module.get(CouponRepository);
     cieloService = module.get(CieloService);
   });
 
@@ -289,6 +305,141 @@ describe('SubscriptionService', () => {
         'recur-123',
         3430 + 1 * EXTRA_GROUP_PRICE_IN_CENTS,
       );
+    });
+  });
+
+  describe('calculateRecurrenceAmount with coupon', () => {
+    const percentageCoupon: CouponData = {
+      id: 1,
+      code: 'TEST20',
+      discountType: 'percentage',
+      discountValue: 20,
+      discountDurationMonths: 3,
+      extraGroupPriceInCents: null,
+      bonusGroups: 0,
+      restrictedToUserId: null,
+      restrictedToPlanId: null,
+      validFrom: new Date(),
+      validUntil: null,
+      maxRedemptions: null,
+      currentRedemptions: 0,
+      isActive: true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    const fixedCoupon: CouponData = {
+      ...percentageCoupon,
+      id: 2,
+      code: 'FIXED1000',
+      discountType: 'fixed',
+      discountValue: 1000,
+    };
+
+    const groupPriceCoupon: CouponData = {
+      ...percentageCoupon,
+      id: 3,
+      code: 'CHEAPGROUPS',
+      discountType: null,
+      discountValue: null,
+      extraGroupPriceInCents: 1500,
+    };
+
+    it('should apply percentage coupon discount when months remaining', () => {
+      // starterPlan.priceInCents = 4900, 20% off = 980 discount = 3920
+      const amount = service.calculateRecurrenceAmount(starterPlan, 0, 0, percentageCoupon, 3);
+      expect(amount).toBe(3920);
+    });
+
+    it('should apply fixed coupon discount when months remaining', () => {
+      // starterPlan.priceInCents = 4900, 1000 off = 3900
+      const amount = service.calculateRecurrenceAmount(starterPlan, 0, 0, fixedCoupon, 2);
+      expect(amount).toBe(3900);
+    });
+
+    it('should NOT apply coupon discount when months remaining is 0', () => {
+      const amount = service.calculateRecurrenceAmount(starterPlan, 0, 0, percentageCoupon, 0);
+      expect(amount).toBe(4900);
+    });
+
+    it('should use custom extra group price from coupon', () => {
+      // extraGroupPriceInCents = 1500 instead of 2900
+      const amount = service.calculateRecurrenceAmount(starterPlan, 0, 2, groupPriceCoupon, 0);
+      expect(amount).toBe(4900 + 2 * 1500);
+    });
+
+    it('should NOT apply coupon discount when promo is active (no stacking)', () => {
+      // promo active (2 remaining) → uses promo price 3430, coupon discount NOT applied
+      const amount = service.calculateRecurrenceAmount(starterPlan, 2, 0, percentageCoupon, 3);
+      expect(amount).toBe(3430);
+    });
+
+    it('should still use custom group price from coupon even during promo', () => {
+      const allAxesCoupon: CouponData = {
+        ...percentageCoupon,
+        extraGroupPriceInCents: 1000,
+      };
+      // promo active → base 3430 (no plan discount stacking), but custom group price applies
+      // extra groups: 1 * 1000 = 1000
+      // total = 3430 + 1000 = 4430
+      const amount = service.calculateRecurrenceAmount(starterPlan, 2, 1, allAxesCoupon, 3);
+      expect(amount).toBe(4430);
+    });
+
+    it('should work with null coupon (backward compatible)', () => {
+      const amount = service.calculateRecurrenceAmount(starterPlan, 0, 2, null, 0);
+      expect(amount).toBe(4900 + 2 * EXTRA_GROUP_PRICE_IN_CENTS);
+    });
+
+    it('should apply permanent discount when couponDiscountMonthsRemaining is -1', () => {
+      // -1 means permanent discount
+      const amount = service.calculateRecurrenceAmount(starterPlan, 0, 0, fixedCoupon, -1);
+      // 4900 - 1000 = 3900
+      expect(amount).toBe(3900);
+    });
+
+    it('should NOT apply permanent discount when promo is active (no stacking)', () => {
+      // promo active → uses promo price 3430, permanent coupon discount NOT applied
+      const amount = service.calculateRecurrenceAmount(starterPlan, 2, 0, fixedCoupon, -1);
+      expect(amount).toBe(3430);
+    });
+
+    it('should apply permanent discount after promo ends', () => {
+      // promo NOT active (0 remaining) → full price 4900, then fixed 1000 off = 3900
+      const amount = service.calculateRecurrenceAmount(starterPlan, 0, 0, fixedCoupon, -1);
+      expect(amount).toBe(3900);
+    });
+  });
+
+  describe('getGroupLimit with bonusGroups', () => {
+    it('should include bonusGroups in group limit', async () => {
+      subscriptionRepo.getWithPlanByUserId.mockResolvedValue(
+        makeSubscriptionWithPlan({ extraGroups: 1, bonusGroups: 2 }),
+      );
+
+      const limit = await service.getGroupLimit('user1');
+      // starterPlan.groupLimit (3) + extraGroups (1) + bonusGroups (2) = 6
+      expect(limit).toBe(6);
+    });
+
+    it('should include bonusGroups in canAddGroup check', async () => {
+      subscriptionRepo.getWithPlanByUserId.mockResolvedValue(
+        makeSubscriptionWithPlan({ extraGroups: 0, bonusGroups: 2 }),
+      );
+
+      // groupLimit=3 + bonusGroups=2 = 5 total, so 4 active should be OK
+      const canAdd = await service.canAddGroup('user1', 4);
+      expect(canAdd).toBe(true);
+    });
+
+    it('should deny canAddGroup when at limit including bonusGroups', async () => {
+      subscriptionRepo.getWithPlanByUserId.mockResolvedValue(
+        makeSubscriptionWithPlan({ extraGroups: 0, bonusGroups: 1 }),
+      );
+
+      // groupLimit=3 + bonusGroups=1 = 4 total, so 4 active should be denied
+      const canAdd = await service.canAddGroup('user1', 4);
+      expect(canAdd).toBe(false);
     });
   });
 
