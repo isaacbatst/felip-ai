@@ -17,6 +17,8 @@ RUN pnpm --filter @felip-ai/shared-types build
 # Copy nest_api source and build it
 COPY nest_api/ ./nest_api/
 RUN pnpm --filter nest_api build
+# Compile migrate.ts separately (nest build with SWC may exclude standalone scripts)
+RUN cd nest_api && npx tsc src/migrate.ts --outDir dist --esModuleInterop --module commonjs --resolveJsonModule --skipLibCheck
 
 FROM node:24-slim AS runner
 RUN apt-get update && apt-get install -y curl
