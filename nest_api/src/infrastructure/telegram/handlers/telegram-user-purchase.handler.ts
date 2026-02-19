@@ -7,6 +7,17 @@ import { MessageParser, type ProgramOption } from '../../../domain/interfaces/me
 import { PriceTableProvider } from '../../../domain/interfaces/price-table-provider.interface';
 import { PriceCalculatorService } from '../../../domain/services/price-calculator.service';
 
+interface CalculatedPriceResult {
+  price: number;
+  isLiminar: boolean;
+  programName: string;
+}
+
+interface EffectiveProgram {
+  programId: number;
+  isLiminar: boolean;
+}
+
 /**
  * Handler responsável por processar requisições de compra de milhas
  * Single Responsibility: apenas processamento de compras
@@ -102,86 +113,77 @@ export class TelegramPurchaseHandler {
       return;
     }
 
-    // Check minimum quantity filter (per CPF, consistent with price calculation)
-    const minQuantity = await this.priceTableProvider.getMinQuantityForProgram(loggedInUserId, program.id);
-    const quantityPerCpf = purchaseRequest.quantity / purchaseRequest.cpfCount;
-    if (minQuantity && minQuantity > 0 && quantityPerCpf < minQuantity) {
-      this.logger.warn('Purchase quantity per CPF below minimum', {
-        quantity: purchaseRequest.quantity,
-        cpfCount: purchaseRequest.cpfCount,
-        quantityPerCpf,
-        minQuantity,
-        programId: program.id,
-      });
-      return;
-    }
-
-    // Determine the effective program ID (normal or liminar) based on miles availability
-    const effectiveProgramId = await this.getEffectiveProgramId(
+    // Determine effective programs (normal and/or liminar) based on miles availability and min quantity
+    const effectivePrograms = await this.getEffectivePrograms(
       loggedInUserId,
       program.id,
+      program.name,
       purchaseRequest.quantity,
-    );
-
-    if (effectiveProgramId === null) {
-      this.logger.warn('No effective program found (neither normal nor liminar has enough miles)');
-      return;
-    }
-
-    // Get the effective program data for display purposes
-    const effectiveProgram = effectiveProgramId === program.id
-      ? program
-      : await this.milesProgramRepository.getProgramById(effectiveProgramId);
-
-    if (!effectiveProgram) {
-      this.logger.warn('Effective program not found', { effectiveProgramId });
-      return;
-    }
-
-    const priceTable = await this.priceTableProvider.getPriceTableForProgram(loggedInUserId, effectiveProgramId);
-
-    if (!priceTable || Object.keys(priceTable).length === 0) {
-      this.logger.warn('No price table found for the effective program', { effectiveProgramId });
-      return;
-    }
-
-    const maxPrice = await this.priceTableProvider.getMaxPriceForProgram(loggedInUserId, effectiveProgramId);
-    const options = maxPrice !== null && maxPrice > 0 ? { customMaxPrice: maxPrice } : undefined;
-
-    const priceResult = this.priceCalculator.calculate(
-      purchaseRequest.quantity / 1000, // Convert from units to thousands (price table keys are in thousands)
       purchaseRequest.cpfCount,
-      priceTable,
-      options,
+      configuredProgramIds,
     );
 
-    if (!priceResult.success) {
+    if (effectivePrograms.length === 0) {
+      this.logger.warn('No effective programs found (no program has enough miles or meets min quantity)');
+      return;
+    }
+
+    // Calculate prices for each effective program
+    const calculatedPrices: CalculatedPriceResult[] = [];
+    for (const ep of effectivePrograms) {
+      const epProgram = ep.programId === program.id
+        ? program
+        : await this.milesProgramRepository.getProgramById(ep.programId);
+      if (!epProgram) continue;
+
+      const priceTable = await this.priceTableProvider.getPriceTableForProgram(loggedInUserId, ep.programId);
+      if (!priceTable || Object.keys(priceTable).length === 0) continue;
+
+      const maxPrice = await this.priceTableProvider.getMaxPriceForProgram(loggedInUserId, ep.programId);
+      const options = maxPrice !== null && maxPrice > 0 ? { customMaxPrice: maxPrice } : undefined;
+
+      const priceResult = this.priceCalculator.calculate(
+        purchaseRequest.quantity / 1000,
+        purchaseRequest.cpfCount,
+        priceTable,
+        options,
+      );
+
+      if (priceResult.success) {
+        calculatedPrices.push({
+          price: priceResult.price,
+          isLiminar: ep.isLiminar,
+          programName: epProgram.name,
+        });
+      }
+    }
+
+    if (calculatedPrices.length === 0) {
+      this.logger.warn('No successful price calculations');
       return;
     }
 
     this.logger.log('Message to reply:', messageId);
 
-    const isLiminar = effectiveProgram.name.toLowerCase().includes('liminar');
+    const lowestPrice = Math.min(...calculatedPrices.map((p) => p.price));
+    const programaForMessage = calculatedPrices.length === 1
+      ? calculatedPrices[0].programName
+      : program.name;
 
     // Caso 1: Sem accepted prices -> mensagem padrão
     if (purchaseRequest.acceptedPrices.length === 0) {
-      await this.sendGroupAnswer(
-        telegramUserId,
-        chatId,
-        priceResult.price,
-        isLiminar,
-        messageId,
-      );
+      await this.sendGroupAnswer(telegramUserId, chatId, calculatedPrices, messageId);
       return;
     }
 
     const maxAcceptedPrice = Math.max(...purchaseRequest.acceptedPrices);
 
-    // Caso 2: Preço aceito >= calculado -> "Vamos!" + call to action no privado
-    if (maxAcceptedPrice >= priceResult.price) {
+    // Caso 2: Preço aceito >= calculado (lowest) -> "Vamos!" + call to action no privado
+    console.log('maxAcceptedPrice', maxAcceptedPrice, 'lowestPrice', lowestPrice);
+    if (maxAcceptedPrice >= lowestPrice) {
       this.logger.log('User max accepted price is higher than calculated price', {
         maxAcceptedPrice,
-        priceResultPrice: priceResult.price,
+        lowestPrice,
       });
       await this.tdlibUserClient.sendMessage(telegramUserId, chatId, 'Vamos!', messageId);
 
@@ -198,18 +200,24 @@ export class TelegramPurchaseHandler {
       // Envia template de call to action no privado do usuário
       const templateId = counterOfferSettings?.callToActionTemplateId ?? 1;
 
+      // Apply accepted price as floor to each calculated price
+      const pricesForCTA = calculatedPrices.map((p) => ({
+        ...p,
+        price: Math.max(p.price, maxAcceptedPrice),
+      }));
+
       const message = buildCallToActionMessage(
         templateId,
-        effectiveProgram.name,
+        programaForMessage,
         purchaseRequest.quantity,
         purchaseRequest.cpfCount,
-        maxAcceptedPrice, // preço máximo aceito pelo usuário
+        this.formatPrivatePrice(pricesForCTA),
       );
 
       this.logger.log('Sending call to action to buyer in private', {
         senderId,
         templateId,
-        offeredPrice: priceResult.price,
+        lowestPrice,
       });
 
       await this.tdlibUserClient.sendMessageToUser(telegramUserId, senderId, message);
@@ -221,21 +229,21 @@ export class TelegramPurchaseHandler {
 
     // Counter offer desabilitado -> envia resposta no grupo mas não envia contra-oferta privada
     if (!counterOfferSettings?.isEnabled) {
-      await this.sendGroupAnswer(telegramUserId, chatId, priceResult.price, isLiminar, messageId);
+      await this.sendGroupAnswer(telegramUserId, chatId, calculatedPrices, messageId);
       return;
     }
 
-    const priceDiff = priceResult.price - maxAcceptedPrice;
+    const priceDiff = lowestPrice - maxAcceptedPrice;
     // Diferença acima do threshold -> envia mensagem padrão no grupo mesmo assim
     if (priceDiff > counterOfferSettings.priceThreshold) {
       this.logger.log('Price difference is greater than threshold, sending default message only', {
         priceDiff,
         priceThreshold: counterOfferSettings.priceThreshold,
-        priceResultPrice: priceResult.price,
+        lowestPrice,
         maxAcceptedPrice,
       });
       // Envia mensagem padrão no grupo mesmo quando fora do range aceitável
-      await this.sendGroupAnswer(telegramUserId, chatId, priceResult.price, isLiminar, messageId);
+      await this.sendGroupAnswer(telegramUserId, chatId, calculatedPrices, messageId);
       return;
     }
 
@@ -245,15 +253,15 @@ export class TelegramPurchaseHandler {
     }
 
     // Envia nossa oferta no grupo
-    await this.sendGroupAnswer(telegramUserId, chatId, priceResult.price, isLiminar, messageId);
+    await this.sendGroupAnswer(telegramUserId, chatId, calculatedPrices, messageId);
 
     // Envia counter offer no privado
     const message = buildCounterOfferMessage(
       counterOfferSettings.messageTemplateId,
-      effectiveProgram.name,
+      programaForMessage,
       purchaseRequest.quantity,
       purchaseRequest.cpfCount,
-      priceResult.price,
+      this.formatPrivatePrice(calculatedPrices),
     );
 
     this.logger.log('Sending counter offer to buyer', {
@@ -267,86 +275,114 @@ export class TelegramPurchaseHandler {
   }
 
   /**
-   * Determines the effective program ID (normal or liminar) based on miles availability.
-   * If the normal program doesn't have enough miles, tries to use the liminar program.
-   * Returns the effective program ID if available, null otherwise.
+   * Determines the effective programs (normal and/or liminar) that can serve this request.
+   * When a normal program is requested, returns both normal and liminar if both pass checks.
+   * When a liminar program is requested directly, returns only the liminar.
    */
-  private async getEffectiveProgramId(
+  private async getEffectivePrograms(
     userId: string,
     programId: number,
+    programName: string,
     quantity: number,
-  ): Promise<number | null> {
-    // Get the program to check if it's already a liminar
-    const program = await this.milesProgramRepository.getProgramById(programId);
-    if (!program) {
-      return null;
-    }
+    cpfCount: number,
+    configuredProgramIds: number[],
+  ): Promise<EffectiveProgram[]> {
+    const isLiminar = programName.toLowerCase().includes('liminar');
 
-    const isLiminar = program.name.toLowerCase().includes('liminar');
-
-    // If it's already a liminar program, just validate it
+    // If it's already a liminar program, just validate it (no reverse lookup to normal)
     if (isLiminar) {
-      const hasMiles = await this.priceTableProvider.hasSufficientMiles(userId, programId, quantity);
-      if (hasMiles) {
-        return programId;
+      if (await this.passesProgramChecks(userId, programId, quantity, cpfCount)) {
+        return [{ programId, isLiminar: true }];
       }
-      this.logger.warn('Not enough miles for liminar program', { programId, quantity });
-      return null;
+      this.logger.warn('Liminar program does not pass checks', { programId, quantity });
+      return [];
     }
 
-    // Try normal program first
-    const hasNormalMiles = await this.priceTableProvider.hasSufficientMiles(userId, programId, quantity);
-    if (hasNormalMiles) {
-      return programId;
+    // Normal program requested: check both normal and its liminar variant
+    const results: EffectiveProgram[] = [];
+
+    // Check normal program
+    if (await this.passesProgramChecks(userId, programId, quantity, cpfCount)) {
+      results.push({ programId, isLiminar: false });
     }
 
-    this.logger.debug('Normal program has insufficient miles, looking for liminar', { programId, quantity });
-
-    // If normal doesn't have enough miles, try liminar
+    // Check liminar program
     const liminarProgram = await this.milesProgramRepository.findLiminarFor(programId);
-    if (!liminarProgram) {
-      this.logger.debug('No liminar program found for', { programId });
-      return null;
+    if (liminarProgram && configuredProgramIds.includes(liminarProgram.id)) {
+      if (await this.passesProgramChecks(userId, liminarProgram.id, quantity, cpfCount)) {
+        results.push({ programId: liminarProgram.id, isLiminar: true });
+      }
     }
 
-    // Check if user has configured the liminar program
-    const configuredProgramIds = await this.priceTableProvider.getConfiguredProgramIds(userId);
-    if (!configuredProgramIds.includes(liminarProgram.id)) {
-      this.logger.debug('Liminar program not configured for user', { liminarProgramId: liminarProgram.id });
-      return null;
-    }
-
-    // Validate liminar program has enough miles
-    const hasLiminarMiles = await this.priceTableProvider.hasSufficientMiles(userId, liminarProgram.id, quantity);
-    if (hasLiminarMiles) {
-      this.logger.debug('Using liminar program instead of normal', {
-        normalProgramId: programId,
-        liminarProgramId: liminarProgram.id,
-        liminarName: liminarProgram.name,
-      });
-      return liminarProgram.id;
-    }
-
-    this.logger.warn('Neither normal nor liminar program has enough miles', {
-      normalProgramId: programId,
-      liminarProgramId: liminarProgram.id,
-      quantity,
-    });
-    return null;
+    return results;
   }
 
   /**
-   * Envia a mensagem padrão com o preço calculado.
+   * Checks if a program passes min quantity and sufficient miles checks.
+   */
+  private async passesProgramChecks(
+    userId: string,
+    programId: number,
+    quantity: number,
+    cpfCount: number,
+  ): Promise<boolean> {
+    const minQuantity = await this.priceTableProvider.getMinQuantityForProgram(userId, programId);
+    const quantityPerCpf = quantity / cpfCount;
+    if (minQuantity && minQuantity > 0 && quantityPerCpf < minQuantity) {
+      this.logger.debug('Program does not meet min quantity', { programId, quantityPerCpf, minQuantity });
+      return false;
+    }
+
+    const hasMiles = await this.priceTableProvider.hasSufficientMiles(userId, programId, quantity);
+    if (!hasMiles) {
+      this.logger.debug('Program has insufficient miles', { programId, quantity });
+      return false;
+    }
+
+    return true;
+  }
+
+  /**
+   * Envia a mensagem padrão com o(s) preço(s) calculado(s).
    */
   private async sendGroupAnswer(
     telegramUserId: string,
     chatId: number,
-    price: number,
-    isLiminar: boolean,
+    prices: CalculatedPriceResult[],
     messageId: number | undefined,
   ): Promise<void> {
-    const priceMessage = Intl.NumberFormat('pt-BR', { maximumFractionDigits: 2 }).format(price);
-    const finalMessage = isLiminar ? `${priceMessage} LIMINAR` : priceMessage;
+    const hasBoth = prices.length > 1;
+    const lines = prices.map((p) => {
+      const priceMessage = Intl.NumberFormat('pt-BR', { maximumFractionDigits: 2 }).format(p.price);
+      if (hasBoth) {
+        return p.isLiminar ? `${priceMessage} Liminar` : `${priceMessage} Normal`;
+      }
+      return p.isLiminar ? `${priceMessage} Liminar` : priceMessage;
+    });
+    const finalMessage = lines.join('\n');
     await this.tdlibUserClient.sendMessage(telegramUserId, chatId, finalMessage, messageId);
+  }
+
+  /**
+   * Formats prices for private messages (CTA/counter-offer).
+   * Single normal price: "20,00"
+   * Single liminar price: "21,00 (Liminar)"
+   * Dual prices: "20,00 (Normal) / 21,00 (Liminar)"
+   */
+  private formatPrivatePrice(prices: CalculatedPriceResult[]): string {
+    const format = (value: number) => Intl.NumberFormat('pt-BR', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(value);
+
+    if (prices.length === 1) {
+      const p = prices[0];
+      return p.isLiminar ? `${format(p.price)} (Liminar)` : format(p.price);
+    }
+
+    return prices.map((p) => {
+      const label = p.isLiminar ? 'Liminar' : 'Normal';
+      return `${format(p.price)} (${label})`;
+    }).join(' / ');
   }
 }

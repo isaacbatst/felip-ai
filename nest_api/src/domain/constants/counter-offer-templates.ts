@@ -84,11 +84,11 @@ export function buildCounterOfferMessage(
   programa: string,
   quantidade: number,
   cpfCount: number,
-  preco: number,
+  preco: number | string,
 ): string {
   const template = COUNTER_OFFER_TEMPLATES[templateId] || COUNTER_OFFER_TEMPLATES[1];
-  
-  const precoFormatado = Intl.NumberFormat('pt-BR', {
+
+  const precoFormatado = typeof preco === 'string' ? preco : Intl.NumberFormat('pt-BR', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(preco);
@@ -177,11 +177,11 @@ export function buildCallToActionMessage(
   programa: string,
   quantidade: number,
   cpfCount: number,
-  preco: number,
+  preco: number | string,
 ): string {
   const template = CALL_TO_ACTION_TEMPLATES[templateId] || CALL_TO_ACTION_TEMPLATES[1];
-  
-  const precoFormatado = Intl.NumberFormat('pt-BR', {
+
+  const precoFormatado = typeof preco === 'string' ? preco : Intl.NumberFormat('pt-BR', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(preco);

@@ -191,9 +191,8 @@ describe('TelegramPurchaseHandler', () => {
   });
 
   describe('handlePurchase', () => {
-    describe('Normal provider with enough miles', () => {
-      it('should send calculated price without LIMINAR suffix when normal provider has enough miles', async () => {
-        // Using default availableMiles which has SMILES with 50000 (enough for 30k)
+    describe('Normal provider with both normal and liminar available', () => {
+      it('should send both prices when user has both normal and liminar with enough miles', async () => {
         mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
           quantity: 30_000,
           cpfCount: 1,
@@ -202,14 +201,15 @@ describe('TelegramPurchaseHandler', () => {
 
         await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF');
 
-        expect(mockPriceTableProvider.getConfiguredProgramIds).toHaveBeenCalledWith(loggedInUserId);
         expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledTimes(1);
         const sentMessage = mockTdlibUserClient.sendMessage.mock.calls[0][2];
-        expect(sentMessage).not.toContain('LIMINAR');
-        expect(sentMessage).toBe('20'); // Price for 30k quantity
+        expect(sentMessage).toBe('20 NORMAL\n21 LIMINAR');
       });
 
-      it('should use LATAM provider when requested and has enough miles', async () => {
+      it('should send both LATAM prices when user has both', async () => {
+        // LATAM has 40k, LATAM LIMINAR has 20000 - not enough for 30k
+        availableMiles[4] = 50000; // Give LATAM LIMINAR enough
+
         mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
           quantity: 30_000,
           cpfCount: 1,
@@ -220,29 +220,62 @@ describe('TelegramPurchaseHandler', () => {
 
         expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledTimes(1);
         const sentMessage = mockTdlibUserClient.sendMessage.mock.calls[0][2];
-        expect(sentMessage).not.toContain('LIMINAR');
-        expect(sentMessage).toBe('19'); // LATAM price for 30k
+        expect(sentMessage).toBe('19 NORMAL\n20 LIMINAR');
       });
 
-      it('should use AZUL/TUDO AZUL provider when requested', async () => {
+      it('should send both AZUL prices when user has both', async () => {
         mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
-          quantity: 30_000,
+          quantity: 15_000,
           cpfCount: 1,
           airlineId: PROGRAM_IDS['AZUL/TUDO AZUL'],
         }));
 
-        await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'AZUL 30k 1CPF');
+        await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'AZUL 15k 1CPF');
 
         expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledTimes(1);
         const sentMessage = mockTdlibUserClient.sendMessage.mock.calls[0][2];
-        expect(sentMessage).not.toContain('LIMINAR');
-        expect(sentMessage).toBe('18'); // AZUL price for 30k
+        expect(sentMessage).toBe('20 NORMAL\n21 LIMINAR');
       });
     });
 
-    describe('Liminar fallback when normal has insufficient miles', () => {
-      it('should fallback to SMILES LIMINAR when SMILES has insufficient miles', async () => {
-        // Set SMILES to have insufficient miles, but SMILES LIMINAR to have enough
+    describe('Normal provider with only normal available', () => {
+      it('should send only normal price when liminar has insufficient miles', async () => {
+        availableMiles[2] = 10000; // SMILES LIMINAR - not enough for 30k
+
+        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
+          quantity: 30_000,
+          cpfCount: 1,
+          airlineId: PROGRAM_IDS.SMILES,
+        }));
+
+        await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF');
+
+        expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledTimes(1);
+        const sentMessage = mockTdlibUserClient.sendMessage.mock.calls[0][2];
+        expect(sentMessage).toBe('20');
+        expect(sentMessage).not.toContain('LIMINAR');
+      });
+
+      it('should send only normal price when liminar is not configured', async () => {
+        configuredProgramIds = [1, 3, 4, 5, 6]; // No SMILES LIMINAR (id: 2)
+
+        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
+          quantity: 30_000,
+          cpfCount: 1,
+          airlineId: PROGRAM_IDS.SMILES,
+        }));
+
+        await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF');
+
+        expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledTimes(1);
+        const sentMessage = mockTdlibUserClient.sendMessage.mock.calls[0][2];
+        expect(sentMessage).toBe('20');
+        expect(sentMessage).not.toContain('LIMINAR');
+      });
+    });
+
+    describe('Normal provider with only liminar available', () => {
+      it('should send only liminar price when normal has insufficient miles', async () => {
         availableMiles[1] = 10000; // SMILES - not enough for 30k
         availableMiles[2] = 50000; // SMILES LIMINAR - has enough
 
@@ -256,12 +289,10 @@ describe('TelegramPurchaseHandler', () => {
 
         expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledTimes(1);
         const sentMessage = mockTdlibUserClient.sendMessage.mock.calls[0][2];
-        expect(sentMessage).toContain('LIMINAR');
-        expect(sentMessage).toBe('21 LIMINAR'); // SMILES LIMINAR price for 30k
+        expect(sentMessage).toBe('21 LIMINAR');
       });
 
-      it('should fallback to LATAM LIMINAR when LATAM has insufficient miles', async () => {
-        // Set LATAM to have insufficient miles, but LATAM LIMINAR to have enough
+      it('should send only liminar price when LATAM normal has insufficient miles', async () => {
         availableMiles[3] = 10000; // LATAM - not enough
         availableMiles[4] = 50000; // LATAM LIMINAR - has enough
 
@@ -275,33 +306,12 @@ describe('TelegramPurchaseHandler', () => {
 
         expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledTimes(1);
         const sentMessage = mockTdlibUserClient.sendMessage.mock.calls[0][2];
-        expect(sentMessage).toContain('LIMINAR');
-        expect(sentMessage).toBe('20 LIMINAR'); // LATAM LIMINAR price for 30k
-      });
-
-      it('should fallback to AZUL LIMINAR when AZUL/TUDO AZUL has insufficient miles', async () => {
-        // Set AZUL to have insufficient miles, but AZUL LIMINAR to have enough
-        availableMiles[5] = 10000; // AZUL/TUDO AZUL - not enough
-        availableMiles[6] = 50000; // AZUL LIMINAR - has enough
-
-        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
-          quantity: 30_000,
-          cpfCount: 1,
-          airlineId: PROGRAM_IDS['AZUL/TUDO AZUL'],
-        }));
-
-        await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'AZUL 30k 1CPF');
-
-        expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledTimes(1);
-        const sentMessage = mockTdlibUserClient.sendMessage.mock.calls[0][2];
-        expect(sentMessage).toContain('LIMINAR');
-        expect(sentMessage).toBe('19 LIMINAR'); // AZUL LIMINAR price for 30k
+        expect(sentMessage).toBe('20 LIMINAR');
       });
     });
 
     describe('Neither normal nor liminar has enough miles', () => {
       it('should not send message when neither SMILES nor SMILES LIMINAR has enough miles', async () => {
-        // Both SMILES and SMILES LIMINAR don't have enough for 100k
         availableMiles[1] = 10000; // SMILES - not enough for 100k
         availableMiles[2] = 50000; // SMILES LIMINAR - not enough for 100k
 
@@ -317,7 +327,6 @@ describe('TelegramPurchaseHandler', () => {
       });
 
       it('should not send message when normal has no miles and liminar also insufficient', async () => {
-        // SMILES has 0 miles, SMILES LIMINAR not enough for 30k
         availableMiles[1] = 0;     // SMILES - no miles
         availableMiles[2] = 20000; // SMILES LIMINAR - not enough for 30k
 
@@ -334,7 +343,7 @@ describe('TelegramPurchaseHandler', () => {
     });
 
     describe('User requests liminar directly', () => {
-      it('should send price with LIMINAR suffix when user requests SMILES LIMINAR directly', async () => {
+      it('should send only liminar price when user requests SMILES LIMINAR directly', async () => {
         mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
           quantity: 30_000,
           cpfCount: 1,
@@ -345,12 +354,12 @@ describe('TelegramPurchaseHandler', () => {
 
         expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledTimes(1);
         const sentMessage = mockTdlibUserClient.sendMessage.mock.calls[0][2];
-        expect(sentMessage).toContain('LIMINAR');
         expect(sentMessage).toBe('21 LIMINAR');
+        // Should NOT include normal price
+        expect(sentMessage).not.toContain('\n');
       });
 
       it('should not send message when user requests liminar directly but it has insufficient miles', async () => {
-        // SMILES LIMINAR doesn't have enough for 30k
         availableMiles[2] = 10000; // SMILES LIMINAR - not enough for 30k
 
         mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
@@ -365,13 +374,159 @@ describe('TelegramPurchaseHandler', () => {
       });
     });
 
-    describe('User accepts specific prices', () => {
-      it('should send "Vamos!" when user accepts price higher than calculated', async () => {
+    describe('User accepts specific prices with dual pricing', () => {
+      it('should send "Vamos!" when accepted price >= lowest of both prices', async () => {
+        // Both SMILES (20) and SMILES LIMINAR (21) available
         mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
           quantity: 30_000,
           cpfCount: 1,
           airlineId: PROGRAM_IDS.SMILES,
-          acceptedPrices: [25], // User accepts 25, calculated is 20
+          acceptedPrices: [25], // Higher than both
+        }));
+
+        await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF aceito 25');
+
+        expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledTimes(1);
+        expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledWith(
+          telegramUserId,
+          chatId,
+          'Vamos!',
+          messageId,
+        );
+      });
+
+      it('should send "Vamos!" when accepted price equals lowest price', async () => {
+        // SMILES price is 20 (the lowest), SMILES LIMINAR is 21
+        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
+          quantity: 30_000,
+          cpfCount: 1,
+          airlineId: PROGRAM_IDS.SMILES,
+          acceptedPrices: [20], // Equals SMILES (lowest)
+        }));
+
+        await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF aceito 20');
+
+        expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledTimes(1);
+        expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledWith(
+          telegramUserId,
+          chatId,
+          'Vamos!',
+          messageId,
+        );
+      });
+
+      it('should send both prices in group and counter offer with both prices in private when within threshold', async () => {
+        // SMILES (20) and SMILES LIMINAR (21) both available
+        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
+          quantity: 30_000,
+          cpfCount: 1,
+          airlineId: PROGRAM_IDS.SMILES,
+          acceptedPrices: [15], // Lower than both (diff from lowest: 20-15=5)
+        }));
+
+        mockCounterOfferSettingsRepository.getSettings.mockResolvedValueOnce({
+          userId: loggedInUserId,
+          isEnabled: true,
+          priceThreshold: 5,
+          messageTemplateId: 1,
+          callToActionTemplateId: 1,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+
+        const senderId = 999;
+        await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF aceito 15', senderId);
+
+        // Group message should contain both prices
+        expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledTimes(1);
+        const groupMessage = mockTdlibUserClient.sendMessage.mock.calls[0][2];
+        expect(groupMessage).toBe('20 NORMAL\n21 LIMINAR');
+
+        // Counter offer in private should contain both prices inline
+        expect(mockTdlibUserClient.sendMessageToUser).toHaveBeenCalledTimes(1);
+        const privateMessage = mockTdlibUserClient.sendMessageToUser.mock.calls[0][2];
+        expect(privateMessage).toContain('20,00 (Normal) / 21,00 (Liminar)');
+      });
+
+      it('should send CTA with both prices when accepted price >= lowest and counter offer enabled', async () => {
+        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
+          quantity: 30_000,
+          cpfCount: 1,
+          airlineId: PROGRAM_IDS.SMILES,
+          acceptedPrices: [25], // Higher than both prices
+        }));
+
+        mockCounterOfferSettingsRepository.getSettings.mockResolvedValueOnce({
+          userId: loggedInUserId,
+          isEnabled: true,
+          priceThreshold: 5,
+          messageTemplateId: 1,
+          callToActionTemplateId: 1,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+
+        const senderId = 999;
+        await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF aceito 25', senderId);
+
+        expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledWith(
+          telegramUserId,
+          chatId,
+          'Vamos!',
+          messageId,
+        );
+
+        // CTA should use accepted price (25) as floor — both prices raised to 25
+        expect(mockTdlibUserClient.sendMessageToUser).toHaveBeenCalledTimes(1);
+        const privateMessage = mockTdlibUserClient.sendMessageToUser.mock.calls[0][2];
+        expect(privateMessage).toContain('25,00 (Normal) / 25,00 (Liminar)');
+      });
+
+      it('should use accepted price as floor in CTA when it is between normal and liminar prices', async () => {
+        // SMILES normal = 20, SMILES LIMINAR = 21, accepted = 20.5
+        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
+          quantity: 30_000,
+          cpfCount: 1,
+          airlineId: PROGRAM_IDS.SMILES,
+          acceptedPrices: [20.5], // Between normal (20) and liminar (21)
+        }));
+
+        mockCounterOfferSettingsRepository.getSettings.mockResolvedValueOnce({
+          userId: loggedInUserId,
+          isEnabled: true,
+          priceThreshold: 5,
+          messageTemplateId: 1,
+          callToActionTemplateId: 1,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+
+        const senderId = 999;
+        await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF aceito 20.5', senderId);
+
+        expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledWith(
+          telegramUserId,
+          chatId,
+          'Vamos!',
+          messageId,
+        );
+
+        // CTA should use accepted price (20.5) as floor for normal price (20 → 20.5), liminar stays 21
+        expect(mockTdlibUserClient.sendMessageToUser).toHaveBeenCalledTimes(1);
+        const privateMessage = mockTdlibUserClient.sendMessageToUser.mock.calls[0][2];
+        expect(privateMessage).toContain('20,50 (Normal) / 21,00 (Liminar)');
+      });
+    });
+
+    describe('User accepts specific prices (single price scenarios)', () => {
+      it('should send "Vamos!" when user accepts price higher than calculated', async () => {
+        availableMiles[2] = 10000; // SMILES LIMINAR - not enough (single price scenario)
+
+        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
+          quantity: 30_000,
+          cpfCount: 1,
+          airlineId: PROGRAM_IDS.SMILES,
+          acceptedPrices: [25],
         }));
 
         await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF aceito 25');
@@ -386,11 +541,13 @@ describe('TelegramPurchaseHandler', () => {
       });
 
       it('should send "Vamos!" when user accepts price equal to calculated', async () => {
+        availableMiles[2] = 10000; // SMILES LIMINAR - not enough (single price scenario)
+
         mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
           quantity: 30_000,
           cpfCount: 1,
           airlineId: PROGRAM_IDS.SMILES,
-          acceptedPrices: [20], // User accepts exactly 20
+          acceptedPrices: [20],
         }));
 
         await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF aceito 20');
@@ -405,14 +562,15 @@ describe('TelegramPurchaseHandler', () => {
       });
 
       it('should send calculated price when user accepts price lower than calculated (counter offer enabled)', async () => {
+        availableMiles[2] = 10000; // SMILES LIMINAR - not enough (single price scenario)
+
         mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
           quantity: 30_000,
           cpfCount: 1,
           airlineId: PROGRAM_IDS.SMILES,
-          acceptedPrices: [15], // User accepts 15, calculated is 20
+          acceptedPrices: [15],
         }));
 
-        // Counter offer must be enabled and threshold >= 5 (price diff is 20-15=5)
         mockCounterOfferSettingsRepository.getSettings.mockResolvedValueOnce({
           userId: loggedInUserId,
           isEnabled: true,
@@ -426,12 +584,10 @@ describe('TelegramPurchaseHandler', () => {
         const senderId = 999;
         await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF aceito 15', senderId);
 
-        // Should send calculated price in group via sendMessage
         expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledTimes(1);
         const groupMessage = mockTdlibUserClient.sendMessage.mock.calls[0][2];
         expect(groupMessage).toBe('20');
 
-        // Should send counter offer in private via sendMessageToUser
         expect(mockTdlibUserClient.sendMessageToUser).toHaveBeenCalledTimes(1);
         expect(mockTdlibUserClient.sendMessageToUser).toHaveBeenCalledWith(
           telegramUserId,
@@ -441,14 +597,15 @@ describe('TelegramPurchaseHandler', () => {
       });
 
       it('should send calculated price in group when user accepts price lower than calculated and counter offer is disabled', async () => {
+        availableMiles[2] = 10000; // SMILES LIMINAR - not enough (single price scenario)
+
         mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
           quantity: 30_000,
           cpfCount: 1,
           airlineId: PROGRAM_IDS.SMILES,
-          acceptedPrices: [15], // User accepts 15, calculated is 20
+          acceptedPrices: [15],
         }));
 
-        // Counter offer disabled (default mock returns null)
         await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF aceito 15');
 
         expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledTimes(1);
@@ -462,18 +619,19 @@ describe('TelegramPurchaseHandler', () => {
       });
 
       it('should send default price message in group when user accepts price lower than calculated but difference exceeds threshold', async () => {
+        availableMiles[2] = 10000; // SMILES LIMINAR - not enough (single price scenario)
+
         mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
           quantity: 30_000,
           cpfCount: 1,
           airlineId: PROGRAM_IDS.SMILES,
-          acceptedPrices: [10], // User accepts 10, calculated is 20 (diff = 10)
+          acceptedPrices: [10],
         }));
 
-        // Counter offer enabled but threshold is 5 (diff 10 > threshold 5)
         mockCounterOfferSettingsRepository.getSettings.mockResolvedValueOnce({
           userId: loggedInUserId,
           isEnabled: true,
-          priceThreshold: 5, // Threshold is 5, but difference is 10
+          priceThreshold: 5,
           messageTemplateId: 1,
           callToActionTemplateId: 1,
           createdAt: new Date(),
@@ -482,10 +640,9 @@ describe('TelegramPurchaseHandler', () => {
 
         await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF aceito 10');
 
-        // Should send default price message in group (but NOT counter offer in private)
         expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledTimes(1);
         const groupMessage = mockTdlibUserClient.sendMessage.mock.calls[0][2];
-        expect(groupMessage).toBe('20'); // Default calculated price
+        expect(groupMessage).toBe('20');
         expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledWith(
           telegramUserId,
           chatId,
@@ -495,11 +652,13 @@ describe('TelegramPurchaseHandler', () => {
       });
 
       it('should use minimum of multiple accepted prices for comparison', async () => {
+        availableMiles[2] = 10000; // SMILES LIMINAR - not enough (single price scenario)
+
         mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
           quantity: 30_000,
           cpfCount: 1,
           airlineId: PROGRAM_IDS.SMILES,
-          acceptedPrices: [25, 22, 30], // Min is 22, still >= 20
+          acceptedPrices: [25, 22, 30],
         }));
 
         await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF aceito 22');
@@ -519,7 +678,7 @@ describe('TelegramPurchaseHandler', () => {
         mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
           quantity: 30_000,
           cpfCount: 1,
-          airlineId: 999, // Non-existent program ID
+          airlineId: 999,
         }));
 
         await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'UNKNOWN_AIRLINE 30k 1CPF');
@@ -547,7 +706,6 @@ describe('TelegramPurchaseHandler', () => {
       });
 
       it('should not send message when parser returns multiple proposals', async () => {
-        // Multiple proposals in a single message should be ignored
         mockMessageParser.parse.mockResolvedValue([
           {
             isPurchaseProposal: true,
@@ -570,10 +728,6 @@ describe('TelegramPurchaseHandler', () => {
         expect(mockTdlibUserClient.sendMessage).not.toHaveBeenCalled();
       });
 
-      // Note: Tests for null quantity, cpfCount, and airlineId were removed because
-      // the discriminated union schema now enforces these fields as required when
-      // isPurchaseProposal is true. The parser returns null for invalid proposals.
-
       it('should not send message when quantity is zero', async () => {
         mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
           quantity: 0,
@@ -589,11 +743,11 @@ describe('TelegramPurchaseHandler', () => {
 
     describe('Price calculation with multiple CPFs', () => {
       it('should calculate price correctly with multiple CPFs', async () => {
-        // SMILES has enough miles for 60k
         availableMiles[1] = 100000;
+        availableMiles[2] = 100000;
 
         mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
-          quantity: 60_000, // 60k / 2 CPFs = 30k per CPF
+          quantity: 60_000,
           cpfCount: 2,
           airlineId: PROGRAM_IDS.SMILES,
         }));
@@ -602,22 +756,24 @@ describe('TelegramPurchaseHandler', () => {
 
         expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledTimes(1);
         const sentMessage = mockTdlibUserClient.sendMessage.mock.calls[0][2];
-        expect(sentMessage).toBe('20'); // Same as 30k with 1 CPF
+        // Both prices shown: SMILES 30k/CPF = 20, SMILES LIMINAR 30k/CPF = 21
+        expect(sentMessage).toBe('20 NORMAL\n21 LIMINAR');
       });
     });
 
     describe('Custom max price (PREÇO TETO)', () => {
       it('should respect custom max price when calculating', async () => {
-        // Override the mock for SMILES to return a lower max price
+        availableMiles[2] = 10000; // SMILES LIMINAR - not enough (single price scenario)
+
         mockPriceTableProvider.getMaxPriceForProgram.mockImplementation((_userId: string, programId: number) => {
           if (programId === PROGRAM_IDS.SMILES) {
-            return Promise.resolve(19); // Lower than table max
+            return Promise.resolve(19);
           }
           return Promise.resolve(maxPrices[programId] ?? null);
         });
 
         mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
-          quantity: 15_000, // Smallest quantity would normally give highest price (22)
+          quantity: 15_000,
           cpfCount: 1,
           airlineId: PROGRAM_IDS.SMILES,
         }));
@@ -626,14 +782,15 @@ describe('TelegramPurchaseHandler', () => {
 
         expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledTimes(1);
         const sentMessage = mockTdlibUserClient.sendMessage.mock.calls[0][2];
-        expect(sentMessage).toBe('19'); // Limited by customMaxPrice
+        expect(sentMessage).toBe('19');
       });
 
       it('should ignore custom max price when it is 0 (use price table value instead)', async () => {
-        // Simulate the bug scenario: user set minQuantity but not maxPrice → backend stores maxPrice=0
+        availableMiles[2] = 10000; // SMILES LIMINAR - not enough (single price scenario)
+
         mockPriceTableProvider.getMaxPriceForProgram.mockImplementation((_userId: string, programId: number) => {
           if (programId === PROGRAM_IDS.SMILES) {
-            return Promise.resolve(0); // maxPrice=0 from DB (no max price configured)
+            return Promise.resolve(0);
           }
           return Promise.resolve(maxPrices[programId] ?? null);
         });
@@ -648,20 +805,20 @@ describe('TelegramPurchaseHandler', () => {
 
         expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledTimes(1);
         const sentMessage = mockTdlibUserClient.sendMessage.mock.calls[0][2];
-        expect(sentMessage).toBe('20'); // Should use price table value, not 0
+        expect(sentMessage).toBe('20');
       });
     });
 
     describe('Minimum quantity filter', () => {
-      it('should not send message when quantity is below minimum', async () => {
-        // Set min quantity for SMILES to 50000 (50k miles)
+      it('should not send message when both programs are below their min quantity', async () => {
         mockPriceTableProvider.getMinQuantityForProgram.mockImplementation((_userId: string, programId: number) => {
           if (programId === PROGRAM_IDS.SMILES) return Promise.resolve(50_000);
+          if (programId === PROGRAM_IDS['SMILES LIMINAR']) return Promise.resolve(50_000);
           return Promise.resolve(null);
         });
 
         mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
-          quantity: 30_000, // 30k < 50k minimum
+          quantity: 30_000,
           cpfCount: 1,
           airlineId: PROGRAM_IDS.SMILES,
         }));
@@ -671,15 +828,14 @@ describe('TelegramPurchaseHandler', () => {
         expect(mockTdlibUserClient.sendMessage).not.toHaveBeenCalled();
       });
 
-      it('should send message when quantity meets minimum', async () => {
-        // Set min quantity for SMILES to 30000 (30k miles)
+      it('should send only normal price when liminar is below its min quantity', async () => {
         mockPriceTableProvider.getMinQuantityForProgram.mockImplementation((_userId: string, programId: number) => {
-          if (programId === PROGRAM_IDS.SMILES) return Promise.resolve(30_000);
+          if (programId === PROGRAM_IDS['SMILES LIMINAR']) return Promise.resolve(50_000);
           return Promise.resolve(null);
         });
 
         mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
-          quantity: 30_000, // 30k = 30k minimum (not below)
+          quantity: 30_000,
           cpfCount: 1,
           airlineId: PROGRAM_IDS.SMILES,
         }));
@@ -687,17 +843,38 @@ describe('TelegramPurchaseHandler', () => {
         await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF');
 
         expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledTimes(1);
+        const sentMessage = mockTdlibUserClient.sendMessage.mock.calls[0][2];
+        expect(sentMessage).toBe('20');
       });
 
-      it('should send message when quantity exceeds minimum', async () => {
-        // Set min quantity for SMILES to 20000 (20k miles)
+      it('should send only liminar price when normal is below its min quantity but liminar passes', async () => {
         mockPriceTableProvider.getMinQuantityForProgram.mockImplementation((_userId: string, programId: number) => {
-          if (programId === PROGRAM_IDS.SMILES) return Promise.resolve(20_000);
+          if (programId === PROGRAM_IDS.SMILES) return Promise.resolve(50_000);
           return Promise.resolve(null);
         });
 
         mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
-          quantity: 30_000, // 30k > 20k minimum
+          quantity: 30_000,
+          cpfCount: 1,
+          airlineId: PROGRAM_IDS.SMILES,
+        }));
+
+        await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF');
+
+        expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledTimes(1);
+        const sentMessage = mockTdlibUserClient.sendMessage.mock.calls[0][2];
+        expect(sentMessage).toBe('21 LIMINAR');
+      });
+
+      it('should send message when quantity meets minimum', async () => {
+        mockPriceTableProvider.getMinQuantityForProgram.mockImplementation((_userId: string, programId: number) => {
+          if (programId === PROGRAM_IDS.SMILES) return Promise.resolve(30_000);
+          if (programId === PROGRAM_IDS['SMILES LIMINAR']) return Promise.resolve(30_000);
+          return Promise.resolve(null);
+        });
+
+        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
+          quantity: 30_000,
           cpfCount: 1,
           airlineId: PROGRAM_IDS.SMILES,
         }));
@@ -708,8 +885,6 @@ describe('TelegramPurchaseHandler', () => {
       });
 
       it('should send message when no minimum quantity is configured', async () => {
-        // Default mock returns null for getMinQuantityForProgram
-
         mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
           quantity: 15_000,
           cpfCount: 1,
@@ -721,15 +896,15 @@ describe('TelegramPurchaseHandler', () => {
         expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledTimes(1);
       });
 
-      it('should not send message when quantity per CPF is below minimum', async () => {
-        // Set min quantity for SMILES to 50000 (50k miles)
+      it('should not send message when quantity per CPF is below minimum for both programs', async () => {
         mockPriceTableProvider.getMinQuantityForProgram.mockImplementation((_userId: string, programId: number) => {
           if (programId === PROGRAM_IDS.SMILES) return Promise.resolve(50_000);
+          if (programId === PROGRAM_IDS['SMILES LIMINAR']) return Promise.resolve(50_000);
           return Promise.resolve(null);
         });
 
         mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
-          quantity: 50_000, // 50k total but 25k per CPF < 50k minimum
+          quantity: 50_000,
           cpfCount: 2,
           airlineId: PROGRAM_IDS.SMILES,
         }));
@@ -740,14 +915,14 @@ describe('TelegramPurchaseHandler', () => {
       });
 
       it('should send message when quantity per CPF meets minimum with multiple CPFs', async () => {
-        // Set min quantity for SMILES to 25000 (25k miles)
         mockPriceTableProvider.getMinQuantityForProgram.mockImplementation((_userId: string, programId: number) => {
           if (programId === PROGRAM_IDS.SMILES) return Promise.resolve(25_000);
+          if (programId === PROGRAM_IDS['SMILES LIMINAR']) return Promise.resolve(25_000);
           return Promise.resolve(null);
         });
 
         mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
-          quantity: 50_000, // 50k total, 25k per CPF = 25k minimum
+          quantity: 50_000,
           cpfCount: 2,
           airlineId: PROGRAM_IDS.SMILES,
         }));
@@ -760,10 +935,12 @@ describe('TelegramPurchaseHandler', () => {
 
     describe('Empty price table', () => {
       it('should not send message when price table is empty for provider', async () => {
-        // Override mock to return empty price table for SMILES
         mockPriceTableProvider.getPriceTableForProgram.mockImplementation((_userId: string, programId: number) => {
           if (programId === PROGRAM_IDS.SMILES) {
-            return Promise.resolve({}); // Empty price table
+            return Promise.resolve({});
+          }
+          if (programId === PROGRAM_IDS['SMILES LIMINAR']) {
+            return Promise.resolve({});
           }
           return Promise.resolve(priceTables[programId] ?? null);
         });
@@ -776,12 +953,10 @@ describe('TelegramPurchaseHandler', () => {
 
         await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF');
 
-        // No message sent because SMILES has empty price table
         expect(mockTdlibUserClient.sendMessage).not.toHaveBeenCalled();
       });
 
       it('should not send message when program is not configured for user', async () => {
-        // Remove SMILES from configured programs
         configuredProgramIds = [2, 3, 4, 5, 6]; // No SMILES (id: 1)
 
         mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
@@ -792,7 +967,6 @@ describe('TelegramPurchaseHandler', () => {
 
         await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF');
 
-        // No message sent because SMILES is not configured for user
         expect(mockTdlibUserClient.sendMessage).not.toHaveBeenCalled();
       });
     });
