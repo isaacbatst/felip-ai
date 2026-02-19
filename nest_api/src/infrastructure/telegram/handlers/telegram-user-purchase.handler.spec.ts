@@ -153,6 +153,7 @@ describe('TelegramPurchaseHandler', () => {
       createProgram: jest.fn(),
       updateProgram: jest.fn(),
       deleteProgram: jest.fn(),
+      seedDefaultPrograms: jest.fn(),
     } as unknown as jest.Mocked<MilesProgramRepository>;
 
     const module: TestingModule = await Test.createTestingModule({

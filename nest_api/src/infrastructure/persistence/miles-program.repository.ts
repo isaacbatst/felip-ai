@@ -62,4 +62,9 @@ export abstract class MilesProgramRepository {
    * Delete a program
    */
   abstract deleteProgram(id: number): Promise<boolean>;
+
+  /**
+   * Seed default miles programs if they don't exist
+   */
+  abstract seedDefaultPrograms(): Promise<void>;
 }

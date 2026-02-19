@@ -80,20 +80,5 @@ CREATE INDEX "user_available_miles_user_id_idx" ON "user_available_miles" USING 
 --> statement-breakpoint
 CREATE INDEX "user_available_miles_program_id_idx" ON "user_available_miles" USING btree ("program_id");
 
---> statement-breakpoint
 
--- Seed initial miles programs with liminar relationships
-INSERT INTO "miles_programs" ("name", "liminar_of_id") VALUES 
-	('SMILES', NULL),
-	('LATAM', NULL),
-	('AZUL/TUDO AZUL', NULL);
 
--- Get the IDs and create liminar programs
-INSERT INTO "miles_programs" ("name", "liminar_of_id") 
-SELECT 'SMILES LIMINAR', id FROM "miles_programs" WHERE name = 'SMILES';
-
-INSERT INTO "miles_programs" ("name", "liminar_of_id") 
-SELECT 'LATAM LIMINAR', id FROM "miles_programs" WHERE name = 'LATAM';
-
-INSERT INTO "miles_programs" ("name", "liminar_of_id") 
-SELECT 'AZUL LIMINAR', id FROM "miles_programs" WHERE name = 'AZUL/TUDO AZUL';

@@ -32,6 +32,7 @@ COPY --from=builder /app/shared-types/dist ./shared-types/dist
 COPY nest_api/package.json ./nest_api/
 RUN pnpm install --frozen-lockfile --prod
 COPY --from=builder /app/nest_api/dist ./nest_api/dist
+COPY nest_api/drizzle ./nest_api/drizzle
 WORKDIR /app/nest_api
 CMD ["node", "dist/main.js"]
 

@@ -1,4 +1,4 @@
-import { Injectable, Inject } from '@nestjs/common';
+import { Injectable, Inject, Logger } from '@nestjs/common';
 import { eq, isNull } from 'drizzle-orm';
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import {
@@ -9,12 +9,19 @@ import {
 import { milesPrograms } from '@/infrastructure/database/schema';
 import type * as schema from '@/infrastructure/database/schema';
 
-/**
- * Drizzle implementation of MilesProgramRepository
- * Single Responsibility: miles program operations using Drizzle ORM with PostgreSQL
- */
+const DEFAULT_PROGRAMS: { name: string; liminarOf?: string }[] = [
+  { name: 'SMILES' },
+  { name: 'LATAM' },
+  { name: 'AZUL/TUDO AZUL' },
+  { name: 'SMILES LIMINAR', liminarOf: 'SMILES' },
+  { name: 'LATAM LIMINAR', liminarOf: 'LATAM' },
+  { name: 'AZUL LIMINAR', liminarOf: 'AZUL/TUDO AZUL' },
+];
+
 @Injectable()
 export class MilesProgramDrizzleStore extends MilesProgramRepository {
+  private readonly logger = new Logger(MilesProgramDrizzleStore.name);
+
   constructor(
     @Inject('DATABASE_CONNECTION')
     private readonly db: PostgresJsDatabase<typeof schema>,
@@ -183,5 +190,28 @@ export class MilesProgramDrizzleStore extends MilesProgramRepository {
       .returning({ id: milesPrograms.id });
 
     return result.length > 0;
+  }
+
+  async seedDefaultPrograms(): Promise<void> {
+    // Seed normal programs first
+    for (const program of DEFAULT_PROGRAMS.filter((p) => !p.liminarOf)) {
+      const existing = await this.getProgramByName(program.name);
+      if (!existing) {
+        await this.createProgram(program.name);
+        this.logger.log(`Seeded miles program: ${program.name}`);
+      }
+    }
+
+    // Seed liminar programs (need parent IDs)
+    for (const program of DEFAULT_PROGRAMS.filter((p) => p.liminarOf)) {
+      const existing = await this.getProgramByName(program.name);
+      if (!existing) {
+        const parent = await this.getProgramByName(program.liminarOf!);
+        if (parent) {
+          await this.createProgram(program.name, parent.id);
+          this.logger.log(`Seeded miles program: ${program.name}`);
+        }
+      }
+    }
   }
 }
