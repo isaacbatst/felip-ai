@@ -102,16 +102,7 @@ export class TelegramPurchaseHandler {
 
     this.logger.debug('Selected program', { id: program.id, name: program.name });
 
-    // Check if user has configured this program
     const configuredProgramIds = await this.priceTableProvider.getConfiguredProgramIds(loggedInUserId);
-    if (!configuredProgramIds.includes(program.id)) {
-      this.logger.warn('Program not configured for user', {
-        programId: program.id,
-        programName: program.name,
-        configuredProgramIds,
-      });
-      return;
-    }
 
     // Determine effective programs (normal and/or liminar) based on miles availability and min quantity
     const effectivePrograms = await this.getEffectivePrograms(
@@ -301,8 +292,8 @@ export class TelegramPurchaseHandler {
     // Normal program requested: check both normal and its liminar variant
     const results: EffectiveProgram[] = [];
 
-    // Check normal program
-    if (await this.passesProgramChecks(userId, programId, quantity, cpfCount)) {
+    // Check normal program (only if configured)
+    if (configuredProgramIds.includes(programId) && await this.passesProgramChecks(userId, programId, quantity, cpfCount)) {
       results.push({ programId, isLiminar: false });
     }
 

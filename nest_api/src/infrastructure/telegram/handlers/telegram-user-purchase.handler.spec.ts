@@ -956,8 +956,24 @@ describe('TelegramPurchaseHandler', () => {
         expect(mockTdlibUserClient.sendMessage).not.toHaveBeenCalled();
       });
 
-      it('should not send message when program is not configured for user', async () => {
-        configuredProgramIds = [2, 3, 4, 5, 6]; // No SMILES (id: 1)
+      it('should send liminar price when normal program is not configured but liminar is', async () => {
+        configuredProgramIds = [2, 3, 4, 5, 6]; // No SMILES (id: 1), but SMILES LIMINAR (id: 2) is configured
+
+        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
+          quantity: 30_000,
+          cpfCount: 1,
+          airlineId: PROGRAM_IDS.SMILES,
+        }));
+
+        await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF');
+
+        expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledTimes(1);
+        const sentMessage = mockTdlibUserClient.sendMessage.mock.calls[0][2];
+        expect(sentMessage).toBe('21 Liminar');
+      });
+
+      it('should not send message when neither normal nor liminar is configured', async () => {
+        configuredProgramIds = [3, 4, 5, 6]; // No SMILES (id: 1) nor SMILES LIMINAR (id: 2)
 
         mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
           quantity: 30_000,
