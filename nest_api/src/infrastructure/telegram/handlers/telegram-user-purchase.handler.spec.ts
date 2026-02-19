@@ -60,21 +60,21 @@ describe('TelegramPurchaseHandler', () => {
   // Mapping of program names to IDs for tests
   const PROGRAM_IDS = {
     SMILES: 1,
-    'SMILES LIMINAR': 2,
+    'SMILES Liminar': 2,
     LATAM: 3,
-    'LATAM LIMINAR': 4,
+    'LATAM Liminar': 4,
     'AZUL/TUDO AZUL': 5,
-    'AZUL LIMINAR': 6,
+    'AZUL Liminar': 6,
   } as const;
 
   // Test programs data
   const testPrograms = [
     { id: 1, name: 'SMILES', liminarOfId: null, createdAt: new Date() },
-    { id: 2, name: 'SMILES LIMINAR', liminarOfId: 1, createdAt: new Date() },
+    { id: 2, name: 'SMILES Liminar', liminarOfId: 1, createdAt: new Date() },
     { id: 3, name: 'LATAM', liminarOfId: null, createdAt: new Date() },
-    { id: 4, name: 'LATAM LIMINAR', liminarOfId: 3, createdAt: new Date() },
+    { id: 4, name: 'LATAM Liminar', liminarOfId: 3, createdAt: new Date() },
     { id: 5, name: 'AZUL/TUDO AZUL', liminarOfId: null, createdAt: new Date() },
-    { id: 6, name: 'AZUL LIMINAR', liminarOfId: 5, createdAt: new Date() },
+    { id: 6, name: 'AZUL Liminar', liminarOfId: 5, createdAt: new Date() },
   ];
 
   // Helper to create a mock PurchaseProposal array with single element (standard case)
@@ -203,7 +203,7 @@ describe('TelegramPurchaseHandler', () => {
 
         expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledTimes(1);
         const sentMessage = mockTdlibUserClient.sendMessage.mock.calls[0][2];
-        expect(sentMessage).toBe('20 NORMAL\n21 LIMINAR');
+        expect(sentMessage).toBe('20 Normal\n21 Liminar');
       });
 
       it('should send both LATAM prices when user has both', async () => {
@@ -220,7 +220,7 @@ describe('TelegramPurchaseHandler', () => {
 
         expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledTimes(1);
         const sentMessage = mockTdlibUserClient.sendMessage.mock.calls[0][2];
-        expect(sentMessage).toBe('19 NORMAL\n20 LIMINAR');
+        expect(sentMessage).toBe('19 Normal\n20 Liminar');
       });
 
       it('should send both AZUL prices when user has both', async () => {
@@ -234,7 +234,7 @@ describe('TelegramPurchaseHandler', () => {
 
         expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledTimes(1);
         const sentMessage = mockTdlibUserClient.sendMessage.mock.calls[0][2];
-        expect(sentMessage).toBe('20 NORMAL\n21 LIMINAR');
+        expect(sentMessage).toBe('20 Normal\n21 Liminar');
       });
     });
 
@@ -253,7 +253,7 @@ describe('TelegramPurchaseHandler', () => {
         expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledTimes(1);
         const sentMessage = mockTdlibUserClient.sendMessage.mock.calls[0][2];
         expect(sentMessage).toBe('20');
-        expect(sentMessage).not.toContain('LIMINAR');
+        expect(sentMessage).not.toContain('Liminar');
       });
 
       it('should send only normal price when liminar is not configured', async () => {
@@ -270,7 +270,7 @@ describe('TelegramPurchaseHandler', () => {
         expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledTimes(1);
         const sentMessage = mockTdlibUserClient.sendMessage.mock.calls[0][2];
         expect(sentMessage).toBe('20');
-        expect(sentMessage).not.toContain('LIMINAR');
+        expect(sentMessage).not.toContain('Liminar');
       });
     });
 
@@ -289,7 +289,7 @@ describe('TelegramPurchaseHandler', () => {
 
         expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledTimes(1);
         const sentMessage = mockTdlibUserClient.sendMessage.mock.calls[0][2];
-        expect(sentMessage).toBe('21 LIMINAR');
+        expect(sentMessage).toBe('21 Liminar');
       });
 
       it('should send only liminar price when LATAM normal has insufficient miles', async () => {
@@ -306,7 +306,7 @@ describe('TelegramPurchaseHandler', () => {
 
         expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledTimes(1);
         const sentMessage = mockTdlibUserClient.sendMessage.mock.calls[0][2];
-        expect(sentMessage).toBe('20 LIMINAR');
+        expect(sentMessage).toBe('20 Liminar');
       });
     });
 
@@ -347,14 +347,14 @@ describe('TelegramPurchaseHandler', () => {
         mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
           quantity: 30_000,
           cpfCount: 1,
-          airlineId: PROGRAM_IDS['SMILES LIMINAR'],
+          airlineId: PROGRAM_IDS['SMILES Liminar'],
         }));
 
         await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES LIMINAR 30k 1CPF');
 
         expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledTimes(1);
         const sentMessage = mockTdlibUserClient.sendMessage.mock.calls[0][2];
-        expect(sentMessage).toBe('21 LIMINAR');
+        expect(sentMessage).toBe('21 Liminar');
         // Should NOT include normal price
         expect(sentMessage).not.toContain('\n');
       });
@@ -365,7 +365,7 @@ describe('TelegramPurchaseHandler', () => {
         mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
           quantity: 30_000,
           cpfCount: 1,
-          airlineId: PROGRAM_IDS['SMILES LIMINAR'],
+          airlineId: PROGRAM_IDS['SMILES Liminar'],
         }));
 
         await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES LIMINAR 30k 1CPF');
@@ -440,7 +440,7 @@ describe('TelegramPurchaseHandler', () => {
         // Group message should contain both prices
         expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledTimes(1);
         const groupMessage = mockTdlibUserClient.sendMessage.mock.calls[0][2];
-        expect(groupMessage).toBe('20 NORMAL\n21 LIMINAR');
+        expect(groupMessage).toBe('20 Normal\n21 Liminar');
 
         // Counter offer in private should contain both prices inline
         expect(mockTdlibUserClient.sendMessageToUser).toHaveBeenCalledTimes(1);
@@ -757,7 +757,7 @@ describe('TelegramPurchaseHandler', () => {
         expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledTimes(1);
         const sentMessage = mockTdlibUserClient.sendMessage.mock.calls[0][2];
         // Both prices shown: SMILES 30k/CPF = 20, SMILES LIMINAR 30k/CPF = 21
-        expect(sentMessage).toBe('20 NORMAL\n21 LIMINAR');
+        expect(sentMessage).toBe('20 Normal\n21 Liminar');
       });
     });
 
@@ -813,7 +813,7 @@ describe('TelegramPurchaseHandler', () => {
       it('should not send message when both programs are below their min quantity', async () => {
         mockPriceTableProvider.getMinQuantityForProgram.mockImplementation((_userId: string, programId: number) => {
           if (programId === PROGRAM_IDS.SMILES) return Promise.resolve(50_000);
-          if (programId === PROGRAM_IDS['SMILES LIMINAR']) return Promise.resolve(50_000);
+          if (programId === PROGRAM_IDS['SMILES Liminar']) return Promise.resolve(50_000);
           return Promise.resolve(null);
         });
 
@@ -830,7 +830,7 @@ describe('TelegramPurchaseHandler', () => {
 
       it('should send only normal price when liminar is below its min quantity', async () => {
         mockPriceTableProvider.getMinQuantityForProgram.mockImplementation((_userId: string, programId: number) => {
-          if (programId === PROGRAM_IDS['SMILES LIMINAR']) return Promise.resolve(50_000);
+          if (programId === PROGRAM_IDS['SMILES Liminar']) return Promise.resolve(50_000);
           return Promise.resolve(null);
         });
 
@@ -863,13 +863,13 @@ describe('TelegramPurchaseHandler', () => {
 
         expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledTimes(1);
         const sentMessage = mockTdlibUserClient.sendMessage.mock.calls[0][2];
-        expect(sentMessage).toBe('21 LIMINAR');
+        expect(sentMessage).toBe('21 Liminar');
       });
 
       it('should send message when quantity meets minimum', async () => {
         mockPriceTableProvider.getMinQuantityForProgram.mockImplementation((_userId: string, programId: number) => {
           if (programId === PROGRAM_IDS.SMILES) return Promise.resolve(30_000);
-          if (programId === PROGRAM_IDS['SMILES LIMINAR']) return Promise.resolve(30_000);
+          if (programId === PROGRAM_IDS['SMILES Liminar']) return Promise.resolve(30_000);
           return Promise.resolve(null);
         });
 
@@ -899,7 +899,7 @@ describe('TelegramPurchaseHandler', () => {
       it('should not send message when quantity per CPF is below minimum for both programs', async () => {
         mockPriceTableProvider.getMinQuantityForProgram.mockImplementation((_userId: string, programId: number) => {
           if (programId === PROGRAM_IDS.SMILES) return Promise.resolve(50_000);
-          if (programId === PROGRAM_IDS['SMILES LIMINAR']) return Promise.resolve(50_000);
+          if (programId === PROGRAM_IDS['SMILES Liminar']) return Promise.resolve(50_000);
           return Promise.resolve(null);
         });
 
@@ -917,7 +917,7 @@ describe('TelegramPurchaseHandler', () => {
       it('should send message when quantity per CPF meets minimum with multiple CPFs', async () => {
         mockPriceTableProvider.getMinQuantityForProgram.mockImplementation((_userId: string, programId: number) => {
           if (programId === PROGRAM_IDS.SMILES) return Promise.resolve(25_000);
-          if (programId === PROGRAM_IDS['SMILES LIMINAR']) return Promise.resolve(25_000);
+          if (programId === PROGRAM_IDS['SMILES Liminar']) return Promise.resolve(25_000);
           return Promise.resolve(null);
         });
 
@@ -939,7 +939,7 @@ describe('TelegramPurchaseHandler', () => {
           if (programId === PROGRAM_IDS.SMILES) {
             return Promise.resolve({});
           }
-          if (programId === PROGRAM_IDS['SMILES LIMINAR']) {
+          if (programId === PROGRAM_IDS['SMILES Liminar']) {
             return Promise.resolve({});
           }
           return Promise.resolve(priceTables[programId] ?? null);
