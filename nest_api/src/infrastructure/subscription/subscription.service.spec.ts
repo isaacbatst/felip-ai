@@ -8,6 +8,7 @@ import { ActiveGroupsRepository } from '@/infrastructure/persistence/active-grou
 import { CouponRepository, type CouponData } from '@/infrastructure/persistence/coupon.repository';
 import { AppConfigService } from '@/config/app.config';
 import { CieloService } from '@/infrastructure/cielo/cielo.service';
+import { MilesProgramRepository } from '@/infrastructure/persistence/miles-program.repository';
 
 // Mock plan data
 const starterPlan: SubscriptionPlanData = {
@@ -151,6 +152,12 @@ describe('SubscriptionService', () => {
             getByCode: jest.fn(),
             getById: jest.fn(),
             incrementRedemptions: jest.fn(),
+          },
+        },
+        {
+          provide: MilesProgramRepository,
+          useValue: {
+            seedDefaultPrograms: jest.fn(),
           },
         },
         {

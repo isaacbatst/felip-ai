@@ -29,6 +29,10 @@ export class AppConfigService {
     }
   }
 
+  isProduction(): boolean {
+    return this.configService.get<string>('NODE_ENV') === 'production';
+  }
+
   getTelegramBotToken(): string {
     const value = this.configService.get<string>('TELEGRAM_BOT_TOKEN');
     if (!value) {

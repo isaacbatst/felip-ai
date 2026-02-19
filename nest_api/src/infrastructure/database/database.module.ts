@@ -6,7 +6,7 @@ import postgres from 'postgres';
 import * as schema from './schema';
 
 /**
- * Database module for Drizzle ORM with Neon PostgreSQL
+ * Database module for Drizzle ORM with PostgreSQL
  * Provides a global database connection instance
  */
 @Global()

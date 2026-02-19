@@ -1,0 +1,7 @@
+- horário e dia de funcionamento: ex: “vai funcionar todos os dias da 7 da manhã até as 18h, ou apenas de segunda a sexta nesse horário, porém ainda poder ativar e desativar com o /on e /off”  
+- Poder personalizar uma mensagem que vai junto com o valor ofertado de cada programa. Ex: “16 Conta recorrente” (em determinadas circunstâncias é importante especificar) 
+- TimeRange minimo e máximo de tempo de delay, o bot responderia em um tempo aleatório dentro daquele range setado, nas respostas do balcão e do privado (habilitavel por balcão) (objetivo de driblar balcões anti-bot) 
+- Diferentes ranges de contra proposta por programa de milhagem 
+- Alguns balcões bloqueiam IA (- usar uma janela - validar valores irrrais -)
+- Manter um buffer pra o bot não enviar várias mensagens no privado para a mesma pessoa, caso: usuário fez pedido de compra em vários balcões/grupos, o bot deve responder nos grupos, mas as mensagens no privado devem ser enviadas apenas uma vez para o usuário.
+- Blacklist pra não oferta para determinados usuários (privado/grupo) 

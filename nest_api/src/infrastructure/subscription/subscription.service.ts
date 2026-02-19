@@ -1,14 +1,23 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { SubscriptionRepository, SubscriptionData, SubscriptionWithPlan, SubscriptionStatus } from '@/infrastructure/persistence/subscription.repository';
-import { SubscriptionPlanRepository, SubscriptionPlanData } from '@/infrastructure/persistence/subscription-plan.repository';
-import { SubscriptionPaymentRepository } from '@/infrastructure/persistence/subscription-payment.repository';
-import { ActiveGroupsRepository } from '@/infrastructure/persistence/active-groups.repository';
-import { CouponRepository, CouponData } from '@/infrastructure/persistence/coupon.repository';
 import { AppConfigService } from '@/config/app.config';
 import { CieloService } from '@/infrastructure/cielo/cielo.service';
-import { CouponService } from './coupon.service';
 import type { CheckoutRequestDto, CieloWebhookPayload } from '@/infrastructure/cielo/cielo.types';
 import { CieloTransactionStatus } from '@/infrastructure/cielo/cielo.types';
+import { ActiveGroupsRepository } from '@/infrastructure/persistence/active-groups.repository';
+import { CouponData, CouponRepository } from '@/infrastructure/persistence/coupon.repository';
+import { MilesProgramRepository } from '@/infrastructure/persistence/miles-program.repository';
+import {
+  SubscriptionData,
+  SubscriptionRepository,
+  SubscriptionStatus,
+  SubscriptionWithPlan,
+} from '@/infrastructure/persistence/subscription.repository';
+import { SubscriptionPaymentRepository } from '@/infrastructure/persistence/subscription-payment.repository';
+import {
+  SubscriptionPlanData,
+  SubscriptionPlanRepository,
+} from '@/infrastructure/persistence/subscription-plan.repository';
+import { CouponService } from './coupon.service';
 
 export const EXTRA_GROUP_PRICE_IN_CENTS = 2900; // R$29/month per extra group
 export const MAX_EXTRA_GROUPS = 5;
@@ -56,12 +65,17 @@ export class SubscriptionService implements OnModuleInit {
     private readonly activeGroupsRepository: ActiveGroupsRepository,
     private readonly couponRepository: CouponRepository,
     private readonly couponService: CouponService,
+    private readonly milesProgramRepository: MilesProgramRepository,
     private readonly appConfig: AppConfigService,
     private readonly cieloService: CieloService,
   ) {}
 
   async onModuleInit(): Promise<void> {
-    await this.seedPlans();
+    const isProduction = this.appConfig.isProduction();
+    if (!isProduction) {
+      await this.seedPlans();
+      await this.milesProgramRepository.seedDefaultPrograms();
+    }
   }
 
   private async loadCouponForSubscription(sub: SubscriptionData): Promise<CouponData | null> {
@@ -73,7 +87,11 @@ export class SubscriptionService implements OnModuleInit {
    * Start a trial for a user with card info via Cielo (AuthorizeNow=false)
    * @throws SubscriptionError if user already used trial or has active subscription
    */
-  async startTrial(userId: string, dto: CheckoutRequestDto, couponCode?: string): Promise<StartTrialResult> {
+  async startTrial(
+    userId: string,
+    dto: CheckoutRequestDto,
+    couponCode?: string,
+  ): Promise<StartTrialResult> {
     // Check if user has already used their trial
     const hasUsedTrial = await this.subscriptionRepository.hasUsedTrial(userId);
     if (hasUsedTrial) {
@@ -86,10 +104,7 @@ export class SubscriptionService implements OnModuleInit {
     // Check if user already has an active subscription
     const existing = await this.subscriptionRepository.getByUserId(userId);
     if (existing && this.isSubscriptionActive(existing.status)) {
-      throw new SubscriptionError(
-        'Você já possui uma assinatura ativa.',
-        'already_subscribed',
-      );
+      throw new SubscriptionError('Você já possui uma assinatura ativa.', 'already_subscribed');
     }
 
     // Fetch the real plan (starter/pro/scale — reject trial plan)
@@ -116,7 +131,9 @@ export class SubscriptionService implements OnModuleInit {
       coupon = await this.couponService.validateCoupon(couponCode, userId, plan.id);
     }
 
-    this.logger.log(`Starting trial for user ${userId}, plan ${plan.name}, start date ${startDateStr}`);
+    this.logger.log(
+      `Starting trial for user ${userId}, plan ${plan.name}, start date ${startDateStr}`,
+    );
 
     // Create Cielo subscription with AuthorizeNow=false
     const result = await this.createCieloSubscription({
@@ -137,7 +154,9 @@ export class SubscriptionService implements OnModuleInit {
       await this.couponRepository.incrementRedemptions(coupon.id);
     }
 
-    this.logger.log(`Trial started for user ${userId}, plan ${plan.name}, first charge at ${startDateStr}`);
+    this.logger.log(
+      `Trial started for user ${userId}, plan ${plan.name}, first charge at ${startDateStr}`,
+    );
 
     return { success: true, subscription: result };
   }
@@ -159,7 +178,11 @@ export class SubscriptionService implements OnModuleInit {
   /**
    * Get payment history for a user's subscription
    */
-  async getPaymentHistory(userId: string): Promise<import('@/infrastructure/persistence/subscription-payment.repository').SubscriptionPaymentData[]> {
+  async getPaymentHistory(
+    userId: string,
+  ): Promise<
+    import('@/infrastructure/persistence/subscription-payment.repository').SubscriptionPaymentData[]
+  > {
     const subscription = await this.subscriptionRepository.getByUserId(userId);
     if (!subscription) {
       return [];
@@ -173,7 +196,7 @@ export class SubscriptionService implements OnModuleInit {
   async getActivePlans(): Promise<SubscriptionPlanData[]> {
     const plans = await this.subscriptionPlanRepository.getActivePlans();
     // Filter out trial plan for public listing
-    return plans.filter(p => p.name !== 'trial');
+    return plans.filter((p) => p.name !== 'trial');
   }
 
   /**
@@ -236,7 +259,8 @@ export class SubscriptionService implements OnModuleInit {
       return true;
     }
 
-    const limit = subscription.plan.groupLimit + subscription.extraGroups + subscription.bonusGroups;
+    const limit =
+      subscription.plan.groupLimit + subscription.extraGroups + subscription.bonusGroups;
     return currentGroupCount < limit;
   }
 
@@ -261,7 +285,11 @@ export class SubscriptionService implements OnModuleInit {
    * Checkout: create a paid subscription via Cielo recurrent payment.
    * If user is trialing, deactivates old recurrence and creates new with immediate charge.
    */
-  async checkout(userId: string, dto: CheckoutRequestDto, couponCode?: string): Promise<CheckoutResult> {
+  async checkout(
+    userId: string,
+    dto: CheckoutRequestDto,
+    couponCode?: string,
+  ): Promise<CheckoutResult> {
     const existing = await this.subscriptionRepository.getByUserId(userId);
 
     // Only block if already active (paid) — trialing users can upgrade
@@ -285,7 +313,9 @@ export class SubscriptionService implements OnModuleInit {
     if (existing?.status === 'trialing' && existing.cieloRecurrentPaymentId) {
       try {
         await this.cieloService.deactivateRecurrence(existing.cieloRecurrentPaymentId);
-        this.logger.log(`Deactivated trial recurrence ${existing.cieloRecurrentPaymentId} for upgrade`);
+        this.logger.log(
+          `Deactivated trial recurrence ${existing.cieloRecurrentPaymentId} for upgrade`,
+        );
       } catch (error) {
         this.logger.warn(`Failed to deactivate trial recurrence: ${error}`);
       }
@@ -298,9 +328,10 @@ export class SubscriptionService implements OnModuleInit {
     }
 
     // Detect active trial — defer first charge to trial end
-    const isActiveTrial = existing?.status === 'trialing'
-      && existing.currentPeriodEnd
-      && new Date(existing.currentPeriodEnd) > new Date();
+    const isActiveTrial =
+      existing?.status === 'trialing' &&
+      existing.currentPeriodEnd &&
+      new Date(existing.currentPeriodEnd) > new Date();
 
     let authorizeNow = true;
     let subscriptionStatus: SubscriptionStatus = 'active';
@@ -342,12 +373,19 @@ export class SubscriptionService implements OnModuleInit {
   /**
    * Update payment method: deactivate old Cielo recurrence and create new one
    */
-  async updatePaymentMethod(userId: string, dto: CheckoutRequestDto): Promise<SubscriptionWithPlan> {
+  async updatePaymentMethod(
+    userId: string,
+    dto: CheckoutRequestDto,
+  ): Promise<SubscriptionWithPlan> {
     const existing = await this.subscriptionRepository.getByUserId(userId);
     if (!existing) {
       throw new SubscriptionError('Nenhuma assinatura encontrada.', 'no_subscription');
     }
-    if (existing.status !== 'active' && existing.status !== 'trialing' && existing.status !== 'past_due') {
+    if (
+      existing.status !== 'active' &&
+      existing.status !== 'trialing' &&
+      existing.status !== 'past_due'
+    ) {
       throw new SubscriptionError('Assinatura não está ativa.', 'subscription_not_active');
     }
 
@@ -360,7 +398,9 @@ export class SubscriptionService implements OnModuleInit {
     if (existing.cieloRecurrentPaymentId) {
       try {
         await this.cieloService.deactivateRecurrence(existing.cieloRecurrentPaymentId);
-        this.logger.log(`Deactivated old recurrence ${existing.cieloRecurrentPaymentId} for card update`);
+        this.logger.log(
+          `Deactivated old recurrence ${existing.cieloRecurrentPaymentId} for card update`,
+        );
       } catch (error) {
         this.logger.warn(`Failed to deactivate old recurrence for card update: ${error}`);
       }
@@ -371,7 +411,13 @@ export class SubscriptionService implements OnModuleInit {
     const startDateStr = nextBillingDate.toISOString().split('T')[0];
 
     const coupon = await this.loadCouponForSubscription(existing);
-    const chargeAmount = this.calculateRecurrenceAmount(plan, existing.promotionalPaymentsRemaining, existing.extraGroups, coupon, existing.couponDiscountMonthsRemaining);
+    const chargeAmount = this.calculateRecurrenceAmount(
+      plan,
+      existing.promotionalPaymentsRemaining,
+      existing.extraGroups,
+      coupon,
+      existing.couponDiscountMonthsRemaining,
+    );
 
     const merchantOrderId = `UPD-${userId}-${Date.now()}`;
     const cieloRequest = {
@@ -475,7 +521,13 @@ export class SubscriptionService implements OnModuleInit {
     // Update Cielo recurrence amount
     if (existing.cieloRecurrentPaymentId) {
       const coupon = await this.loadCouponForSubscription(existing);
-      const newAmount = this.calculateRecurrenceAmount(newPlan, existing.promotionalPaymentsRemaining, existing.extraGroups, coupon, existing.couponDiscountMonthsRemaining);
+      const newAmount = this.calculateRecurrenceAmount(
+        newPlan,
+        existing.promotionalPaymentsRemaining,
+        existing.extraGroups,
+        coupon,
+        existing.couponDiscountMonthsRemaining,
+      );
 
       try {
         await this.cieloService.updateRecurrenceAmount(existing.cieloRecurrentPaymentId, newAmount);
@@ -534,13 +586,22 @@ export class SubscriptionService implements OnModuleInit {
     // Update Cielo recurrence amount
     if (existing.cieloRecurrentPaymentId) {
       const coupon = await this.loadCouponForSubscription(existing);
-      const newAmount = this.calculateRecurrenceAmount(plan, existing.promotionalPaymentsRemaining, newExtraGroups, coupon, existing.couponDiscountMonthsRemaining);
+      const newAmount = this.calculateRecurrenceAmount(
+        plan,
+        existing.promotionalPaymentsRemaining,
+        newExtraGroups,
+        coupon,
+        existing.couponDiscountMonthsRemaining,
+      );
       try {
         await this.cieloService.updateRecurrenceAmount(existing.cieloRecurrentPaymentId, newAmount);
         this.logger.log(`Updated recurrence amount to ${newAmount} for extra groups purchase`);
       } catch (error) {
         this.logger.error(`Failed to update Cielo amount for extra groups: ${error}`);
-        throw new SubscriptionError('Erro ao atualizar grupos extras na Cielo.', 'extra_groups_failed');
+        throw new SubscriptionError(
+          'Erro ao atualizar grupos extras na Cielo.',
+          'extra_groups_failed',
+        );
       }
     }
 
@@ -595,13 +656,22 @@ export class SubscriptionService implements OnModuleInit {
     // Update Cielo recurrence amount
     if (existing.cieloRecurrentPaymentId) {
       const coupon = await this.loadCouponForSubscription(existing);
-      const newAmount = this.calculateRecurrenceAmount(plan, existing.promotionalPaymentsRemaining, newExtraGroups, coupon, existing.couponDiscountMonthsRemaining);
+      const newAmount = this.calculateRecurrenceAmount(
+        plan,
+        existing.promotionalPaymentsRemaining,
+        newExtraGroups,
+        coupon,
+        existing.couponDiscountMonthsRemaining,
+      );
       try {
         await this.cieloService.updateRecurrenceAmount(existing.cieloRecurrentPaymentId, newAmount);
         this.logger.log(`Updated recurrence amount to ${newAmount} for extra groups removal`);
       } catch (error) {
         this.logger.error(`Failed to update Cielo amount for extra groups removal: ${error}`);
-        throw new SubscriptionError('Erro ao atualizar grupos extras na Cielo.', 'extra_groups_failed');
+        throw new SubscriptionError(
+          'Erro ao atualizar grupos extras na Cielo.',
+          'extra_groups_failed',
+        );
       }
     }
 
@@ -623,7 +693,11 @@ export class SubscriptionService implements OnModuleInit {
     if (!existing) {
       throw new SubscriptionError('Nenhuma assinatura encontrada.', 'no_subscription');
     }
-    if (existing.status === 'canceled' || existing.status === 'expired' || existing.currentPeriodEnd < new Date()) {
+    if (
+      existing.status === 'canceled' ||
+      existing.status === 'expired' ||
+      existing.currentPeriodEnd < new Date()
+    ) {
       throw new SubscriptionError('Assinatura já está cancelada ou expirada.', 'already_canceled');
     }
 
@@ -631,7 +705,9 @@ export class SubscriptionService implements OnModuleInit {
     if (existing.cieloRecurrentPaymentId) {
       try {
         await this.cieloService.deactivateRecurrence(existing.cieloRecurrentPaymentId);
-        this.logger.log(`Deactivated recurrence ${existing.cieloRecurrentPaymentId} for user ${userId}`);
+        this.logger.log(
+          `Deactivated recurrence ${existing.cieloRecurrentPaymentId} for user ${userId}`,
+        );
       } catch (error) {
         this.logger.warn(`Failed to deactivate recurrence for cancel: ${error}`);
       }
@@ -649,7 +725,9 @@ export class SubscriptionService implements OnModuleInit {
   /**
    * Extract a user-friendly error message from a Cielo recurrent payment response
    */
-  private getCieloErrorMessage(cieloResponse: import('@/infrastructure/cielo/cielo.types').CieloCreateRecurrentPaymentResponse): string {
+  private getCieloErrorMessage(
+    cieloResponse: import('@/infrastructure/cielo/cielo.types').CieloCreateRecurrentPaymentResponse,
+  ): string {
     const reasonCode = cieloResponse.Payment.RecurrentPayment?.ReasonCode;
 
     const reasonCodeMessages: Record<number, string> = {
@@ -695,7 +773,7 @@ export class SubscriptionService implements OnModuleInit {
     }
 
     const groupPrice = this.couponService.getExtraGroupPrice(coupon);
-    return baseAmount + (extraGroups * groupPrice);
+    return baseAmount + extraGroups * groupPrice;
   }
 
   /**
@@ -713,7 +791,18 @@ export class SubscriptionService implements OnModuleInit {
     trialUsed?: boolean;
     coupon?: CouponData | null;
   }): Promise<SubscriptionWithPlan> {
-    const { userId, dto, plan, authorizeNow, subscriptionStatus, existing, currentPeriodEnd, startDate, trialUsed, coupon } = params;
+    const {
+      userId,
+      dto,
+      plan,
+      authorizeNow,
+      subscriptionStatus,
+      existing,
+      currentPeriodEnd,
+      startDate,
+      trialUsed,
+      coupon,
+    } = params;
 
     // Build Cielo request
     const merchantOrderId = `SUB-${userId}-${Date.now()}`;
@@ -725,11 +814,15 @@ export class SubscriptionService implements OnModuleInit {
       recurrentPayment.StartDate = startDate;
     }
 
-    const hasPromo = plan.promotionalPriceInCents !== null && plan.promotionalPriceInCents !== undefined;
-    let chargeAmount = hasPromo ? plan.promotionalPriceInCents! : plan.priceInCents;
+    const hasPromo =
+      plan.promotionalPriceInCents !== null && plan.promotionalPriceInCents !== undefined;
+    // biome-ignore lint/style/noNonNullAssertion: above check ensures it's not null
+        let chargeAmount = hasPromo ? plan.promotionalPriceInCents! : plan.priceInCents;
     // -1 = permanent discount, null discountDurationMonths means permanent
     const couponDiscountMonthsRemaining = coupon
-      ? (coupon.discountDurationMonths === null ? -1 : (coupon.discountDurationMonths || 0))
+      ? coupon.discountDurationMonths === null
+        ? -1
+        : coupon.discountDurationMonths || 0
       : 0;
     // Coupon discount only applies when promo is NOT active (no stacking)
     if (coupon && couponDiscountMonthsRemaining !== 0 && !hasPromo) {
@@ -748,7 +841,11 @@ export class SubscriptionService implements OnModuleInit {
         Amount: chargeAmount,
         Installments: 1,
         SoftDescriptor: 'LFViagensChat',
-        RecurrentPayment: recurrentPayment as { AuthorizeNow: boolean; Interval: 'Monthly'; StartDate?: string },
+        RecurrentPayment: recurrentPayment as {
+          AuthorizeNow: boolean;
+          Interval: 'Monthly';
+          StartDate?: string;
+        },
         CreditCard: {
           CardNumber: dto.cardNumber,
           Holder: dto.holder,
@@ -769,10 +866,7 @@ export class SubscriptionService implements OnModuleInit {
         paymentStatus !== CieloTransactionStatus.Authorized &&
         paymentStatus !== CieloTransactionStatus.Confirmed
       ) {
-        throw new SubscriptionError(
-          this.getCieloErrorMessage(cieloResponse),
-          'checkout_failed',
-        );
+        throw new SubscriptionError(this.getCieloErrorMessage(cieloResponse), 'checkout_failed');
       }
     } else {
       // AuthorizeNow=false → Scheduled is expected
@@ -781,11 +875,10 @@ export class SubscriptionService implements OnModuleInit {
         paymentStatus !== CieloTransactionStatus.Confirmed &&
         paymentStatus !== CieloTransactionStatus.Scheduled
       ) {
-        this.logger.error(`Scheduled payment failed for user ${userId}, plan ${plan.name}, payment status ${paymentStatus}`);
-        throw new SubscriptionError(
-          this.getCieloErrorMessage(cieloResponse),
-          'checkout_failed',
+        this.logger.error(
+          `Scheduled payment failed for user ${userId}, plan ${plan.name}, payment status ${paymentStatus}`,
         );
+        throw new SubscriptionError(this.getCieloErrorMessage(cieloResponse), 'checkout_failed');
       }
     }
 
@@ -871,7 +964,10 @@ export class SubscriptionService implements OnModuleInit {
 
     if (payment) {
       // Update existing payment
-      if (status === CieloTransactionStatus.Authorized || status === CieloTransactionStatus.Confirmed) {
+      if (
+        status === CieloTransactionStatus.Authorized ||
+        status === CieloTransactionStatus.Confirmed
+      ) {
         await this.subscriptionPaymentRepository.update(payment.id, {
           status: 'paid',
           cieloReturnCode: paymentDetails.Payment.ReturnCode,
@@ -884,12 +980,13 @@ export class SubscriptionService implements OnModuleInit {
         if (subscription) {
           const newEnd = new Date();
           newEnd.setDate(newEnd.getDate() + 30);
-          const updateData: import('@/infrastructure/persistence/subscription.repository').UpdateSubscriptionInput = {
-            status: 'active',
-            currentPeriodEnd: newEnd,
-            currentPeriodStart: new Date(),
-            nextBillingDate: newEnd,
-          };
+          const updateData: import('@/infrastructure/persistence/subscription.repository').UpdateSubscriptionInput =
+            {
+              status: 'active',
+              currentPeriodEnd: newEnd,
+              currentPeriodStart: new Date(),
+              nextBillingDate: newEnd,
+            };
 
           // Handle promotional payments countdown
           if (subscription.promotionalPaymentsRemaining > 0) {
@@ -904,8 +1001,12 @@ export class SubscriptionService implements OnModuleInit {
           }
 
           // If promo or coupon discount just ended, recalculate amount
-          const promoJustEnded = subscription.promotionalPaymentsRemaining > 0 && (updateData.promotionalPaymentsRemaining === 0);
-          const couponDiscountJustEnded = subscription.couponDiscountMonthsRemaining > 0 && (updateData.couponDiscountMonthsRemaining === 0);
+          const promoJustEnded =
+            subscription.promotionalPaymentsRemaining > 0 &&
+            updateData.promotionalPaymentsRemaining === 0;
+          const couponDiscountJustEnded =
+            subscription.couponDiscountMonthsRemaining > 0 &&
+            updateData.couponDiscountMonthsRemaining === 0;
           if ((promoJustEnded || couponDiscountJustEnded) && subscription.cieloRecurrentPaymentId) {
             const plan = await this.subscriptionPlanRepository.getPlanById(subscription.planId);
             if (plan) {
@@ -913,15 +1014,22 @@ export class SubscriptionService implements OnModuleInit {
                 const coupon = await this.loadCouponForSubscription(subscription);
                 const fullAmount = this.calculateRecurrenceAmount(
                   plan,
-                  updateData.promotionalPaymentsRemaining ?? subscription.promotionalPaymentsRemaining,
+                  updateData.promotionalPaymentsRemaining ??
+                    subscription.promotionalPaymentsRemaining,
                   subscription.extraGroups,
                   coupon,
-                  updateData.couponDiscountMonthsRemaining ?? subscription.couponDiscountMonthsRemaining,
+                  updateData.couponDiscountMonthsRemaining ??
+                    subscription.couponDiscountMonthsRemaining,
                 );
-                await this.cieloService.updateRecurrenceAmount(subscription.cieloRecurrentPaymentId, fullAmount);
+                await this.cieloService.updateRecurrenceAmount(
+                  subscription.cieloRecurrentPaymentId,
+                  fullAmount,
+                );
                 this.logger.log(`Updated subscription ${subscription.id} amount to ${fullAmount}`);
               } catch (error) {
-                this.logger.error(`Failed to update Cielo amount for subscription ${subscription.id}: ${error}`);
+                this.logger.error(
+                  `Failed to update Cielo amount for subscription ${subscription.id}: ${error}`,
+                );
               }
             }
           }
@@ -946,25 +1054,30 @@ export class SubscriptionService implements OnModuleInit {
             await this.subscriptionRepository.update(subscription.id, {
               status: 'past_due',
             });
-            this.logger.warn(`Subscription ${subscription.id} set to past_due after ${newRetryCount} failures`);
+            this.logger.warn(
+              `Subscription ${subscription.id} set to past_due after ${newRetryCount} failures`,
+            );
           }
         }
       }
     } else {
       // New payment from recurrence — find subscription by recurrentPaymentId
-      const recurrentId = payload.RecurrentPaymentId || paymentDetails.Payment.RecurrentPayment?.RecurrentPaymentId;
+      const recurrentId =
+        payload.RecurrentPaymentId || paymentDetails.Payment.RecurrentPayment?.RecurrentPaymentId;
       if (!recurrentId) {
         this.logger.warn(`Cannot find subscription for payment ${payload.PaymentId}`);
         return;
       }
 
-      const subscription = await this.subscriptionRepository.getByCieloRecurrentPaymentId(recurrentId);
+      const subscription =
+        await this.subscriptionRepository.getByCieloRecurrentPaymentId(recurrentId);
       if (!subscription) {
         this.logger.warn(`No subscription found for recurrentPaymentId ${recurrentId}`);
         return;
       }
 
-      const isPaid = status === CieloTransactionStatus.Authorized || status === CieloTransactionStatus.Confirmed;
+      const isPaid =
+        status === CieloTransactionStatus.Authorized || status === CieloTransactionStatus.Confirmed;
 
       // Create payment record
       await this.subscriptionPaymentRepository.create({
@@ -982,12 +1095,13 @@ export class SubscriptionService implements OnModuleInit {
       if (isPaid) {
         const newEnd = new Date();
         newEnd.setDate(newEnd.getDate() + 30);
-        const updateData: import('@/infrastructure/persistence/subscription.repository').UpdateSubscriptionInput = {
-          status: 'active',
-          currentPeriodEnd: newEnd,
-          currentPeriodStart: new Date(),
-          nextBillingDate: newEnd,
-        };
+        const updateData: import('@/infrastructure/persistence/subscription.repository').UpdateSubscriptionInput =
+          {
+            status: 'active',
+            currentPeriodEnd: newEnd,
+            currentPeriodStart: new Date(),
+            nextBillingDate: newEnd,
+          };
 
         // Handle promotional payments countdown
         if (subscription.promotionalPaymentsRemaining > 0) {
@@ -1002,8 +1116,12 @@ export class SubscriptionService implements OnModuleInit {
         }
 
         // If promo or coupon discount just ended, recalculate amount
-        const promoJustEnded = subscription.promotionalPaymentsRemaining > 0 && (updateData.promotionalPaymentsRemaining === 0);
-        const couponDiscountJustEnded = subscription.couponDiscountMonthsRemaining > 0 && (updateData.couponDiscountMonthsRemaining === 0);
+        const promoJustEnded =
+          subscription.promotionalPaymentsRemaining > 0 &&
+          updateData.promotionalPaymentsRemaining === 0;
+        const couponDiscountJustEnded =
+          subscription.couponDiscountMonthsRemaining > 0 &&
+          updateData.couponDiscountMonthsRemaining === 0;
         if ((promoJustEnded || couponDiscountJustEnded) && subscription.cieloRecurrentPaymentId) {
           const plan = await this.subscriptionPlanRepository.getPlanById(subscription.planId);
           if (plan) {
@@ -1011,15 +1129,22 @@ export class SubscriptionService implements OnModuleInit {
               const coupon = await this.loadCouponForSubscription(subscription);
               const fullAmount = this.calculateRecurrenceAmount(
                 plan,
-                updateData.promotionalPaymentsRemaining ?? subscription.promotionalPaymentsRemaining,
+                updateData.promotionalPaymentsRemaining ??
+                  subscription.promotionalPaymentsRemaining,
                 subscription.extraGroups,
                 coupon,
-                updateData.couponDiscountMonthsRemaining ?? subscription.couponDiscountMonthsRemaining,
+                updateData.couponDiscountMonthsRemaining ??
+                  subscription.couponDiscountMonthsRemaining,
               );
-              await this.cieloService.updateRecurrenceAmount(subscription.cieloRecurrentPaymentId, fullAmount);
+              await this.cieloService.updateRecurrenceAmount(
+                subscription.cieloRecurrentPaymentId,
+                fullAmount,
+              );
               this.logger.log(`Updated subscription ${subscription.id} amount to ${fullAmount}`);
             } catch (error) {
-              this.logger.error(`Failed to update Cielo amount for subscription ${subscription.id}: ${error}`);
+              this.logger.error(
+                `Failed to update Cielo amount for subscription ${subscription.id}: ${error}`,
+              );
             }
           }
         }
@@ -1036,9 +1161,13 @@ export class SubscriptionService implements OnModuleInit {
       return;
     }
 
-    const subscription = await this.subscriptionRepository.getByCieloRecurrentPaymentId(payload.RecurrentPaymentId);
+    const subscription = await this.subscriptionRepository.getByCieloRecurrentPaymentId(
+      payload.RecurrentPaymentId,
+    );
     if (!subscription) {
-      this.logger.warn(`No subscription found for recurrentPaymentId ${payload.RecurrentPaymentId}`);
+      this.logger.warn(
+        `No subscription found for recurrentPaymentId ${payload.RecurrentPaymentId}`,
+      );
       return;
     }
 
@@ -1071,7 +1200,9 @@ export class SubscriptionService implements OnModuleInit {
         status: 'expired',
       });
       count++;
-      this.logger.log(`Marked subscription ${subscription.id} as expired for user ${subscription.userId}`);
+      this.logger.log(
+        `Marked subscription ${subscription.id} as expired for user ${subscription.userId}`,
+      );
     }
 
     return count;
