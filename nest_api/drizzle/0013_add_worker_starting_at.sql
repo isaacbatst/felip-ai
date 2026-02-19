@@ -1,1 +1,0 @@
-ALTER TABLE "bot_status" ADD COLUMN "worker_starting_at" timestamp;
