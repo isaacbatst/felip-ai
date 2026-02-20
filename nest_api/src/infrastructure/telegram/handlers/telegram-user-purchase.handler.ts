@@ -6,6 +6,7 @@ import { buildCallToActionMessage, buildCounterOfferMessage } from '../../../dom
 import { MessageParser, type ProgramOption } from '../../../domain/interfaces/message-parser.interface';
 import { PriceTableProvider } from '../../../domain/interfaces/price-table-provider.interface';
 import { PriceCalculatorService } from '../../../domain/services/price-calculator.service';
+import { PrivateMessageBufferService } from '../private-message-buffer.service';
 
 interface CalculatedPriceResult {
   price: number;
@@ -34,6 +35,7 @@ export class TelegramPurchaseHandler {
     private readonly tdlibUserClient: TelegramUserClientProxyService,
     private readonly counterOfferSettingsRepository: CounterOfferSettingsRepository,
     private readonly milesProgramRepository: MilesProgramRepository,
+    private readonly privateMessageBuffer: PrivateMessageBufferService,
   ) {}
 
   async handlePurchase(
@@ -205,6 +207,14 @@ export class TelegramPurchaseHandler {
         this.formatPrivatePrice(pricesForCTA),
       );
 
+      if (counterOfferSettings.dedupEnabled) {
+        const key = `${loggedInUserId}:${senderId}:cta`;
+        const ttlMs = counterOfferSettings.dedupWindowMinutes * 60 * 1000;
+        if (this.privateMessageBuffer.shouldSkip(key, ttlMs)) {
+          return;
+        }
+      }
+
       this.logger.log('Sending call to action to buyer in private', {
         senderId,
         templateId,
@@ -254,6 +264,14 @@ export class TelegramPurchaseHandler {
       purchaseRequest.cpfCount,
       this.formatPrivatePrice(calculatedPrices),
     );
+
+    if (counterOfferSettings.dedupEnabled) {
+      const key = `${loggedInUserId}:${senderId}:counterOffer`;
+      const ttlMs = counterOfferSettings.dedupWindowMinutes * 60 * 1000;
+      if (this.privateMessageBuffer.shouldSkip(key, ttlMs)) {
+        return;
+      }
+    }
 
     this.logger.log('Sending counter offer to buyer', {
       senderId,

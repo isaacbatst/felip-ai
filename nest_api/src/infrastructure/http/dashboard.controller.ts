@@ -103,6 +103,8 @@ interface CounterOfferSettingsResponse {
   priceThreshold: number;
   messageTemplateId: number;
   callToActionTemplateId: number;
+  dedupEnabled: boolean;
+  dedupWindowMinutes: number;
 }
 
 interface CounterOfferTemplatesResponse {
@@ -126,6 +128,8 @@ interface UpdateCounterOfferSettingsDto {
   priceThreshold: number;
   messageTemplateId: number;
   callToActionTemplateId: number;
+  dedupEnabled: boolean;
+  dedupWindowMinutes: number;
 }
 
 interface GroupResponse {
@@ -606,12 +610,16 @@ export class DashboardController {
           priceThreshold: settings.priceThreshold,
           messageTemplateId: settings.messageTemplateId,
           callToActionTemplateId: settings.callToActionTemplateId,
+          dedupEnabled: settings.dedupEnabled,
+          dedupWindowMinutes: settings.dedupWindowMinutes,
         }
       : {
           isEnabled: false,
           priceThreshold: 0.5,
           messageTemplateId: 1,
           callToActionTemplateId: 1,
+          dedupEnabled: true,
+          dedupWindowMinutes: 1,
         };
 
     return {
@@ -664,16 +672,34 @@ export class DashboardController {
       return;
     }
 
+    if (typeof body.dedupEnabled !== 'boolean') {
+      res.status(HttpStatus.BAD_REQUEST).json({
+        success: false,
+        error: 'dedupEnabled must be a boolean',
+      } satisfies ApiResponse);
+      return;
+    }
+
+    if (typeof body.dedupWindowMinutes !== 'number' || body.dedupWindowMinutes < 1 || !Number.isInteger(body.dedupWindowMinutes)) {
+      res.status(HttpStatus.BAD_REQUEST).json({
+        success: false,
+        error: 'dedupWindowMinutes must be a positive integer',
+      } satisfies ApiResponse);
+      return;
+    }
+
     const settings: CounterOfferSettingsInput = {
       isEnabled: body.isEnabled,
       priceThreshold: body.priceThreshold,
       messageTemplateId: body.messageTemplateId,
       callToActionTemplateId: body.callToActionTemplateId,
+      dedupEnabled: body.dedupEnabled,
+      dedupWindowMinutes: body.dedupWindowMinutes,
     };
 
     await this.counterOfferSettingsRepository.upsertSettings(userId, settings);
 
-    this.logger.log(`Updated counter offer settings for user ${userId}: enabled=${body.isEnabled}, threshold=${body.priceThreshold}, counterOfferTemplate=${body.messageTemplateId}, callToActionTemplate=${body.callToActionTemplateId}`);
+    this.logger.log(`Updated counter offer settings for user ${userId}: enabled=${body.isEnabled}, threshold=${body.priceThreshold}, counterOfferTemplate=${body.messageTemplateId}, callToActionTemplate=${body.callToActionTemplateId}, dedupEnabled=${body.dedupEnabled}, dedupWindowMinutes=${body.dedupWindowMinutes}`);
 
     res.status(HttpStatus.OK).json({
       success: true,

@@ -33,6 +33,7 @@ import { CieloWebhookController } from './http/cielo-webhook.controller';
 import { CieloService } from './cielo/cielo.service';
 import { TelegramBotSubscriptionHandler } from './telegram/handlers/telegram-bot-subscription.handler';
 import { AuthErrorCacheService } from './tdlib/auth-error-cache.service';
+import { PrivateMessageBufferService } from './telegram/private-message-buffer.service';
 import { CouponService } from './subscription/coupon.service';
 
 /**
@@ -62,6 +63,7 @@ import { CouponService } from './subscription/coupon.service';
     PhoneWhitelistService,
     TdlibCommandResponseHandler,
     AuthErrorCacheService,
+    PrivateMessageBufferService,
     OtpService,
     RegistrationTokenService,
     TdlibUpdatesWorkerRabbitMQ,

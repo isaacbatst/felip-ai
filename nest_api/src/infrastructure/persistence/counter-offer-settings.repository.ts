@@ -7,6 +7,8 @@ export interface CounterOfferSettings {
   priceThreshold: number;
   messageTemplateId: number;
   callToActionTemplateId: number;
+  dedupEnabled: boolean;
+  dedupWindowMinutes: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -19,6 +21,8 @@ export interface CounterOfferSettingsInput {
   priceThreshold: number;
   messageTemplateId: number;
   callToActionTemplateId: number;
+  dedupEnabled: boolean;
+  dedupWindowMinutes: number;
 }
 
 /**

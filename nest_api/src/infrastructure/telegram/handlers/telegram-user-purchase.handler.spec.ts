@@ -7,6 +7,7 @@ import { PriceCalculatorService } from '@/domain/services/price-calculator.servi
 import { TelegramUserClientProxyService } from '@/infrastructure/tdlib/telegram-user-client-proxy.service';
 import { CounterOfferSettingsRepository } from '@/infrastructure/persistence/counter-offer-settings.repository';
 import { MilesProgramRepository } from '@/infrastructure/persistence/miles-program.repository';
+import { PrivateMessageBufferService } from '@/infrastructure/telegram/private-message-buffer.service';
 import type { PriceTableV2 } from '@/domain/types/price.types';
 import type { PurchaseProposal } from '@/domain/types/purchase.types';
 
@@ -181,6 +182,7 @@ describe('TelegramPurchaseHandler', () => {
           provide: MilesProgramRepository,
           useValue: mockMilesProgramRepository,
         },
+        PrivateMessageBufferService,
       ],
     }).compile();
 
@@ -431,6 +433,8 @@ describe('TelegramPurchaseHandler', () => {
           priceThreshold: 5,
           messageTemplateId: 1,
           callToActionTemplateId: 1,
+          dedupEnabled: false,
+          dedupWindowMinutes: 1,
           createdAt: new Date(),
           updatedAt: new Date(),
         });
@@ -463,6 +467,8 @@ describe('TelegramPurchaseHandler', () => {
           priceThreshold: 5,
           messageTemplateId: 1,
           callToActionTemplateId: 1,
+          dedupEnabled: false,
+          dedupWindowMinutes: 1,
           createdAt: new Date(),
           updatedAt: new Date(),
         });
@@ -498,6 +504,8 @@ describe('TelegramPurchaseHandler', () => {
           priceThreshold: 5,
           messageTemplateId: 1,
           callToActionTemplateId: 1,
+          dedupEnabled: false,
+          dedupWindowMinutes: 1,
           createdAt: new Date(),
           updatedAt: new Date(),
         });
@@ -578,6 +586,8 @@ describe('TelegramPurchaseHandler', () => {
           priceThreshold: 5,
           messageTemplateId: 1,
           callToActionTemplateId: 1,
+          dedupEnabled: false,
+          dedupWindowMinutes: 1,
           createdAt: new Date(),
           updatedAt: new Date(),
         });
@@ -635,6 +645,8 @@ describe('TelegramPurchaseHandler', () => {
           priceThreshold: 5,
           messageTemplateId: 1,
           callToActionTemplateId: 1,
+          dedupEnabled: false,
+          dedupWindowMinutes: 1,
           createdAt: new Date(),
           updatedAt: new Date(),
         });

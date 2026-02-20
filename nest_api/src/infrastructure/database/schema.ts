@@ -214,6 +214,8 @@ export const userCounterOfferSettings = pgTable(
     priceThreshold: real('price_threshold').default(0.5).notNull(), // Max price difference to trigger (e.g., 0.50 = 50 cents)
     messageTemplateId: integer('message_template_id').default(1).notNull(), // Which template to use for counter offers (1, 2, or 3)
     callToActionTemplateId: integer('call_to_action_template_id').default(1).notNull(), // Which template to use for call to action (1 or 2)
+    dedupEnabled: boolean('dedup_enabled').default(true).notNull(), // Whether PM dedup buffer is active
+    dedupWindowMinutes: integer('dedup_window_minutes').default(1).notNull(), // Dedup time window in minutes
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },

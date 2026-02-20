@@ -55,6 +55,8 @@ export class CounterOfferSettingsDrizzleStore extends CounterOfferSettingsReposi
         priceThreshold: settings.priceThreshold,
         messageTemplateId: settings.messageTemplateId,
         callToActionTemplateId: settings.callToActionTemplateId,
+        dedupEnabled: settings.dedupEnabled,
+        dedupWindowMinutes: settings.dedupWindowMinutes,
         createdAt: now,
         updatedAt: now,
       })
@@ -65,6 +67,8 @@ export class CounterOfferSettingsDrizzleStore extends CounterOfferSettingsReposi
           priceThreshold: settings.priceThreshold,
           messageTemplateId: settings.messageTemplateId,
           callToActionTemplateId: settings.callToActionTemplateId,
+          dedupEnabled: settings.dedupEnabled,
+          dedupWindowMinutes: settings.dedupWindowMinutes,
           updatedAt: now,
         },
       })
