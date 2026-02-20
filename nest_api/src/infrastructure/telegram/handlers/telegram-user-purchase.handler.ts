@@ -111,6 +111,15 @@ export class TelegramPurchaseHandler {
 
     const purchaseRequest = purchaseRequests[0];
 
+    // Validação: múltiplos preços aceitos indica tentativa de detectar bots
+    if (purchaseRequest.acceptedPrices.length > 1) {
+      this.logger.warn('Multiple accepted prices detected, likely bot trap — skipping', {
+        acceptedPrices: purchaseRequest.acceptedPrices,
+        text: trimmedText,
+      });
+      return;
+    }
+
     if (purchaseRequest.airlineId === undefined) {
       this.logger.warn('No airlineId in purchase request');
       return;
