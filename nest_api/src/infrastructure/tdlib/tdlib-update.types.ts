@@ -33,6 +33,10 @@ export interface TdlibUpdateNewMessage extends TdlibUpdate {
       [key: string]: unknown;
     };
     date?: number;
+    reply_to?: {
+      message_id?: number;
+      [key: string]: unknown;
+    } | null;
     [key: string]: unknown;
   };
 }

@@ -999,6 +999,112 @@ describe('TelegramPurchaseHandler', () => {
         expect(mockTdlibUserClient.sendMessage).not.toHaveBeenCalled();
       });
     });
+
+    describe('Reply message filter', () => {
+      it('should skip message when isReply is true', async () => {
+        await handler.handlePurchase(
+          loggedInUserId,
+          telegramUserId,
+          chatId,
+          messageId,
+          'SMILES 30k 1CPF',
+          undefined,
+          true,
+        );
+
+        expect(mockMessageParser.parse).not.toHaveBeenCalled();
+        expect(mockTdlibUserClient.sendMessage).not.toHaveBeenCalled();
+      });
+
+      it('should process message when isReply is false', async () => {
+        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray());
+
+        await handler.handlePurchase(
+          loggedInUserId,
+          telegramUserId,
+          chatId,
+          messageId,
+          'SMILES 30k 1CPF',
+          undefined,
+          false,
+        );
+
+        expect(mockMessageParser.parse).toHaveBeenCalled();
+      });
+
+      it('should process message when isReply is omitted (defaults to false)', async () => {
+        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray());
+
+        await handler.handlePurchase(
+          loggedInUserId,
+          telegramUserId,
+          chatId,
+          messageId,
+          'SMILES 30k 1CPF',
+        );
+
+        expect(mockMessageParser.parse).toHaveBeenCalled();
+      });
+    });
+
+    describe('Trap word filter', () => {
+      it.each([
+        ['bot', 'SMILES 30k 1CPF bot'],
+        ['bots', 'compra de bots SMILES 30k'],
+        ['BOT (uppercase)', 'SMILES 30k 1CPF BOT'],
+        ['Bot (mixed case)', 'Pegadinha pro Bot SMILES 30k'],
+        ['robot', 'SMILES 30k 1CPF robot'],
+        ['robô (accented)', 'SMILES 30k 1CPF robô'],
+        ['robo', 'SMILES 30k 1CPF robo'],
+        ['pegadinha', 'Latam 180k 1cpf 20 Pegadinha pro bot'],
+        ['teste', 'SMILES 30k 1CPF teste'],
+        ['armadilha', 'SMILES 30k 1CPF armadilha'],
+      ])('should skip message containing "%s"', async (_label, text) => {
+        await handler.handlePurchase(
+          loggedInUserId,
+          telegramUserId,
+          chatId,
+          messageId,
+          text,
+        );
+
+        expect(mockMessageParser.parse).not.toHaveBeenCalled();
+        expect(mockTdlibUserClient.sendMessage).not.toHaveBeenCalled();
+      });
+
+      it.each([
+        ['Botafogo (contains "bot")', 'SMILES 30k 1CPF Botafogo'],
+        ['robotics (contains "robot")', 'SMILES 30k 1CPF robotics'],
+      ])('should skip message containing "%s"', async (_label, text) => {
+        await handler.handlePurchase(
+          loggedInUserId,
+          telegramUserId,
+          chatId,
+          messageId,
+          text,
+        );
+
+        expect(mockMessageParser.parse).not.toHaveBeenCalled();
+        expect(mockTdlibUserClient.sendMessage).not.toHaveBeenCalled();
+      });
+
+      it.each([
+        ['normal purchase message', 'SMILES 30k 1CPF'],
+        ['purchase with price', 'SMILES 30k 1CPF 15,50'],
+      ])('should NOT skip message with "%s"', async (_label, text) => {
+        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray());
+
+        await handler.handlePurchase(
+          loggedInUserId,
+          telegramUserId,
+          chatId,
+          messageId,
+          text,
+        );
+
+        expect(mockMessageParser.parse).toHaveBeenCalled();
+      });
+    });
   });
 
 });
