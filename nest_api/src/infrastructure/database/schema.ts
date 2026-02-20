@@ -108,10 +108,35 @@ export const botPreferences = pgTable(
   {
     userId: text('user_id').primaryKey(),
     isEnabled: boolean('is_enabled').default(true).notNull(),
+    delayMin: integer('delay_min').default(0).notNull(),
+    delayMax: integer('delay_max').default(0).notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
   (table) => [
     index('bot_status_user_id_idx').on(table.userId),
+  ],
+);
+
+/**
+ * Group delay settings table - per-group delay configuration
+ * When delayMin/delayMax are null, the global defaults from botPreferences are used
+ */
+export const groupDelaySettings = pgTable(
+  'group_delay_settings',
+  {
+    id: integer('id').primaryKey().generatedAlwaysAsIdentity(),
+    userId: text('user_id').notNull(),
+    groupId: bigint('group_id', { mode: 'number' }).notNull(),
+    delayEnabled: boolean('delay_enabled').default(false).notNull(),
+    delayMin: integer('delay_min'),
+    delayMax: integer('delay_max'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => [
+    index('group_delay_settings_user_id_idx').on(table.userId),
+    index('group_delay_settings_user_id_group_id_idx').on(table.userId, table.groupId),
+    unique('group_delay_settings_user_id_group_id_unique').on(table.userId, table.groupId),
   ],
 );
 

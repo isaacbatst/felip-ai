@@ -8,6 +8,8 @@ import { TelegramUserClientProxyService } from '@/infrastructure/tdlib/telegram-
 import { CounterOfferSettingsRepository } from '@/infrastructure/persistence/counter-offer-settings.repository';
 import { MilesProgramRepository } from '@/infrastructure/persistence/miles-program.repository';
 import { PrivateMessageBufferService } from '@/infrastructure/telegram/private-message-buffer.service';
+import { BotPreferenceRepository } from '@/infrastructure/persistence/bot-status.repository';
+import { GroupDelaySettingsRepository } from '@/infrastructure/persistence/group-delay-settings.repository';
 import type { PriceTableV2 } from '@/domain/types/price.types';
 import type { PurchaseProposal } from '@/domain/types/purchase.types';
 
@@ -183,6 +185,23 @@ describe('TelegramPurchaseHandler', () => {
           useValue: mockMilesProgramRepository,
         },
         PrivateMessageBufferService,
+        {
+          provide: BotPreferenceRepository,
+          useValue: {
+            getBotStatus: jest.fn().mockResolvedValue(true),
+            setBotStatus: jest.fn(),
+            getDelayDefaults: jest.fn().mockResolvedValue({ delayMin: 0, delayMax: 0 }),
+            setDelayDefaults: jest.fn(),
+          },
+        },
+        {
+          provide: GroupDelaySettingsRepository,
+          useValue: {
+            getGroupDelaySetting: jest.fn().mockResolvedValue(null),
+            getAllGroupDelaySettings: jest.fn().mockResolvedValue([]),
+            upsertGroupDelaySetting: jest.fn(),
+          },
+        },
       ],
     }).compile();
 

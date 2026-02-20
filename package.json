@@ -12,7 +12,8 @@
     "expose": "pnpm --filter nest_api expose",
     "build:nest": "pnpm --filter nest_api build",
     "build:worker": "pnpm --filter tdlib_worker build",
-    "build": "pnpm build:nest && pnpm build:worker"
+    "build": "pnpm build:nest && pnpm build:worker",
+    "db:migrate": "pnpm --filter nest_api db:migrate"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.3.10",

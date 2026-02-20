@@ -19,6 +19,7 @@ import { MilesProgramRepository } from '@/infrastructure/persistence/miles-progr
 import { CounterOfferSettingsRepository, type CounterOfferSettingsInput } from '@/infrastructure/persistence/counter-offer-settings.repository';
 import { ActiveGroupsRepository } from '@/infrastructure/persistence/active-groups.repository';
 import { BotPreferenceRepository } from '@/infrastructure/persistence/bot-status.repository';
+import { GroupDelaySettingsRepository, type GroupDelaySettingInput } from '@/infrastructure/persistence/group-delay-settings.repository';
 import { TelegramUserClientProxyService } from '@/infrastructure/tdlib/telegram-user-client-proxy.service';
 import { SubscriptionService, SubscriptionError } from '@/infrastructure/subscription/subscription.service';
 import type { CheckoutRequestDto } from '@/infrastructure/cielo/cielo.types';
@@ -170,6 +171,34 @@ interface SubmitPasswordDto {
   password: string;
 }
 
+interface DelayDefaultsResponse {
+  delayMin: number;
+  delayMax: number;
+}
+
+interface UpdateDelayDefaultsDto {
+  delayMin: number;
+  delayMax: number;
+}
+
+interface GroupDelaySettingResponse {
+  groupId: number;
+  delayEnabled: boolean;
+  delayMin: number | null;
+  delayMax: number | null;
+}
+
+interface DelaySettingsResponse {
+  defaults: DelayDefaultsResponse;
+  groups: GroupDelaySettingResponse[];
+}
+
+interface UpdateGroupDelayDto {
+  delayEnabled: boolean;
+  delayMin: number | null;
+  delayMax: number | null;
+}
+
 interface SubscriptionStatusResponse {
   subscription: {
     id: number;
@@ -216,6 +245,7 @@ export class DashboardController {
     private readonly workerManager: WorkerManager,
     private readonly userRepository: UserRepository,
     private readonly authErrorCache: AuthErrorCacheService,
+    private readonly groupDelaySettingsRepository: GroupDelaySettingsRepository,
   ) {}
 
   /**
@@ -989,6 +1019,182 @@ export class DashboardController {
     }
 
     this.logger.log(`Updated bot status for user ${userId}: enabled=${body.isEnabled}`);
+
+    res.status(HttpStatus.OK).json({
+      success: true,
+    } satisfies ApiResponse);
+  }
+
+  // ============================================================================
+  // Delay Settings Management
+  // ============================================================================
+
+  /**
+   * GET /dashboard/delay-settings - Get global delay defaults + all per-group delay settings
+   */
+  @Get('delay-settings')
+  async getDelaySettings(
+    @Req() req: AuthenticatedRequest,
+  ): Promise<ApiResponse<DelaySettingsResponse>> {
+    const userId = req.user.userId;
+
+    const [defaults, groupSettings] = await Promise.all([
+      this.botPreferenceRepository.getDelayDefaults(userId),
+      this.groupDelaySettingsRepository.getAllGroupDelaySettings(userId),
+    ]);
+
+    return {
+      success: true,
+      data: {
+        defaults,
+        groups: groupSettings.map((g) => ({
+          groupId: g.groupId,
+          delayEnabled: g.delayEnabled,
+          delayMin: g.delayMin,
+          delayMax: g.delayMax,
+        })),
+      },
+    };
+  }
+
+  /**
+   * PUT /dashboard/delay-defaults - Update global delay defaults
+   */
+  @Put('delay-defaults')
+  async updateDelayDefaults(
+    @Req() req: AuthenticatedRequest,
+    @Body() body: UpdateDelayDefaultsDto,
+    @Res() res: Response,
+  ): Promise<void> {
+    const userId = req.user.userId;
+
+    const { delayMin, delayMax } = body;
+
+    if (typeof delayMin !== 'number' || typeof delayMax !== 'number') {
+      res.status(HttpStatus.BAD_REQUEST).json({
+        success: false,
+        error: 'delayMin and delayMax must be numbers',
+      } satisfies ApiResponse);
+      return;
+    }
+
+    if (delayMin < 0 || delayMax < 0) {
+      res.status(HttpStatus.BAD_REQUEST).json({
+        success: false,
+        error: 'delayMin and delayMax must be >= 0',
+      } satisfies ApiResponse);
+      return;
+    }
+
+    if (delayMax < delayMin) {
+      res.status(HttpStatus.BAD_REQUEST).json({
+        success: false,
+        error: 'delayMax must be >= delayMin',
+      } satisfies ApiResponse);
+      return;
+    }
+
+    if (delayMax > 300) {
+      res.status(HttpStatus.BAD_REQUEST).json({
+        success: false,
+        error: 'delayMax must be <= 300 seconds',
+      } satisfies ApiResponse);
+      return;
+    }
+
+    await this.botPreferenceRepository.setDelayDefaults(userId, delayMin, delayMax);
+
+    res.status(HttpStatus.OK).json({
+      success: true,
+    } satisfies ApiResponse);
+  }
+
+  /**
+   * PUT /dashboard/groups/:groupId/delay - Update per-group delay settings
+   */
+  @Put('groups/:groupId/delay')
+  async updateGroupDelay(
+    @Req() req: AuthenticatedRequest,
+    @Param('groupId') groupId: string,
+    @Body() body: UpdateGroupDelayDto,
+    @Res() res: Response,
+  ): Promise<void> {
+    const userId = req.user.userId;
+
+    const groupIdNum = parseInt(groupId, 10);
+    if (Number.isNaN(groupIdNum)) {
+      res.status(HttpStatus.BAD_REQUEST).json({
+        success: false,
+        error: 'invalid_group_id',
+      } satisfies ApiResponse);
+      return;
+    }
+
+    // Validate group is active for this user
+    const activeGroups = await this.activeGroupsRepository.getActiveGroups(userId);
+    if (!activeGroups || !activeGroups.includes(groupIdNum)) {
+      res.status(HttpStatus.BAD_REQUEST).json({
+        success: false,
+        error: 'group_not_active',
+      } satisfies ApiResponse);
+      return;
+    }
+
+    if (typeof body.delayEnabled !== 'boolean') {
+      res.status(HttpStatus.BAD_REQUEST).json({
+        success: false,
+        error: 'delayEnabled must be a boolean',
+      } satisfies ApiResponse);
+      return;
+    }
+
+    // Validate custom delay range if provided
+    const delayMin = body.delayMin ?? null;
+    const delayMax = body.delayMax ?? null;
+
+    // Both must be provided or both must be null
+    if ((delayMin === null) !== (delayMax === null)) {
+      res.status(HttpStatus.BAD_REQUEST).json({
+        success: false,
+        error: 'delayMin and delayMax must both be provided or both be null',
+      } satisfies ApiResponse);
+      return;
+    }
+
+    if (delayMin !== null && delayMax !== null) {
+      const min = delayMin;
+      const max = delayMax;
+
+      if (min < 0 || max < 0) {
+        res.status(HttpStatus.BAD_REQUEST).json({
+          success: false,
+          error: 'delayMin and delayMax must be >= 0',
+        } satisfies ApiResponse);
+        return;
+      }
+
+      if (max < min) {
+        res.status(HttpStatus.BAD_REQUEST).json({
+          success: false,
+          error: 'delayMax must be >= delayMin',
+        } satisfies ApiResponse);
+        return;
+      }
+
+      if (max > 300) {
+        res.status(HttpStatus.BAD_REQUEST).json({
+          success: false,
+          error: 'delayMax must be <= 300 seconds',
+        } satisfies ApiResponse);
+        return;
+      }
+    }
+
+    await this.groupDelaySettingsRepository.upsertGroupDelaySetting(userId, groupIdNum, {
+      delayEnabled: body.delayEnabled,
+      delayMin,
+      delayMax,
+    });
 
     res.status(HttpStatus.OK).json({
       success: true,

@@ -1,5 +1,7 @@
 import { CounterOfferSettingsRepository } from '@/infrastructure/persistence/counter-offer-settings.repository';
 import { MilesProgramRepository } from '@/infrastructure/persistence/miles-program.repository';
+import { BotPreferenceRepository } from '@/infrastructure/persistence/bot-status.repository';
+import { GroupDelaySettingsRepository } from '@/infrastructure/persistence/group-delay-settings.repository';
 import { TelegramUserClientProxyService } from '@/infrastructure/tdlib/telegram-user-client-proxy.service';
 import { Injectable, Logger } from '@nestjs/common';
 import { buildCallToActionMessage, buildCounterOfferMessage } from '../../../domain/constants/counter-offer-templates';
@@ -36,6 +38,8 @@ export class TelegramPurchaseHandler {
     private readonly counterOfferSettingsRepository: CounterOfferSettingsRepository,
     private readonly milesProgramRepository: MilesProgramRepository,
     private readonly privateMessageBuffer: PrivateMessageBufferService,
+    private readonly botPreferenceRepository: BotPreferenceRepository,
+    private readonly groupDelaySettingsRepository: GroupDelaySettingsRepository,
   ) {}
 
   async handlePurchase(
@@ -175,6 +179,9 @@ export class TelegramPurchaseHandler {
 
     this.logger.log('Message to reply:', messageId);
 
+    // Apply anti-bot delay before sending any response
+    await this.applyDelay(loggedInUserId, chatId);
+
     const lowestPrice = Math.min(...calculatedPrices.map((p) => p.price));
     const programaForMessage = calculatedPrices.length === 1
       ? calculatedPrices[0].programName
@@ -298,6 +305,42 @@ export class TelegramPurchaseHandler {
     });
 
     await this.tdlibUserClient.sendMessageToUser(telegramUserId, senderId, message);
+  }
+
+  /**
+   * Applies anti-bot delay before sending messages if configured for this group.
+   * Fetches per-group delay setting, falls back to global defaults.
+   */
+  private async applyDelay(userId: string, chatId: number): Promise<void> {
+    const groupSetting = await this.groupDelaySettingsRepository.getGroupDelaySetting(userId, chatId);
+
+    if (!groupSetting || !groupSetting.delayEnabled) {
+      return;
+    }
+
+    // Use group-specific range or fall back to global defaults
+    let min: number;
+    let max: number;
+
+    if (groupSetting.delayMin !== null && groupSetting.delayMax !== null) {
+      min = groupSetting.delayMin;
+      max = groupSetting.delayMax;
+    } else {
+      const defaults = await this.botPreferenceRepository.getDelayDefaults(userId);
+      min = defaults.delayMin;
+      max = defaults.delayMax;
+    }
+
+    if (min === 0 && max === 0) {
+      return;
+    }
+
+    const delaySeconds = min + Math.random() * (max - min);
+    const delayMs = Math.round(delaySeconds * 1000);
+
+    this.logger.log('Applying anti-bot delay', { chatId, delaySeconds: delaySeconds.toFixed(1), min, max });
+
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
   }
 
   /**

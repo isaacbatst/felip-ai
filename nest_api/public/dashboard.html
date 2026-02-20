@@ -154,6 +154,9 @@
       <button class="px-5 py-3 border-none bg-transparent cursor-pointer text-sm font-medium border-b-3 -mb-0.5 transition-all flex flex-col gap-1 hover:text-primary max-md:px-3 max-md:py-2 max-md:flex-row max-md:items-center max-md:rounded-full max-md:border-0 max-md:mb-0" :class="activeSection === 'groups' ? 'text-primary border-b-primary max-md:bg-primary/10' : 'text-gray-500 border-transparent max-md:bg-gray-100'" @click="activeSection = 'groups'; fetchGroupsIfNeeded()">
         <i class="fa-solid fa-users"></i> Grupos
       </button>
+      <button class="px-5 py-3 border-none bg-transparent cursor-pointer text-sm font-medium border-b-3 -mb-0.5 transition-all flex flex-col gap-1 hover:text-primary max-md:px-3 max-md:py-2 max-md:flex-row max-md:items-center max-md:rounded-full max-md:border-0 max-md:mb-0" :class="activeSection === 'antiBot' ? 'text-primary border-b-primary max-md:bg-primary/10' : 'text-gray-500 border-transparent max-md:bg-gray-100'" @click="activeSection = 'antiBot'">
+        <i class="fa-solid fa-shield-halved"></i> Anti-Bot
+      </button>
       <button class="px-5 py-3 border-none bg-transparent cursor-pointer text-sm font-medium border-b-3 -mb-0.5 transition-all flex flex-col gap-1 hover:text-primary max-md:px-3 max-md:py-2 max-md:flex-row max-md:items-center max-md:rounded-full max-md:border-0 max-md:mb-0" :class="activeSection === 'subscription' ? 'text-primary border-b-primary max-md:bg-primary/10' : 'text-gray-500 border-transparent max-md:bg-gray-100'" @click="activeSection = 'subscription'; fetchSubscriptionIfNeeded()">
         <i class="fa-solid fa-credit-card"></i> Assinatura
       </button>
@@ -535,6 +538,60 @@
                       <span x-show="deactivatingGroupId !== group.id"><i class="fa-solid fa-times mr-1"></i> <span class="hidden md:inline">Desativar</span></span>
                     </button>
                   </div>
+                  <!-- Per-group delay settings -->
+                  <div class="mt-3 pt-3 border-t border-gray-100">
+                    <div class="flex items-center justify-between">
+                      <div class="flex items-center gap-2">
+                        <i class="fa-solid fa-clock text-gray-400 text-xs"></i>
+                        <span class="text-xs font-medium text-gray-600">Delay</span>
+                      </div>
+                      <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" class="sr-only peer"
+                          :checked="getGroupDelay(group.id).delayEnabled"
+                          @change="toggleGroupDelay(group.id)"
+                          :disabled="savingGroupDelay === group.id">
+                        <div class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
+                      </label>
+                    </div>
+                    <template x-if="getGroupDelay(group.id).delayEnabled">
+                      <div class="mt-2 flex items-center gap-2 flex-wrap">
+                        <div class="flex items-center gap-1">
+                          <label class="text-xs text-gray-500">Mín</label>
+                          <input type="number" min="0" max="300" step="1"
+                            class="w-16 px-1.5 py-1 text-xs border border-gray-300 rounded-lg focus:outline-none focus:border-primary"
+                            :value="getGroupDelay(group.id).delayMin ?? ''"
+                            :placeholder="delayDefaults.delayMin"
+                            @input="groupDelaySettings = { ...groupDelaySettings, [group.id]: { ...getGroupDelay(group.id), delayMin: $event.target.value === '' ? null : Number($event.target.value) } }">
+                        </div>
+                        <div class="flex items-center gap-1">
+                          <label class="text-xs text-gray-500">Máx</label>
+                          <input type="number" min="0" max="300" step="1"
+                            class="w-16 px-1.5 py-1 text-xs border border-gray-300 rounded-lg focus:outline-none focus:border-primary"
+                            :value="getGroupDelay(group.id).delayMax ?? ''"
+                            :placeholder="delayDefaults.delayMax"
+                            @input="groupDelaySettings = { ...groupDelaySettings, [group.id]: { ...getGroupDelay(group.id), delayMax: $event.target.value === '' ? null : Number($event.target.value) } }">
+                        </div>
+                        <button type="button"
+                          class="px-2 py-1 text-xs font-medium rounded-lg bg-primary/10 text-primary hover:bg-primary/20 transition-all disabled:opacity-50"
+                          :disabled="savingGroupDelay === group.id"
+                          @click="saveGroupDelayRange(group.id)">
+                          <span x-show="savingGroupDelay === group.id" class="spinner" style="width: 10px; height: 10px;"></span>
+                          <span x-show="savingGroupDelay !== group.id">Salvar</span>
+                        </button>
+                        <template x-if="getGroupDelay(group.id).delayMin !== null || getGroupDelay(group.id).delayMax !== null">
+                          <button type="button"
+                            class="px-2 py-1 text-xs font-medium rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 transition-all disabled:opacity-50"
+                            :disabled="savingGroupDelay === group.id"
+                            @click="resetGroupDelayToDefault(group.id)">
+                            <i class="fa-solid fa-rotate-left mr-0.5"></i> Usar padrão
+                          </button>
+                        </template>
+                        <span class="text-xs text-gray-400" x-show="getGroupDelay(group.id).delayMin === null && getGroupDelay(group.id).delayMax === null">
+                          (<span x-text="delayDefaults.delayMin"></span>s - <span x-text="delayDefaults.delayMax"></span>s)
+                        </span>
+                      </div>
+                    </template>
+                  </div>
                 </div>
               </template>
             </div>
@@ -602,6 +659,68 @@
             <p class="text-gray-500 text-sm">Entre em grupos no Telegram para que eles apareçam aqui.</p>
           </div>
         </template>
+      </div>
+    </div>
+
+    <!-- Anti-Bot Section -->
+    <div class="section mb-8 p-5 bg-gray-50 rounded-xl max-md:p-0 max-md:mb-6" x-show="activeSection === 'antiBot'">
+      <div class="section-header flex justify-between items-center mb-4 max-md:mx-3 max-md:py-3 max-md:border-b max-md:border-gray-200">
+        <h2 class="text-gray-800 text-lg font-semibold flex items-center gap-1 max-md:text-base"><i class="fa-solid fa-shield-halved"></i> Anti-Bot</h2>
+      </div>
+      <p class="section-description text-gray-500 text-sm mb-4">
+        Configure um atraso aleatório antes de responder, simulando comportamento humano para evitar detecção
+      </p>
+
+      <!-- Delay Defaults -->
+      <div class="mb-6 p-4 bg-white rounded-xl border border-gray-200">
+        <h3 class="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+          <i class="fa-solid fa-clock"></i> Delay Padrão
+        </h3>
+        <p class="text-xs text-gray-500 mb-4">Tempo de espera padrão (em segundos) antes de responder. Grupos sem configuração personalizada usarão estes valores.</p>
+        <div class="flex items-center gap-3 flex-wrap">
+          <div class="flex items-center gap-2">
+            <label class="text-xs text-gray-600 font-medium">Mínimo (s)</label>
+            <input type="number" min="0" max="300" step="1"
+              class="w-20 px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:border-primary"
+              x-model.number="delayDefaults.delayMin"
+              @input="markDelayDefaultsChanged()">
+          </div>
+          <div class="flex items-center gap-2">
+            <label class="text-xs text-gray-600 font-medium">Máximo (s)</label>
+            <input type="number" min="0" max="300" step="1"
+              class="w-20 px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:border-primary"
+              x-model.number="delayDefaults.delayMax"
+              @input="markDelayDefaultsChanged()">
+          </div>
+          <button type="button"
+            class="px-4 py-1.5 text-xs font-semibold rounded-lg bg-linear-135 from-primary to-secondary text-white border-none cursor-pointer disabled:opacity-60"
+            :disabled="savingDelayDefaults || !delayDefaultsChanged"
+            @click="saveDelayDefaults()">
+            <span x-show="savingDelayDefaults" class="spinner mr-1" style="width: 12px; height: 12px;"></span>
+            Salvar
+          </button>
+        </div>
+      </div>
+
+      <!-- How it works -->
+      <div class="p-4 bg-white rounded-xl border border-gray-200">
+        <h3 class="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+          <i class="fa-solid fa-circle-info"></i> Como funciona
+        </h3>
+        <ul class="text-xs text-gray-600 space-y-2 ml-1">
+          <li class="flex items-start gap-2">
+            <span class="text-primary mt-0.5">1.</span>
+            <span>Ative o delay em cada grupo na aba <strong>Grupos</strong></span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-primary mt-0.5">2.</span>
+            <span>O bot aguarda um tempo aleatório entre o mínimo e máximo antes de responder</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-primary mt-0.5">3.</span>
+            <span>Cada grupo pode ter seu próprio range ou usar o padrão definido acima</span>
+          </li>
+        </ul>
       </div>
     </div>
 
@@ -817,7 +936,7 @@
         touchStartY: 0,
 
         // Section tabs state
-        activeSection: 'prices', // 'prices' | 'limits' | 'counterOffer' | 'groups' | 'subscription'
+        activeSection: 'prices', // 'prices' | 'limits' | 'counterOffer' | 'groups' | 'antiBot' | 'subscription'
 
         // Price type tab state (for mobile normal/liminar tabs)
         priceTypeTab: 'normal', // 'normal' | 'liminar'
@@ -863,6 +982,13 @@
         groupsFetched: false,
         activatingGroupId: null,
         deactivatingGroupId: null,
+
+        // Delay settings state
+        delayDefaults: { delayMin: 0, delayMax: 0 },
+        groupDelaySettings: {},  // Map of groupId -> { delayEnabled, delayMin, delayMax }
+        savingDelayDefaults: false,
+        delayDefaultsChanged: false,
+        savingGroupDelay: null,   // groupId being saved
 
         // Bot status state (preference)
         botStatus: { isEnabled: false },
@@ -994,6 +1120,7 @@
               this.fetchCounterOfferTemplates(),
               this.fetchCallToActionTemplates(),
               this.fetchBotStatus(),
+              this.fetchDelaySettings(),
             ]);
 
             if (this.normalPrograms.length > 0) {
@@ -1096,6 +1223,119 @@
           } else {
             console.warn('Failed to fetch bot status:', data.error);
           }
+        },
+
+        async fetchDelaySettings() {
+          try {
+            const res = await this.authFetch('/dashboard/delay-settings');
+            const data = await res.json();
+            if (data.success) {
+              this.delayDefaults = data.data.defaults;
+              const map = {};
+              for (const g of data.data.groups) {
+                map[g.groupId] = {
+                  delayEnabled: g.delayEnabled,
+                  delayMin: g.delayMin,
+                  delayMax: g.delayMax,
+                };
+              }
+              this.groupDelaySettings = map;
+            } else {
+              console.warn('Failed to fetch delay settings:', data.error);
+            }
+          } catch (error) {
+            console.warn('Error fetching delay settings:', error);
+          }
+        },
+
+        getGroupDelay(groupId) {
+          return this.groupDelaySettings[groupId] || { delayEnabled: false, delayMin: null, delayMax: null };
+        },
+
+        markDelayDefaultsChanged() {
+          this.delayDefaultsChanged = true;
+        },
+
+        async saveDelayDefaults() {
+          if (this.delayDefaults.delayMin > this.delayDefaults.delayMax) {
+            this.showToast('O delay mínimo deve ser menor ou igual ao máximo', 'error');
+            return;
+          }
+          this.savingDelayDefaults = true;
+          try {
+            const res = await this.authFetch('/dashboard/delay-defaults', {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(this.delayDefaults),
+            });
+            const data = await res.json();
+            if (data.success) {
+              this.showToast('Delay padrão salvo!', 'success');
+              this.delayDefaultsChanged = false;
+            } else {
+              this.showToast('Erro: ' + (data.error || 'Falha ao salvar'), 'error');
+            }
+          } catch (error) {
+            this.showToast('Erro ao salvar delay padrão', 'error');
+          } finally {
+            this.savingDelayDefaults = false;
+          }
+        },
+
+        async toggleGroupDelay(groupId) {
+          const current = this.getGroupDelay(groupId);
+          const newEnabled = !current.delayEnabled;
+          const newSettings = { ...current, delayEnabled: newEnabled };
+          // Optimistically update so checkbox stays in sync
+          this.groupDelaySettings = { ...this.groupDelaySettings, [groupId]: newSettings };
+          const ok = await this.saveGroupDelay(groupId, newSettings);
+          if (!ok) {
+            // Revert on failure
+            this.groupDelaySettings = { ...this.groupDelaySettings, [groupId]: current };
+          }
+        },
+
+        async saveGroupDelay(groupId, settings) {
+          this.savingGroupDelay = groupId;
+          try {
+            const res = await this.authFetch(`/dashboard/groups/${groupId}/delay`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(settings),
+            });
+            const data = await res.json();
+            if (data.success) {
+              this.groupDelaySettings = { ...this.groupDelaySettings, [groupId]: { ...settings } };
+              this.showToast('Delay do grupo salvo!', 'success');
+              return true;
+            } else {
+              this.showToast('Erro: ' + (data.error || 'Falha ao salvar'), 'error');
+              return false;
+            }
+          } catch (error) {
+            this.showToast('Erro ao salvar delay do grupo', 'error');
+            return false;
+          } finally {
+            this.savingGroupDelay = null;
+          }
+        },
+
+        async saveGroupDelayRange(groupId) {
+          const current = this.getGroupDelay(groupId);
+          if (current.delayMin !== null && current.delayMax !== null && current.delayMin > current.delayMax) {
+            this.showToast('O delay mínimo deve ser menor ou igual ao máximo', 'error');
+            return;
+          }
+          await this.saveGroupDelay(groupId, current);
+        },
+
+        async resetGroupDelayToDefault(groupId) {
+          const current = this.getGroupDelay(groupId);
+          await this.saveGroupDelay(groupId, {
+            delayEnabled: current.delayEnabled,
+            delayMin: null,
+            delayMax: null,
+          });
         },
 
         async handleToggle() {
