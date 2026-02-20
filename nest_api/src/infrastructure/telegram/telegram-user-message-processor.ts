@@ -121,6 +121,7 @@ export class TelegramUserMessageProcessor {
       const senderId = message.sender_id?.user_id;
       const date = message.date;
       const content = message.content;
+      const isReply = message.reply_to != null;
 
       if (!chatId) {
         this.logger.warn('Could not fetch chat ID, ignoring...');
@@ -207,6 +208,7 @@ export class TelegramUserMessageProcessor {
             messageId,
             text,
             senderId,
+            isReply,
           );
         }
       } else {
