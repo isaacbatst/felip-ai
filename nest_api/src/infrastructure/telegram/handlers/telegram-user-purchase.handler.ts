@@ -45,6 +45,7 @@ export class TelegramPurchaseHandler {
     messageId: number | undefined,
     text: string,
     senderId?: number,
+    isReply?: boolean,
   ): Promise<void> {
     const trimmedText = text.trim();
 
@@ -68,6 +69,22 @@ export class TelegramPurchaseHandler {
     const hasNumbersPattern = /\d/;
     if (!hasNumbersPattern.test(trimmedText)) {
       this.logger.log('Skipping: message has no numbers', { text: trimmedText });
+      return;
+    }
+
+    // Validação 4: mensagem é uma resposta (reply) a outra mensagem
+    if (isReply) {
+      this.logger.log('Skipping: message is a reply to another message');
+      return;
+    }
+
+    // Validação 5: mensagem contém palavras que não aparecem em demandas reais
+    // Demandas reais seguem o padrão: programa + quantidade + CPF + preço aceito (opcional)
+    // Palavras como "bot", "robô", "pegadinha", "teste", "armadilha" indicam armadilha ou teste
+    const normalizedForTrapCheck = trimmedText.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    const trapWords = ['bot', 'robo', 'robot', 'pegadinha', 'teste', 'armadilha'];
+    if (trapWords.some(word => normalizedForTrapCheck.includes(word))) {
+      this.logger.log('Skipping: message contains trap word', { text: trimmedText });
       return;
     }
 
