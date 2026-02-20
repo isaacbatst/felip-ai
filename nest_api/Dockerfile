@@ -36,5 +36,5 @@ RUN pnpm install --frozen-lockfile --prod
 COPY --from=builder /app/nest_api/dist ./nest_api/dist
 COPY nest_api/drizzle ./nest_api/drizzle
 WORKDIR /app/nest_api
-CMD ["node", "dist/main.js"]
+CMD ["sh", "-c", "node dist/migrate.js && node dist/main.js"]
 
