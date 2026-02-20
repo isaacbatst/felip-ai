@@ -121,6 +121,27 @@ The application uses BullMQ queues for communication:
 - **telegram-user-messages**: User messages for processing
 - **telegram-bot-messages**: Bot messages for processing
 
+## Accessing Production Database Locally
+
+PostgreSQL in the Swarm stack is bound to `127.0.0.1:5432` on the server (not exposed to the internet).
+
+To access it from your local machine, create an SSH tunnel:
+
+```bash
+# Use port 5433 locally to avoid conflict with local Postgres
+ssh -L 5433:127.0.0.1:5432 -N felip-ai@congressosimulator.com.br
+```
+
+Then connect using the production credentials:
+
+```bash
+# Drizzle Studio
+DATABASE_URL="postgresql://<user>:<password>@localhost:5433/felipdb" pnpm --filter nest_api drizzle-kit studio
+
+# psql
+psql -h localhost -p 5433 -U <user> -d felipdb
+```
+
 ## License
 
 UNLICENSED
