@@ -683,9 +683,7 @@ describe('TelegramPurchaseHandler', () => {
         );
       });
 
-      it('should use minimum of multiple accepted prices for comparison', async () => {
-        availableMiles[2] = 10000; // SMILES LIMINAR - not enough (single price scenario)
-
+      it('should skip when multiple accepted prices are present (bot trap detection)', async () => {
         mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
           quantity: 30_000,
           cpfCount: 1,
@@ -695,13 +693,7 @@ describe('TelegramPurchaseHandler', () => {
 
         await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF aceito 22');
 
-        expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledTimes(1);
-        expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledWith(
-          telegramUserId,
-          chatId,
-          'Vamos!',
-          messageId,
-        );
+        expect(mockTdlibUserClient.sendMessage).not.toHaveBeenCalled();
       });
     });
 
