@@ -105,21 +105,6 @@ jobs:
           ssh_key: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}
           env_file: ./envfile
 
-      - name: Run database migrations
-        run: |
-          ssh -i ~/.ssh/deploy_key felip-ai@congressosimulator.com.br << 'ENDSSH'
-          for i in $(seq 1 30); do
-            CONTAINER_ID=$(docker ps -q -f name=felip-ai_nest_api)
-            if [ -n "$CONTAINER_ID" ]; then
-              docker exec "$CONTAINER_ID" node dist/migrate.js
-              exit $?
-            fi
-            echo "Waiting for nest_api container... ($i/30)"
-            sleep 2
-          done
-          echo "ERROR: nest_api container not found after 60s"
-          exit 1
-          ENDSSH
 
       # Alternative to use docker stack deploy action
       # - name: Update Nest API service only
