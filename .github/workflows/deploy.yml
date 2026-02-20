@@ -59,9 +59,6 @@ jobs:
     needs:
       - build-and-push
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
       - name: Setup SSH
         run: |
           mkdir -p ~/.ssh
@@ -69,69 +66,35 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -H congressosimulator.com.br >> ~/.ssh/known_hosts
 
-      - name: Create env file
+      - name: Build DATABASE_URL
         run: |
-          echo "TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}" >> envfile
-          echo "TELEGRAM_PHONE=${{ secrets.TELEGRAM_PHONE }}" >> envfile
-          echo "GOOGLE_SPREADSHEET_ID=${{ secrets.GOOGLE_SPREADSHEET_ID }}" >> envfile
-          echo "GOOGLE_SERVICE_ACCOUNT_KEY_FILE=/app/nest_api/service-account-key.json" >> envfile
-          echo "WORKER_ENV_FILE=${{ secrets.WORKER_ENV_FILE }}" >> envfile
-          echo "OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}" >> envfile
           ENCODED_PG_PASSWORD=$(python3 -c "import urllib.parse, sys; print(urllib.parse.quote(sys.argv[1], safe=''))" "${{ secrets.POSTGRES_PASSWORD }}")
-          echo "DATABASE_URL=postgresql://${{ secrets.POSTGRES_USER }}:${ENCODED_PG_PASSWORD}@postgres:5432/${{ secrets.POSTGRES_DB }}" >> envfile
-          echo "WORKER_MANAGER_TYPE=${{ secrets.WORKER_MANAGER_TYPE }}" >> envfile
-          echo "GIT_COMMIT_HASH=${{ github.sha }}" >> envfile
-          echo "RABBITMQ_HOST=${{ secrets.RABBITMQ_HOST }}" >> envfile
-          echo "RABBITMQ_PORT=${{ secrets.RABBITMQ_PORT }}" >> envfile
-          echo "RABBITMQ_USER=${{ secrets.RABBITMQ_USER }}" >> envfile
-          echo "RABBITMQ_PASSWORD=${{ secrets.RABBITMQ_PASSWORD }}" >> envfile
-          echo "AUTHORIZATION_MODE=${{ secrets.AUTHORIZATION_MODE }}" >> envfile
-          echo "FEATURE_CIELO_ENABLED=${{ secrets.FEATURE_CIELO_ENABLED }}" >> envfile
-          echo "CIELO_ENVIRONMENT=${{ secrets.CIELO_ENVIRONMENT }}" >> envfile
-          echo "CIELO_MERCHANT_ID=${{ secrets.CIELO_MERCHANT_ID }}" >> envfile
-          echo "CIELO_MERCHANT_KEY=${{ secrets.CIELO_MERCHANT_KEY }}" >> envfile
-          echo "CIELO_WEBHOOK_SECRET=${{ secrets.CIELO_WEBHOOK_SECRET }}" >> envfile
-          echo "APP_BASE_URL=https://chatbot.lfviagens.com" >> envfile
-          echo "POSTGRES_USER=${{ secrets.POSTGRES_USER }}" >> envfile
-          echo "POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}" >> envfile
-          echo "POSTGRES_DB=${{ secrets.POSTGRES_DB }}" >> envfile
-      - name: Docker Stack Deploy
-        uses: cssnr/stack-deploy-action@v1
-        with:
-          name: felip-ai
-          file: stack.yml
-          host: congressosimulator.com.br
-          user: felip-ai
-          ssh_key: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}
-          env_file: ./envfile
+          echo "DATABASE_URL=postgresql://${{ secrets.POSTGRES_USER }}:${ENCODED_PG_PASSWORD}@postgres:5432/${{ secrets.POSTGRES_DB }}" >> "$GITHUB_ENV"
 
-
-      # Alternative to use docker stack deploy action
-      # - name: Update Nest API service only
-      #   run: |
-      #     ssh -i ~/.ssh/deploy_key felip-ai@congressosimulator.com.br << 'ENDSSH'
-      #     docker service update \
-      #       --image ghcr.io/isaacbatst/felip-ai:${{ github.sha }} \
-      #       --env-add "TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}" \
-      #       --env-add "TELEGRAM_PHONE=${{ secrets.TELEGRAM_PHONE }}" \
-      #       --env-add "GOOGLE_SPREADSHEET_ID=${{ secrets.GOOGLE_SPREADSHEET_ID }}" \
-      #       --env-add "GOOGLE_SERVICE_ACCOUNT_KEY_FILE=/app/nest_api/service-account-key.json" \
-      #       --env-add "WORKER_ENV_FILE=${{ secrets.WORKER_ENV_FILE }}" \
-      #       --env-add "OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}" \
-      #       --env-add "DATABASE_URL=${{ secrets.DATABASE_URL }}" \
-      #       --env-add "WORKER_MANAGER_TYPE=${{ secrets.WORKER_MANAGER_TYPE }}" \
-      #       --env-add "GIT_COMMIT_HASH=${{ github.sha }}" \
-      #       --env-add "RABBITMQ_HOST=${{ secrets.RABBITMQ_HOST }}" \
-      #       --env-add "RABBITMQ_PORT=${{ secrets.RABBITMQ_PORT }}" \
-      #       --env-add "RABBITMQ_USER=${{ secrets.RABBITMQ_USER }}" \
-      #       --env-add "RABBITMQ_PASSWORD=${{ secrets.RABBITMQ_PASSWORD }}" \
-      #       --env-add "APP_BASE_URL=https://chatbot.lfviagens.com" \
-      #       --env-add "FEATURE_CIELO_ENABLED=${{ secrets.FEATURE_CIELO_ENABLED }}" \
-      #       --env-add "CIELO_ENVIRONMENT=${{ secrets.CIELO_ENVIRONMENT }}" \
-      #       --env-add "CIELO_MERCHANT_ID=${{ secrets.CIELO_MERCHANT_ID }}" \
-      #       --env-add "CIELO_MERCHANT_KEY=${{ secrets.CIELO_MERCHANT_KEY }}" \
-      #       --env-add "CIELO_WEBHOOK_SECRET=${{ secrets.CIELO_WEBHOOK_SECRET }}" \
-      #       --env-add "AUTHORIZATION_MODE=${{ secrets.AUTHORIZATION_MODE }}" \
-      #       felip-ai_nest_api
-      #     docker system prune -af --filter "until=24h"
-      #     ENDSSH
+      - name: Update Nest API service
+        run: |
+          ssh -i ~/.ssh/deploy_key felip-ai@congressosimulator.com.br << ENDSSH
+          docker service update \
+            --image ghcr.io/isaacbatst/felip-ai:${{ github.sha }} \
+            --env-add "TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}" \
+            --env-add "TELEGRAM_PHONE=${{ secrets.TELEGRAM_PHONE }}" \
+            --env-add "GOOGLE_SPREADSHEET_ID=${{ secrets.GOOGLE_SPREADSHEET_ID }}" \
+            --env-add "GOOGLE_SERVICE_ACCOUNT_KEY_FILE=/app/nest_api/service-account-key.json" \
+            --env-add "WORKER_ENV_FILE=${{ secrets.WORKER_ENV_FILE }}" \
+            --env-add "OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}" \
+            --env-add "DATABASE_URL=${DATABASE_URL}" \
+            --env-add "WORKER_MANAGER_TYPE=${{ secrets.WORKER_MANAGER_TYPE }}" \
+            --env-add "GIT_COMMIT_HASH=${{ github.sha }}" \
+            --env-add "RABBITMQ_HOST=${{ secrets.RABBITMQ_HOST }}" \
+            --env-add "RABBITMQ_PORT=${{ secrets.RABBITMQ_PORT }}" \
+            --env-add "RABBITMQ_USER=${{ secrets.RABBITMQ_USER }}" \
+            --env-add "RABBITMQ_PASSWORD=${{ secrets.RABBITMQ_PASSWORD }}" \
+            --env-add "AUTHORIZATION_MODE=${{ secrets.AUTHORIZATION_MODE }}" \
+            --env-add "FEATURE_CIELO_ENABLED=${{ secrets.FEATURE_CIELO_ENABLED }}" \
+            --env-add "CIELO_ENVIRONMENT=${{ secrets.CIELO_ENVIRONMENT }}" \
+            --env-add "CIELO_MERCHANT_ID=${{ secrets.CIELO_MERCHANT_ID }}" \
+            --env-add "CIELO_MERCHANT_KEY=${{ secrets.CIELO_MERCHANT_KEY }}" \
+            --env-add "CIELO_WEBHOOK_SECRET=${{ secrets.CIELO_WEBHOOK_SECRET }}" \
+            --env-add "APP_BASE_URL=https://chatbot.lfviagens.com" \
+            felip-ai_nest_api
+          ENDSSH
