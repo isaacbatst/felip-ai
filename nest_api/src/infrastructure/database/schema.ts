@@ -241,6 +241,8 @@ export const userCounterOfferSettings = pgTable(
     callToActionTemplateId: integer('call_to_action_template_id').default(1).notNull(), // Which template to use for call to action (1 or 2)
     dedupEnabled: boolean('dedup_enabled').default(true).notNull(), // Whether PM dedup buffer is active
     dedupWindowMinutes: integer('dedup_window_minutes').default(1).notNull(), // Dedup time window in minutes
+    groupDedupEnabled: boolean('group_dedup_enabled').default(true).notNull(), // Whether group message dedup is active
+    groupDedupWindowMinutes: integer('group_dedup_window_minutes').default(1).notNull(), // Group dedup time window in minutes
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },

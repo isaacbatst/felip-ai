@@ -440,29 +440,6 @@
         </div>
       </div>
 
-      <!-- Deduplication Settings -->
-      <div class="data-card bg-white border border-gray-200 rounded-xl p-4 mb-4 mt-4">
-        <div class="flex items-center justify-between mb-3">
-          <div>
-            <h4 class="font-semibold text-sm text-gray-800 mb-1">Evitar Mensagens Duplicadas</h4>
-            <p class="text-xs text-gray-500">Não envia mensagem privada para o mesmo comprador dentro do período configurado</p>
-          </div>
-          <label class="relative inline-flex items-center cursor-pointer">
-            <input type="checkbox" class="sr-only peer" x-model="counterOfferSettings.dedupEnabled" @change="markCounterOfferChanged()">
-            <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
-          </label>
-        </div>
-        <div class="flex items-center gap-3" :class="{ 'opacity-50': !counterOfferSettings.dedupEnabled }">
-          <label class="text-xs text-gray-500 whitespace-nowrap">Janela de tempo:</label>
-          <input type="number" min="1" max="1440"
-            x-model.number="counterOfferSettings.dedupWindowMinutes"
-            @change="markCounterOfferChanged()"
-            :disabled="!counterOfferSettings.dedupEnabled"
-            class="w-20 p-2 border border-gray-200 rounded-lg text-sm text-center transition-all disabled:bg-gray-100 disabled:cursor-not-allowed">
-          <span class="text-xs text-gray-500">minutos</span>
-        </div>
-      </div>
-
       <div class="btn-group flex gap-2.5 justify-end mt-4 max-md:justify-center">
         <button type="button" class="bg-linear-135 from-primary to-secondary px-6 py-3 text-sm font-semibold border-none rounded-lg cursor-pointer transition-all text-white disabled:opacity-60 disabled:cursor-not-allowed hover:not-disabled:-translate-y-0.5 hover:not-disabled:shadow-lg"
           @click="saveCounterOfferSettings()"
@@ -668,7 +645,7 @@
         <h2 class="text-gray-800 text-lg font-semibold flex items-center gap-1 max-md:text-base"><i class="fa-solid fa-shield-halved"></i> Anti-Bot</h2>
       </div>
       <p class="section-description text-gray-500 text-sm mb-4">
-        Configure um atraso aleatório antes de responder, simulando comportamento humano para evitar detecção
+        Configure proteções anti-bot: atraso aleatório e deduplicação de mensagens
       </p>
 
       <!-- Delay Defaults -->
@@ -700,6 +677,66 @@
             Salvar
           </button>
         </div>
+      </div>
+
+      <!-- Group Message Deduplication -->
+      <div class="mb-6 p-4 bg-white rounded-xl border border-gray-200">
+        <div class="flex items-center justify-between mb-3">
+          <div>
+            <h3 class="text-sm font-semibold text-gray-700 mb-1 flex items-center gap-2">
+              <i class="fa-solid fa-comments"></i> Evitar Respostas Duplicadas no Grupo
+            </h3>
+            <p class="text-xs text-gray-500">Não responde ao mesmo comprador com o mesmo pedido (programa, quantidade e CPFs) dentro do período configurado</p>
+          </div>
+          <label class="relative inline-flex items-center cursor-pointer shrink-0">
+            <input type="checkbox" class="sr-only peer" x-model="counterOfferSettings.groupDedupEnabled" @change="markCounterOfferChanged()">
+            <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+          </label>
+        </div>
+        <div class="flex items-center gap-3" :class="{ 'opacity-50': !counterOfferSettings.groupDedupEnabled }">
+          <label class="text-xs text-gray-500 whitespace-nowrap">Janela de tempo:</label>
+          <input type="number" min="1" max="1440"
+            x-model.number="counterOfferSettings.groupDedupWindowMinutes"
+            @change="markCounterOfferChanged()"
+            :disabled="!counterOfferSettings.groupDedupEnabled"
+            class="w-20 p-2 border border-gray-200 rounded-lg text-sm text-center transition-all disabled:bg-gray-100 disabled:cursor-not-allowed">
+          <span class="text-xs text-gray-500">minutos</span>
+        </div>
+      </div>
+
+      <!-- Private Message Deduplication -->
+      <div class="mb-6 p-4 bg-white rounded-xl border border-gray-200">
+        <div class="flex items-center justify-between mb-3">
+          <div>
+            <h3 class="text-sm font-semibold text-gray-700 mb-1 flex items-center gap-2">
+              <i class="fa-solid fa-envelope"></i> Evitar Mensagens Privadas Duplicadas
+            </h3>
+            <p class="text-xs text-gray-500">Não envia mensagem privada para o mesmo comprador dentro do período configurado</p>
+          </div>
+          <label class="relative inline-flex items-center cursor-pointer shrink-0">
+            <input type="checkbox" class="sr-only peer" x-model="counterOfferSettings.dedupEnabled" @change="markCounterOfferChanged()">
+            <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+          </label>
+        </div>
+        <div class="flex items-center gap-3" :class="{ 'opacity-50': !counterOfferSettings.dedupEnabled }">
+          <label class="text-xs text-gray-500 whitespace-nowrap">Janela de tempo:</label>
+          <input type="number" min="1" max="1440"
+            x-model.number="counterOfferSettings.dedupWindowMinutes"
+            @change="markCounterOfferChanged()"
+            :disabled="!counterOfferSettings.dedupEnabled"
+            class="w-20 p-2 border border-gray-200 rounded-lg text-sm text-center transition-all disabled:bg-gray-100 disabled:cursor-not-allowed">
+          <span class="text-xs text-gray-500">minutos</span>
+        </div>
+      </div>
+
+      <!-- Save Dedup Settings -->
+      <div class="btn-group flex gap-2.5 justify-end mb-6 max-md:justify-center">
+        <button type="button" class="bg-linear-135 from-primary to-secondary px-6 py-3 text-sm font-semibold border-none rounded-lg cursor-pointer transition-all text-white disabled:opacity-60 disabled:cursor-not-allowed hover:not-disabled:-translate-y-0.5 hover:not-disabled:shadow-lg"
+          @click="saveCounterOfferSettings()"
+          :disabled="savingCounterOffer || !counterOfferChanged">
+          <span x-show="savingCounterOffer" class="spinner mr-2"></span>
+          Salvar Deduplicação
+        </button>
       </div>
 
       <!-- How it works -->
@@ -965,6 +1002,8 @@
           callToActionTemplateId: 1,
           dedupEnabled: true,
           dedupWindowMinutes: 1,
+          groupDedupEnabled: true,
+          groupDedupWindowMinutes: 1,
         },
         counterOfferTemplates: [],
         callToActionTemplates: [],
@@ -1188,7 +1227,18 @@
           const res = await this.authFetch('/dashboard/counter-offer');
           const data = await res.json();
           if (data.success) {
-            this.counterOfferSettings = data.data;
+            const fetched = data.data;
+            // Ensure booleans are not strings (e.g. "false" is truthy)
+            if (typeof fetched.groupDedupEnabled === 'string') {
+              fetched.groupDedupEnabled = fetched.groupDedupEnabled === 'true';
+            }
+            if (typeof fetched.dedupEnabled === 'string') {
+              fetched.dedupEnabled = fetched.dedupEnabled === 'true';
+            }
+            if (typeof fetched.isEnabled === 'string') {
+              fetched.isEnabled = fetched.isEnabled === 'true';
+            }
+            this.counterOfferSettings = { ...this.counterOfferSettings, ...fetched };
           } else {
             console.warn('Failed to fetch counter offer settings:', data.error);
             // Use defaults if fetch fails

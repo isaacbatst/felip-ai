@@ -454,6 +454,8 @@ describe('TelegramPurchaseHandler', () => {
           callToActionTemplateId: 1,
           dedupEnabled: false,
           dedupWindowMinutes: 1,
+          groupDedupEnabled: true,
+          groupDedupWindowMinutes: 1,
           createdAt: new Date(),
           updatedAt: new Date(),
         });
@@ -488,6 +490,8 @@ describe('TelegramPurchaseHandler', () => {
           callToActionTemplateId: 1,
           dedupEnabled: false,
           dedupWindowMinutes: 1,
+          groupDedupEnabled: true,
+          groupDedupWindowMinutes: 1,
           createdAt: new Date(),
           updatedAt: new Date(),
         });
@@ -525,6 +529,8 @@ describe('TelegramPurchaseHandler', () => {
           callToActionTemplateId: 1,
           dedupEnabled: false,
           dedupWindowMinutes: 1,
+          groupDedupEnabled: true,
+          groupDedupWindowMinutes: 1,
           createdAt: new Date(),
           updatedAt: new Date(),
         });
@@ -607,6 +613,8 @@ describe('TelegramPurchaseHandler', () => {
           callToActionTemplateId: 1,
           dedupEnabled: false,
           dedupWindowMinutes: 1,
+          groupDedupEnabled: true,
+          groupDedupWindowMinutes: 1,
           createdAt: new Date(),
           updatedAt: new Date(),
         });
@@ -666,6 +674,8 @@ describe('TelegramPurchaseHandler', () => {
           callToActionTemplateId: 1,
           dedupEnabled: false,
           dedupWindowMinutes: 1,
+          groupDedupEnabled: true,
+          groupDedupWindowMinutes: 1,
           createdAt: new Date(),
           updatedAt: new Date(),
         });
@@ -1114,6 +1124,143 @@ describe('TelegramPurchaseHandler', () => {
         );
 
         expect(mockMessageParser.parse).toHaveBeenCalled();
+      });
+    });
+
+    describe('Group message dedup', () => {
+      it('should skip when group dedup is enabled and same sender+request seen recently', async () => {
+        mockCounterOfferSettingsRepository.getSettings.mockResolvedValue({
+          userId: loggedInUserId,
+          isEnabled: false,
+          priceThreshold: 0.5,
+          messageTemplateId: 1,
+          callToActionTemplateId: 1,
+          dedupEnabled: false,
+          dedupWindowMinutes: 1,
+          groupDedupEnabled: true,
+          groupDedupWindowMinutes: 5,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+
+        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
+          quantity: 30_000,
+          cpfCount: 1,
+          airlineId: PROGRAM_IDS.SMILES,
+        }));
+
+        const senderId = 999;
+
+        // First call: should process normally
+        await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF', senderId);
+        expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledTimes(1);
+
+        jest.clearAllMocks();
+        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
+          quantity: 30_000,
+          cpfCount: 1,
+          airlineId: PROGRAM_IDS.SMILES,
+        }));
+        mockCounterOfferSettingsRepository.getSettings.mockResolvedValue({
+          userId: loggedInUserId,
+          isEnabled: false,
+          priceThreshold: 0.5,
+          messageTemplateId: 1,
+          callToActionTemplateId: 1,
+          dedupEnabled: false,
+          dedupWindowMinutes: 1,
+          groupDedupEnabled: true,
+          groupDedupWindowMinutes: 5,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+
+        // Second call: same sender, same request — should be skipped
+        await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF', senderId);
+        expect(mockTdlibUserClient.sendMessage).not.toHaveBeenCalled();
+      });
+
+      it('should NOT skip when group dedup is disabled', async () => {
+        mockCounterOfferSettingsRepository.getSettings.mockResolvedValue({
+          userId: loggedInUserId,
+          isEnabled: false,
+          priceThreshold: 0.5,
+          messageTemplateId: 1,
+          callToActionTemplateId: 1,
+          dedupEnabled: false,
+          dedupWindowMinutes: 1,
+          groupDedupEnabled: false,
+          groupDedupWindowMinutes: 1,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+
+        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray());
+        const senderId = 999;
+
+        await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF', senderId);
+        await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF', senderId);
+
+        expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledTimes(2);
+      });
+
+      it('should NOT skip when different sender makes same request', async () => {
+        mockCounterOfferSettingsRepository.getSettings.mockResolvedValue({
+          userId: loggedInUserId,
+          isEnabled: false,
+          priceThreshold: 0.5,
+          messageTemplateId: 1,
+          callToActionTemplateId: 1,
+          dedupEnabled: false,
+          dedupWindowMinutes: 1,
+          groupDedupEnabled: true,
+          groupDedupWindowMinutes: 5,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+
+        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray());
+
+        await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF', 999);
+        await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF', 888);
+
+        expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledTimes(2);
+      });
+
+      it('should NOT skip when same sender makes different request', async () => {
+        mockCounterOfferSettingsRepository.getSettings.mockResolvedValue({
+          userId: loggedInUserId,
+          isEnabled: false,
+          priceThreshold: 0.5,
+          messageTemplateId: 1,
+          callToActionTemplateId: 1,
+          dedupEnabled: false,
+          dedupWindowMinutes: 1,
+          groupDedupEnabled: true,
+          groupDedupWindowMinutes: 5,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+
+        const senderId = 999;
+
+        // First call: SMILES 30k
+        mockMessageParser.parse.mockResolvedValueOnce(createPurchaseProposalArray({
+          quantity: 30_000,
+          cpfCount: 1,
+          airlineId: PROGRAM_IDS.SMILES,
+        }));
+        await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF', senderId);
+
+        // Second call: LATAM 30k (different program)
+        mockMessageParser.parse.mockResolvedValueOnce(createPurchaseProposalArray({
+          quantity: 30_000,
+          cpfCount: 1,
+          airlineId: PROGRAM_IDS.LATAM,
+        }));
+        await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'LATAM 30k 1CPF', senderId);
+
+        expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledTimes(2);
       });
     });
   });

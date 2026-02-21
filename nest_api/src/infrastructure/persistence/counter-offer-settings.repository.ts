@@ -9,6 +9,8 @@ export interface CounterOfferSettings {
   callToActionTemplateId: number;
   dedupEnabled: boolean;
   dedupWindowMinutes: number;
+  groupDedupEnabled: boolean;
+  groupDedupWindowMinutes: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -23,6 +25,8 @@ export interface CounterOfferSettingsInput {
   callToActionTemplateId: number;
   dedupEnabled: boolean;
   dedupWindowMinutes: number;
+  groupDedupEnabled: boolean;
+  groupDedupWindowMinutes: number;
 }
 
 /**

@@ -106,6 +106,8 @@ interface CounterOfferSettingsResponse {
   callToActionTemplateId: number;
   dedupEnabled: boolean;
   dedupWindowMinutes: number;
+  groupDedupEnabled: boolean;
+  groupDedupWindowMinutes: number;
 }
 
 interface CounterOfferTemplatesResponse {
@@ -131,6 +133,8 @@ interface UpdateCounterOfferSettingsDto {
   callToActionTemplateId: number;
   dedupEnabled: boolean;
   dedupWindowMinutes: number;
+  groupDedupEnabled: boolean;
+  groupDedupWindowMinutes: number;
 }
 
 interface GroupResponse {
@@ -642,6 +646,8 @@ export class DashboardController {
           callToActionTemplateId: settings.callToActionTemplateId,
           dedupEnabled: settings.dedupEnabled,
           dedupWindowMinutes: settings.dedupWindowMinutes,
+          groupDedupEnabled: settings.groupDedupEnabled,
+          groupDedupWindowMinutes: settings.groupDedupWindowMinutes,
         }
       : {
           isEnabled: false,
@@ -650,6 +656,8 @@ export class DashboardController {
           callToActionTemplateId: 1,
           dedupEnabled: true,
           dedupWindowMinutes: 1,
+          groupDedupEnabled: true,
+          groupDedupWindowMinutes: 1,
         };
 
     return {
@@ -718,6 +726,22 @@ export class DashboardController {
       return;
     }
 
+    if (typeof body.groupDedupEnabled !== 'boolean') {
+      res.status(HttpStatus.BAD_REQUEST).json({
+        success: false,
+        error: 'groupDedupEnabled must be a boolean',
+      } satisfies ApiResponse);
+      return;
+    }
+
+    if (typeof body.groupDedupWindowMinutes !== 'number' || body.groupDedupWindowMinutes < 1 || !Number.isInteger(body.groupDedupWindowMinutes)) {
+      res.status(HttpStatus.BAD_REQUEST).json({
+        success: false,
+        error: 'groupDedupWindowMinutes must be a positive integer',
+      } satisfies ApiResponse);
+      return;
+    }
+
     const settings: CounterOfferSettingsInput = {
       isEnabled: body.isEnabled,
       priceThreshold: body.priceThreshold,
@@ -725,11 +749,13 @@ export class DashboardController {
       callToActionTemplateId: body.callToActionTemplateId,
       dedupEnabled: body.dedupEnabled,
       dedupWindowMinutes: body.dedupWindowMinutes,
+      groupDedupEnabled: body.groupDedupEnabled,
+      groupDedupWindowMinutes: body.groupDedupWindowMinutes,
     };
 
     await this.counterOfferSettingsRepository.upsertSettings(userId, settings);
 
-    this.logger.log(`Updated counter offer settings for user ${userId}: enabled=${body.isEnabled}, threshold=${body.priceThreshold}, counterOfferTemplate=${body.messageTemplateId}, callToActionTemplate=${body.callToActionTemplateId}, dedupEnabled=${body.dedupEnabled}, dedupWindowMinutes=${body.dedupWindowMinutes}`);
+    this.logger.log(`Updated counter offer settings for user ${userId}: enabled=${body.isEnabled}, threshold=${body.priceThreshold}, counterOfferTemplate=${body.messageTemplateId}, callToActionTemplate=${body.callToActionTemplateId}, dedupEnabled=${body.dedupEnabled}, dedupWindowMinutes=${body.dedupWindowMinutes}, groupDedupEnabled=${body.groupDedupEnabled}, groupDedupWindowMinutes=${body.groupDedupWindowMinutes}`);
 
     res.status(HttpStatus.OK).json({
       success: true,

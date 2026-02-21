@@ -186,6 +186,25 @@ export class TelegramPurchaseHandler {
       return;
     }
 
+    // Fetch settings once — used for group dedup, PM dedup, and counter-offer logic below
+    const counterOfferSettings = await this.counterOfferSettingsRepository.getSettings(loggedInUserId);
+
+    // Group message dedup check (after parse, before any response)
+    if (counterOfferSettings?.groupDedupEnabled && senderId) {
+      const groupKey = `grp:${loggedInUserId}:${senderId}:${chatId}:${purchaseRequest.airlineId}:${purchaseRequest.quantity}:${purchaseRequest.cpfCount}`;
+      const ttlMs = counterOfferSettings.groupDedupWindowMinutes * 60 * 1000;
+      if (this.privateMessageBuffer.shouldSkip(groupKey, ttlMs)) {
+        this.logger.log('Group dedup: skipping duplicate request', {
+          senderId,
+          chatId,
+          airlineId: purchaseRequest.airlineId,
+          quantity: purchaseRequest.quantity,
+          cpfCount: purchaseRequest.cpfCount,
+        });
+        return;
+      }
+    }
+
     this.logger.log('Message to reply:', messageId);
 
     // Apply anti-bot delay before sending any response
@@ -205,7 +224,6 @@ export class TelegramPurchaseHandler {
     const maxAcceptedPrice = Math.max(...purchaseRequest.acceptedPrices);
 
     // Caso 2: Preço aceito >= calculado (lowest) -> "Vamos!" + call to action no privado
-    console.log('maxAcceptedPrice', maxAcceptedPrice, 'lowestPrice', lowestPrice);
     if (maxAcceptedPrice >= lowestPrice) {
       this.logger.log('User max accepted price is higher than calculated price', {
         maxAcceptedPrice,
@@ -217,7 +235,6 @@ export class TelegramPurchaseHandler {
         this.logger.warn('No senderId, ignoring call to action');
         return;
       }
-      const counterOfferSettings = await this.counterOfferSettingsRepository.getSettings(loggedInUserId);
       if(!counterOfferSettings?.isEnabled) {
         this.logger.warn('Counter offer is disabled, ignoring call to action');
         return;
@@ -258,8 +275,6 @@ export class TelegramPurchaseHandler {
 
       return;
     }
-
-    const counterOfferSettings = await this.counterOfferSettingsRepository.getSettings(loggedInUserId);
 
     // Counter offer desabilitado -> envia resposta no grupo mas não envia contra-oferta privada
     if (!counterOfferSettings?.isEnabled) {

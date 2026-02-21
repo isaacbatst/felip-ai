@@ -57,6 +57,8 @@ export class CounterOfferSettingsDrizzleStore extends CounterOfferSettingsReposi
         callToActionTemplateId: settings.callToActionTemplateId,
         dedupEnabled: settings.dedupEnabled,
         dedupWindowMinutes: settings.dedupWindowMinutes,
+        groupDedupEnabled: settings.groupDedupEnabled,
+        groupDedupWindowMinutes: settings.groupDedupWindowMinutes,
         createdAt: now,
         updatedAt: now,
       })
@@ -69,6 +71,8 @@ export class CounterOfferSettingsDrizzleStore extends CounterOfferSettingsReposi
           callToActionTemplateId: settings.callToActionTemplateId,
           dedupEnabled: settings.dedupEnabled,
           dedupWindowMinutes: settings.dedupWindowMinutes,
+          groupDedupEnabled: settings.groupDedupEnabled,
+          groupDedupWindowMinutes: settings.groupDedupWindowMinutes,
           updatedAt: now,
         },
       })
