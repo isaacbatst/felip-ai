@@ -653,8 +653,8 @@
         <h3 class="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
           <i class="fa-solid fa-clock"></i> Delay Padrão
         </h3>
-        <p class="text-xs text-gray-500 mb-4">Tempo de espera padrão (em segundos) antes de responder. Grupos sem configuração personalizada usarão estes valores.</p>
-        <div class="flex items-center gap-3 flex-wrap">
+        <p class="text-xs text-gray-500 mb-3">Tempo de espera padrão (em segundos) antes de responder. Grupos sem configuração personalizada usarão estes valores.</p>
+        <div class="flex items-center gap-3 flex-wrap mb-3">
           <div class="flex items-center gap-2">
             <label class="text-xs text-gray-600 font-medium">Mínimo (s)</label>
             <input type="number" min="0" max="300" step="1"
@@ -677,6 +677,20 @@
             Salvar
           </button>
         </div>
+        <ul class="text-xs text-gray-500 space-y-1 border-t border-gray-100 pt-3">
+          <li class="flex items-start gap-2">
+            <i class="fa-solid fa-circle-info text-primary mt-0.5 text-[10px]"></i>
+            <span>Ative o delay em cada grupo na aba <strong>Grupos</strong></span>
+          </li>
+          <li class="flex items-start gap-2">
+            <i class="fa-solid fa-circle-info text-primary mt-0.5 text-[10px]"></i>
+            <span>O bot aguarda um tempo aleatório entre o mínimo e máximo antes de responder</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <i class="fa-solid fa-circle-info text-primary mt-0.5 text-[10px]"></i>
+            <span>Cada grupo pode ter seu próprio range ou usar o padrão definido acima</span>
+          </li>
+        </ul>
       </div>
 
       <!-- Group Message Deduplication -->
@@ -739,26 +753,6 @@
         </button>
       </div>
 
-      <!-- How it works -->
-      <div class="p-4 bg-white rounded-xl border border-gray-200">
-        <h3 class="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
-          <i class="fa-solid fa-circle-info"></i> Como funciona
-        </h3>
-        <ul class="text-xs text-gray-600 space-y-2 ml-1">
-          <li class="flex items-start gap-2">
-            <span class="text-primary mt-0.5">1.</span>
-            <span>Ative o delay em cada grupo na aba <strong>Grupos</strong></span>
-          </li>
-          <li class="flex items-start gap-2">
-            <span class="text-primary mt-0.5">2.</span>
-            <span>O bot aguarda um tempo aleatório entre o mínimo e máximo antes de responder</span>
-          </li>
-          <li class="flex items-start gap-2">
-            <span class="text-primary mt-0.5">3.</span>
-            <span>Cada grupo pode ter seu próprio range ou usar o padrão definido acima</span>
-          </li>
-        </ul>
-      </div>
     </div>
 
     <!-- Subscription Section -->
@@ -973,7 +967,7 @@
         touchStartY: 0,
 
         // Section tabs state
-        activeSection: 'prices', // 'prices' | 'limits' | 'counterOffer' | 'groups' | 'antiBot' | 'subscription'
+        activeSection: ['prices','limits','counterOffer','groups','antiBot','subscription'].includes(new URLSearchParams(window.location.search).get('tab')) ? new URLSearchParams(window.location.search).get('tab') : 'prices',
 
         // Price type tab state (for mobile normal/liminar tabs)
         priceTypeTab: 'normal', // 'normal' | 'liminar'
@@ -1170,6 +1164,17 @@
             if (this.botStatus.isEnabled) {
               this.startWorkerPolling();
             }
+
+            // Trigger lazy fetches if tab was set from query param
+            if (this.activeSection === 'groups') this.fetchGroupsIfNeeded();
+            if (this.activeSection === 'subscription') this.fetchSubscriptionIfNeeded();
+
+            // Sync activeSection to query param
+            this.$watch('activeSection', (val) => {
+              const url = new URL(window.location);
+              url.searchParams.set('tab', val);
+              history.replaceState(null, '', url);
+            });
 
             this.loading = false;
           } catch (error) {
