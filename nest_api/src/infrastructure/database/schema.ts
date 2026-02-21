@@ -499,3 +499,30 @@ export const webSessions = pgTable(
     index('web_sessions_expires_at_idx').on(table.expiresAt),
   ],
 );
+
+// ============================================================================
+// Blacklist Table
+// ============================================================================
+
+/**
+ * Blacklisted users table - per-user sender blocklist
+ * userId is the bot owner (loggedInUserId), blockedTelegramUserId is the sender to block
+ * scope controls whether the block applies to group messages, private messages, or both
+ */
+export const blacklistedUsers = pgTable(
+  'blacklisted_users',
+  {
+    id: integer('id').primaryKey().generatedAlwaysAsIdentity(),
+    userId: text('user_id').notNull(),
+    blockedTelegramUserId: bigint('blocked_telegram_user_id', { mode: 'number' }).notNull(),
+    blockedUsername: text('blocked_username'),
+    blockedName: text('blocked_name'),
+    scope: text('scope').notNull(), // 'group' | 'private' | 'both'
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => [
+    index('blacklisted_users_user_id_idx').on(table.userId),
+    index('blacklisted_users_user_id_blocked_id_idx').on(table.userId, table.blockedTelegramUserId),
+    unique('blacklisted_users_user_id_blocked_id_unique').on(table.userId, table.blockedTelegramUserId),
+  ],
+);

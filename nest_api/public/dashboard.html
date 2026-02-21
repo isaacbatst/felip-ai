@@ -157,6 +157,9 @@
       <button class="px-5 py-3 border-none bg-transparent cursor-pointer text-sm font-medium border-b-3 -mb-0.5 transition-all flex flex-col gap-1 hover:text-primary max-md:px-3 max-md:py-2 max-md:flex-row max-md:items-center max-md:rounded-full max-md:border-0 max-md:mb-0" :class="activeSection === 'antiBot' ? 'text-primary border-b-primary max-md:bg-primary/10' : 'text-gray-500 border-transparent max-md:bg-gray-100'" @click="activeSection = 'antiBot'">
         <i class="fa-solid fa-shield-halved"></i> Anti-Bot
       </button>
+      <button class="px-5 py-3 border-none bg-transparent cursor-pointer text-sm font-medium border-b-3 -mb-0.5 transition-all flex flex-col gap-1 hover:text-primary max-md:px-3 max-md:py-2 max-md:flex-row max-md:items-center max-md:rounded-full max-md:border-0 max-md:mb-0" :class="activeSection === 'blacklist' ? 'text-primary border-b-primary max-md:bg-primary/10' : 'text-gray-500 border-transparent max-md:bg-gray-100'" @click="activeSection = 'blacklist'; fetchBlacklistIfNeeded(); fetchGroupsIfNeeded()">
+        <i class="fa-solid fa-ban"></i> Bloqueados
+      </button>
       <button class="px-5 py-3 border-none bg-transparent cursor-pointer text-sm font-medium border-b-3 -mb-0.5 transition-all flex flex-col gap-1 hover:text-primary max-md:px-3 max-md:py-2 max-md:flex-row max-md:items-center max-md:rounded-full max-md:border-0 max-md:mb-0" :class="activeSection === 'subscription' ? 'text-primary border-b-primary max-md:bg-primary/10' : 'text-gray-500 border-transparent max-md:bg-gray-100'" @click="activeSection = 'subscription'; fetchSubscriptionIfNeeded()">
         <i class="fa-solid fa-credit-card"></i> Assinatura
       </button>
@@ -755,6 +758,244 @@
 
     </div>
 
+    <!-- Blacklist Section -->
+    <div class="section mb-8 p-5 bg-gray-50 rounded-xl max-md:p-0 max-md:mb-6" x-show="activeSection === 'blacklist'">
+      <div class="section-header flex justify-between items-center mb-4 max-md:mx-3 max-md:py-3 max-md:border-b max-md:border-gray-200">
+        <h2 class="text-gray-800 text-lg font-semibold flex items-center gap-1 max-md:text-base"><i class="fa-solid fa-ban"></i> Usuários Bloqueados</h2>
+      </div>
+
+      <!-- Browse Group Members — primary add flow -->
+      <div class="bg-white border border-gray-200 rounded-xl mb-4 max-md:mx-3 overflow-hidden">
+        <!-- Group selector bar -->
+        <div class="flex items-stretch border-b border-gray-100">
+          <div class="flex-1 relative">
+            <i class="fa-solid fa-users absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 text-xs pointer-events-none"></i>
+            <select x-model="memberBrowseGroupId"
+              @change="memberBrowseResults = []; memberBrowseQuery = ''; membersFetched = false; if(memberBrowseGroupId) fetchGroupMembers()"
+              class="w-full h-full pl-9 pr-3 py-3 border-none text-sm bg-transparent focus:ring-0 outline-none cursor-pointer appearance-none">
+              <option :value="null">Selecione um grupo...</option>
+              <template x-for="g in availableGroups.filter(g => g.isActive)" :key="g.id">
+                <option :value="g.id" x-text="g.title"></option>
+              </template>
+            </select>
+            <i class="fa-solid fa-chevron-down absolute right-3 top-1/2 -translate-y-1/2 text-gray-300 text-[10px] pointer-events-none"></i>
+          </div>
+          <button type="button"
+            class="px-3.5 border-l border-gray-100 text-gray-400 hover:text-primary hover:bg-primary/5 transition-all disabled:opacity-40 cursor-pointer bg-transparent"
+            @click="fetchAvailableGroups()"
+            :disabled="loadingAvailableGroups"
+            title="Atualizar lista de grupos">
+            <i class="fa-solid fa-arrows-rotate text-xs" :class="loadingAvailableGroups && 'animate-spin'"></i>
+          </button>
+        </div>
+
+        <!-- Search bar (visible when group selected) -->
+        <div x-show="memberBrowseGroupId" class="flex items-stretch border-b border-gray-100">
+          <div class="flex-1 relative">
+            <i class="fa-solid fa-search absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 text-xs pointer-events-none"></i>
+            <input type="text" x-model="memberBrowseQuery"
+              @input="clearTimeout(memberBrowseDebounceTimer); memberBrowseDebounceTimer = setTimeout(() => { if(memberBrowseGroupId) fetchGroupMembers() }, 400)"
+              placeholder="Filtrar por nome..."
+              class="w-full pl-9 pr-3 py-2.5 border-none text-sm bg-transparent focus:ring-0 outline-none"
+              :disabled="!memberBrowseGroupId">
+          </div>
+        </div>
+
+        <!-- Content area -->
+        <div class="relative" style="min-height: 80px;">
+          <!-- Empty state: no group selected -->
+          <div x-show="!memberBrowseGroupId && !loadingMembers" class="flex flex-col items-center justify-center py-10 px-4 text-center">
+            <div class="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mb-3">
+              <i class="fa-solid fa-user-group text-gray-300 text-lg"></i>
+            </div>
+            <p class="text-sm text-gray-400">Selecione um grupo para ver os membros</p>
+            <p class="text-xs text-gray-300 mt-1">Escolha um grupo ativo no menu acima</p>
+          </div>
+
+          <!-- Loading members -->
+          <div x-show="loadingMembers" class="flex items-center justify-center py-10">
+            <div class="spinner mr-3" style="width: 20px; height: 20px; border-width: 2px;"></div>
+            <span class="text-sm text-gray-400">Buscando membros...</span>
+          </div>
+
+          <!-- Members list -->
+          <div x-show="!loadingMembers && memberBrowseResults.length > 0" class="max-h-72 overflow-y-auto">
+            <template x-for="(member, idx) in memberBrowseResults" :key="member.userId">
+              <div :class="idx > 0 && 'border-t border-gray-50'">
+                <div class="flex items-center justify-between px-4 py-2.5 hover:bg-gray-50 transition-colors group">
+                  <div class="flex items-center gap-3 min-w-0">
+                    <div class="w-9 h-9 rounded-full bg-gradient-to-br from-primary/20 to-primary/5 text-primary flex items-center justify-center shrink-0 text-xs font-bold"
+                      x-text="(member.firstName || '?')[0].toUpperCase()"></div>
+                    <div class="min-w-0">
+                      <div class="font-medium text-sm text-gray-800 truncate" x-text="[member.firstName, member.lastName].filter(Boolean).join(' ') || 'Sem nome'"></div>
+                      <div class="text-xs text-gray-400 truncate" x-text="member.username ? '@' + member.username : 'ID: ' + member.userId"></div>
+                    </div>
+                  </div>
+                  <!-- Already blocked indicator -->
+                  <template x-if="blacklist.some(e => e.blockedTelegramUserId === member.userId)">
+                    <span class="shrink-0 flex items-center gap-1.5 px-3 py-1.5 text-gray-400 text-xs">
+                      <i class="fa-solid fa-check text-[10px]"></i> Bloqueado
+                    </span>
+                  </template>
+                  <!-- Block button (not yet blocked) -->
+                  <template x-if="!blacklist.some(e => e.blockedTelegramUserId === member.userId)">
+                    <button type="button"
+                      @click="blockingMemberId = blockingMemberId === member.userId ? null : member.userId"
+                      class="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer border-none"
+                      :class="blockingMemberId === member.userId ? 'bg-red-100 text-red-700' : 'opacity-50 group-hover:opacity-100 bg-red-50 text-red-600 hover:bg-red-100'"
+                      :disabled="addingToBlacklist">
+                      <i class="fa-solid fa-ban text-[10px]"></i> Bloquear
+                    </button>
+                  </template>
+                </div>
+                <!-- Inline scope chooser (expanded) -->
+                <div x-show="blockingMemberId === member.userId" class="px-4 pb-3 pt-0.5">
+                  <div class="flex items-center gap-1.5 pl-12">
+                    <span class="text-xs text-gray-400 mr-1">Escopo:</span>
+                    <button type="button" @click="blockMember(member, 'both')"
+                      class="px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all cursor-pointer border border-red-200 bg-red-50 text-red-700 hover:bg-red-100"
+                      :disabled="addingToBlacklist">
+                      Ambos
+                    </button>
+                    <button type="button" @click="blockMember(member, 'group')"
+                      class="px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all cursor-pointer border border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100"
+                      :disabled="addingToBlacklist">
+                      Grupo
+                    </button>
+                    <button type="button" @click="blockMember(member, 'private')"
+                      class="px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all cursor-pointer border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100"
+                      :disabled="addingToBlacklist">
+                      Privado
+                    </button>
+                    <button type="button" @click="blockingMemberId = null"
+                      class="ml-1 px-2 py-1 rounded-md text-[11px] text-gray-400 hover:text-gray-600 transition-all cursor-pointer border-none bg-transparent">
+                      <i class="fa-solid fa-xmark"></i>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </template>
+          </div>
+
+          <!-- No results with search -->
+          <div x-show="!loadingMembers && memberBrowseGroupId && memberBrowseResults.length === 0 && memberBrowseQuery" class="flex flex-col items-center justify-center py-10 text-center">
+            <i class="fa-solid fa-search text-gray-200 text-2xl mb-2"></i>
+            <p class="text-sm text-gray-400">Nenhum membro encontrado</p>
+            <p class="text-xs text-gray-300 mt-1">Tente outro termo de busca</p>
+          </div>
+
+          <!-- No results without search (group loaded but empty) -->
+          <div x-show="!loadingMembers && memberBrowseGroupId && membersFetched && memberBrowseResults.length === 0 && !memberBrowseQuery" class="flex flex-col items-center justify-center py-10 text-center">
+            <div class="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-2">
+              <i class="fa-solid fa-users-slash text-gray-300"></i>
+            </div>
+            <p class="text-sm text-gray-400">Nenhum membro encontrado neste grupo</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Blocked Users List -->
+      <div class="max-md:mx-3">
+        <div class="flex items-center justify-between mb-3">
+          <h4 class="text-sm font-semibold text-gray-700 flex items-center gap-2">
+            <span class="w-2 h-2 bg-red-400 rounded-full"></span>
+            Bloqueados
+            <span x-show="blacklist.length > 0" class="text-gray-400 font-normal" x-text="'(' + blacklist.length + ')'"></span>
+          </h4>
+        </div>
+
+        <!-- Loading State -->
+        <div x-show="loadingBlacklist" class="text-center py-6">
+          <div class="spinner mx-auto mb-3" style="width: 24px; height: 24px; border-width: 2px;"></div>
+          <p class="text-gray-400 text-sm">Carregando...</p>
+        </div>
+
+        <!-- Empty State -->
+        <template x-if="blacklistFetched && !loadingBlacklist && blacklist.length === 0">
+          <div class="bg-white border border-dashed border-gray-200 rounded-xl py-8 text-center">
+            <div class="w-10 h-10 rounded-full bg-emerald-50 flex items-center justify-center mx-auto mb-2">
+              <i class="fa-solid fa-check text-emerald-400"></i>
+            </div>
+            <p class="text-sm text-gray-400">Nenhum usuário bloqueado</p>
+          </div>
+        </template>
+
+        <!-- Entries -->
+        <div x-show="!loadingBlacklist && blacklist.length > 0" class="bg-white border border-gray-200 rounded-xl overflow-hidden">
+          <template x-for="(entry, idx) in blacklist" :key="entry.id">
+            <div :class="idx > 0 && 'border-t border-gray-100'">
+              <div class="flex items-center justify-between px-4 py-3 group hover:bg-gray-50/50 transition-colors">
+                <div class="flex items-center gap-3 min-w-0">
+                  <div class="w-9 h-9 rounded-full bg-red-50 text-red-400 flex items-center justify-center shrink-0 text-xs font-bold"
+                    x-text="(entry.blockedName || entry.blockedUsername || '?')[0].toUpperCase()"></div>
+                  <div class="min-w-0">
+                    <div class="flex items-center gap-2 flex-wrap">
+                      <span class="font-medium text-sm text-gray-800 truncate" x-text="entry.blockedName || entry.blockedUsername || entry.blockedTelegramUserId"></span>
+                      <!-- Scope badge — clickable to edit -->
+                      <button type="button"
+                        @click="editingScopeEntryId = editingScopeEntryId === entry.id ? null : entry.id"
+                        class="px-1.5 py-0.5 rounded text-[10px] font-semibold shrink-0 cursor-pointer border-none transition-all hover:ring-2 hover:ring-offset-1"
+                        :class="{
+                          'bg-amber-100 text-amber-700 hover:ring-amber-300': entry.scope === 'group',
+                          'bg-blue-100 text-blue-700 hover:ring-blue-300': entry.scope === 'private',
+                          'bg-red-100 text-red-700 hover:ring-red-300': entry.scope === 'both'
+                        }"
+                        :disabled="addingToBlacklist"
+                        title="Alterar escopo">
+                        <span x-text="{ group: 'Grupo', private: 'Privado', both: 'Ambos' }[entry.scope]"></span>
+                        <i class="fa-solid fa-pen text-[8px] ml-0.5 opacity-60"></i>
+                      </button>
+                    </div>
+                    <div class="text-xs text-gray-400 flex items-center gap-1.5 mt-0.5">
+                      <span x-show="entry.blockedUsername && entry.blockedName" x-text="entry.blockedUsername"></span>
+                      <span x-show="entry.blockedUsername && entry.blockedName" class="text-gray-200">&middot;</span>
+                      <span x-text="'ID: ' + entry.blockedTelegramUserId"></span>
+                    </div>
+                  </div>
+                </div>
+                <button type="button"
+                  class="w-8 h-8 rounded-lg border-none bg-transparent text-gray-300 text-sm cursor-pointer flex items-center justify-center transition-all group-hover:text-red-400 hover:!bg-red-50 hover:!text-red-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                  @click="removeFromBlacklist(entry.id)"
+                  :disabled="removingBlacklistId === entry.id"
+                  title="Desbloquear">
+                  <span x-show="removingBlacklistId === entry.id" class="spinner" style="width: 12px; height: 12px;"></span>
+                  <span x-show="removingBlacklistId !== entry.id"><i class="fa-solid fa-trash-can"></i></span>
+                </button>
+              </div>
+              <!-- Inline scope editor -->
+              <div x-show="editingScopeEntryId === entry.id" class="px-4 pb-3 pt-0.5">
+                <div class="flex items-center gap-1.5 pl-12">
+                  <span class="text-xs text-gray-400 mr-1">Alterar para:</span>
+                  <button type="button" @click="updateBlacklistScope(entry, 'both')"
+                    class="px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all cursor-pointer border"
+                    :class="entry.scope === 'both' ? 'border-red-300 bg-red-100 text-red-700 ring-1 ring-red-200' : 'border-red-200 bg-red-50 text-red-700 hover:bg-red-100'"
+                    :disabled="addingToBlacklist || entry.scope === 'both'">
+                    Ambos
+                  </button>
+                  <button type="button" @click="updateBlacklistScope(entry, 'group')"
+                    class="px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all cursor-pointer border"
+                    :class="entry.scope === 'group' ? 'border-amber-300 bg-amber-100 text-amber-700 ring-1 ring-amber-200' : 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100'"
+                    :disabled="addingToBlacklist || entry.scope === 'group'">
+                    Grupo
+                  </button>
+                  <button type="button" @click="updateBlacklistScope(entry, 'private')"
+                    class="px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all cursor-pointer border"
+                    :class="entry.scope === 'private' ? 'border-blue-300 bg-blue-100 text-blue-700 ring-1 ring-blue-200' : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'"
+                    :disabled="addingToBlacklist || entry.scope === 'private'">
+                    Privado
+                  </button>
+                  <button type="button" @click="editingScopeEntryId = null"
+                    class="ml-1 px-2 py-1 rounded-md text-[11px] text-gray-400 hover:text-gray-600 transition-all cursor-pointer border-none bg-transparent">
+                    <i class="fa-solid fa-xmark"></i>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </template>
+        </div>
+      </div>
+    </div>
+
     <!-- Subscription Section -->
     <div class="section mb-8 p-5 bg-gray-50 rounded-xl max-md:p-0 max-md:mb-6" x-show="activeSection === 'subscription'">
       <div class="section-header flex justify-between items-center mb-4 max-md:mx-3 max-md:py-3 max-md:border-b max-md:border-gray-200">
@@ -967,7 +1208,7 @@
         touchStartY: 0,
 
         // Section tabs state
-        activeSection: ['prices','limits','counterOffer','groups','antiBot','subscription'].includes(new URLSearchParams(window.location.search).get('tab')) ? new URLSearchParams(window.location.search).get('tab') : 'prices',
+        activeSection: ['prices','limits','counterOffer','groups','antiBot','blacklist','subscription'].includes(new URLSearchParams(window.location.search).get('tab')) ? new URLSearchParams(window.location.search).get('tab') : 'prices',
 
         // Price type tab state (for mobile normal/liminar tabs)
         priceTypeTab: 'normal', // 'normal' | 'liminar'
@@ -1087,6 +1328,21 @@
         loadingSubscription: false,
         subscriptionFetched: false,
 
+        // Blacklist
+        blacklist: [],
+        blacklistFetched: false,
+        loadingBlacklist: false,
+        addingToBlacklist: false,
+        removingBlacklistId: null,
+        memberBrowseGroupId: null,
+        memberBrowseQuery: '',
+        memberBrowseResults: [],
+        membersFetched: false,
+        loadingMembers: false,
+        blockingMemberId: null,
+        editingScopeEntryId: null,
+        memberBrowseDebounceTimer: null,
+
         // ============================================================================
         // Computed Properties (as getters)
         // ============================================================================
@@ -1168,6 +1424,7 @@
             // Trigger lazy fetches if tab was set from query param
             if (this.activeSection === 'groups') this.fetchGroupsIfNeeded();
             if (this.activeSection === 'subscription') this.fetchSubscriptionIfNeeded();
+            if (this.activeSection === 'blacklist') { this.fetchBlacklistIfNeeded(); this.fetchGroupsIfNeeded(); }
 
             // Sync activeSection to query param
             this.$watch('activeSection', (val) => {
@@ -1727,6 +1984,149 @@
             await this.fetchAvailableGroups();
           }
         },
+
+        // ============================================================================
+        // Blacklist Methods
+        // ============================================================================
+
+        async fetchBlacklistIfNeeded() {
+          if (!this.blacklistFetched) {
+            await this.fetchBlacklist();
+          }
+        },
+
+        async fetchBlacklist() {
+          this.loadingBlacklist = true;
+          try {
+            const res = await this.authFetch('/dashboard/blacklist');
+            const data = await res.json();
+            if (data.success) {
+              this.blacklist = data.data;
+              this.blacklistFetched = true;
+            } else {
+              this.showToast('Erro ao carregar lista de bloqueados', 'error');
+            }
+          } catch (error) {
+            console.error('Error fetching blacklist:', error);
+            this.showToast('Erro ao carregar lista de bloqueados', 'error');
+          } finally {
+            this.loadingBlacklist = false;
+          }
+        },
+
+        async removeFromBlacklist(id) {
+          this.removingBlacklistId = id;
+          try {
+            const res = await this.authFetch(`/dashboard/blacklist/${id}`, { method: 'DELETE' });
+            const data = await res.json();
+            if (data.success) {
+              this.blacklist = this.blacklist.filter(e => e.id !== id);
+              this.showToast('Usuário desbloqueado', 'success');
+            } else {
+              this.showToast('Erro ao remover bloqueio', 'error');
+            }
+          } catch (error) {
+            console.error('Error removing from blacklist:', error);
+            this.showToast('Erro ao remover bloqueio', 'error');
+          } finally {
+            this.removingBlacklistId = null;
+          }
+        },
+
+        async fetchGroupMembers() {
+          if (!this.memberBrowseGroupId) return;
+          this.loadingMembers = true;
+          try {
+            const params = new URLSearchParams({ groupId: String(this.memberBrowseGroupId) });
+            if (this.memberBrowseQuery.trim()) params.set('query', this.memberBrowseQuery.trim());
+            const res = await this.authFetch(`/dashboard/blacklist/group-members?${params}`);
+            const data = await res.json();
+            if (data.success) {
+              this.memberBrowseResults = data.data;
+              this.membersFetched = true;
+            } else {
+              this.showToast('Erro ao buscar membros do grupo', 'error');
+            }
+          } catch (error) {
+            console.error('Error fetching group members:', error);
+            this.showToast('Erro ao buscar membros do grupo', 'error');
+          } finally {
+            this.loadingMembers = false;
+          }
+        },
+
+        async blockMember(member, scope) {
+          this.addingToBlacklist = true;
+          try {
+            const res = await this.authFetch('/dashboard/blacklist', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                identifier: String(member.userId),
+                scope,
+                name: [member.firstName, member.lastName].filter(Boolean).join(' ') || null,
+              }),
+            });
+            const data = await res.json();
+            if (data.success) {
+              const existingIdx = this.blacklist.findIndex(e => e.id === data.data.id);
+              if (existingIdx >= 0) {
+                this.blacklist[existingIdx] = data.data;
+              } else {
+                this.blacklist = [data.data, ...this.blacklist];
+              }
+              this.blockingMemberId = null;
+              const name = [member.firstName, member.lastName].filter(Boolean).join(' ') || member.userId;
+              this.showToast(`${name} bloqueado`, 'success');
+            } else {
+              const errorMessages = {
+                'user_not_found': 'Usuário não encontrado',
+                'worker_unavailable': 'Bot precisa estar conectado',
+              };
+              this.showToast(errorMessages[data.error] || ('Erro: ' + (data.error || 'desconhecido')), 'error');
+            }
+          } catch (error) {
+            console.error('Error blocking member:', error);
+            this.showToast('Erro ao bloquear membro', 'error');
+          } finally {
+            this.addingToBlacklist = false;
+          }
+        },
+
+        async updateBlacklistScope(entry, newScope) {
+          this.addingToBlacklist = true;
+          try {
+            const res = await this.authFetch('/dashboard/blacklist', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                identifier: String(entry.blockedTelegramUserId),
+                scope: newScope,
+                name: entry.blockedName || null,
+              }),
+            });
+            const data = await res.json();
+            if (data.success) {
+              const idx = this.blacklist.findIndex(e => e.id === data.data.id);
+              if (idx >= 0) {
+                this.blacklist[idx] = data.data;
+              }
+              this.editingScopeEntryId = null;
+              this.showToast('Escopo atualizado', 'success');
+            } else {
+              this.showToast('Erro ao atualizar escopo', 'error');
+            }
+          } catch (error) {
+            console.error('Error updating scope:', error);
+            this.showToast('Erro ao atualizar escopo', 'error');
+          } finally {
+            this.addingToBlacklist = false;
+          }
+        },
+
+        // ============================================================================
+        // Subscription Methods
+        // ============================================================================
 
         async fetchSubscriptionIfNeeded() {
           if (!this.subscriptionFetched) {

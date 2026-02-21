@@ -7,6 +7,7 @@ import { UserRepository } from '@/infrastructure/persistence/user.repository';
 import { BotPreferenceRepository } from '@/infrastructure/persistence/bot-status.repository';
 import { TdlibUpdateNewMessage } from '../tdlib/tdlib-update.types';
 import { HybridAuthorizationService } from '@/infrastructure/subscription/hybrid-authorization.service';
+import { BlacklistRepository } from '@/infrastructure/persistence/blacklist.repository';
 
 /**
  * Processor responsável por processar mensagens da fila
@@ -23,6 +24,7 @@ export class TelegramUserMessageProcessor {
     private readonly userRepository: UserRepository,
     private readonly botPreferenceRepository: BotPreferenceRepository,
     private readonly hybridAuthorizationService: HybridAuthorizationService,
+    private readonly blacklistRepository: BlacklistRepository,
   ) {}
 
   /**
@@ -172,6 +174,17 @@ export class TelegramUserMessageProcessor {
           `Group ${chatId} is not activated for telegramUserId ${user.telegramUserId}, ignoring message...`,
         );
         return;
+      }
+
+      // Check if sender is blacklisted (group scope)
+      if (senderId !== undefined) {
+        const isBlocked = await this.blacklistRepository.isBlocked(loggedInUserIdStr, senderId, 'group');
+        if (isBlocked) {
+          this.logger.warn(
+            `Sender ${senderId} is blacklisted (group scope) for user ${user.telegramUserId}, ignoring message...`,
+          );
+          return;
+        }
       }
 
       // Extract text content

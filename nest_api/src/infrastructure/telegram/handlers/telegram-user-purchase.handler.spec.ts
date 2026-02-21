@@ -10,6 +10,7 @@ import { MilesProgramRepository } from '@/infrastructure/persistence/miles-progr
 import { PrivateMessageBufferService } from '@/infrastructure/telegram/private-message-buffer.service';
 import { BotPreferenceRepository } from '@/infrastructure/persistence/bot-status.repository';
 import { GroupDelaySettingsRepository } from '@/infrastructure/persistence/group-delay-settings.repository';
+import { BlacklistRepository } from '@/infrastructure/persistence/blacklist.repository';
 import type { PriceTableV2 } from '@/domain/types/price.types';
 import type { PurchaseProposal } from '@/domain/types/purchase.types';
 
@@ -200,6 +201,15 @@ describe('TelegramPurchaseHandler', () => {
             getGroupDelaySetting: jest.fn().mockResolvedValue(null),
             getAllGroupDelaySettings: jest.fn().mockResolvedValue([]),
             upsertGroupDelaySetting: jest.fn(),
+          },
+        },
+        {
+          provide: BlacklistRepository,
+          useValue: {
+            isBlocked: jest.fn().mockResolvedValue(false),
+            getBlacklist: jest.fn().mockResolvedValue([]),
+            add: jest.fn(),
+            remove: jest.fn(),
           },
         },
       ],

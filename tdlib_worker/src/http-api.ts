@@ -14,7 +14,9 @@ export interface TdlibCommandRequest {
     | 'logOut'
     | 'getMe'
     | 'getUserId'
-    | 'resendAuthenticationCode';
+    | 'resendAuthenticationCode'
+    | 'searchPublicChat'
+    | 'searchChatMembers';
   payload: unknown;
 }
 
@@ -127,6 +129,14 @@ export class HttpApi {
       }
       case 'resendAuthenticationCode': {
         return await this.client.resendAuthenticationCode();
+      }
+      case 'searchPublicChat': {
+        const { username } = payload as { username: string };
+        return await this.client.searchPublicChat(username);
+      }
+      case 'searchChatMembers': {
+        const { chatId, query } = payload as { chatId: number; query: string };
+        return await this.client.searchChatMembers(chatId, query);
       }
       default:
         throw new Error(`Unknown command type http-api: ${type}`);

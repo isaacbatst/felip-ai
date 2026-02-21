@@ -5,6 +5,7 @@ import {
   Post,
   Delete,
   Param,
+  Query,
   Body,
   Res,
   Req,
@@ -20,6 +21,7 @@ import { CounterOfferSettingsRepository, type CounterOfferSettingsInput } from '
 import { ActiveGroupsRepository } from '@/infrastructure/persistence/active-groups.repository';
 import { BotPreferenceRepository } from '@/infrastructure/persistence/bot-status.repository';
 import { GroupDelaySettingsRepository, type GroupDelaySettingInput } from '@/infrastructure/persistence/group-delay-settings.repository';
+import { BlacklistRepository, type BlacklistScope } from '@/infrastructure/persistence/blacklist.repository';
 import { TelegramUserClientProxyService } from '@/infrastructure/tdlib/telegram-user-client-proxy.service';
 import { SubscriptionService, SubscriptionError } from '@/infrastructure/subscription/subscription.service';
 import type { CheckoutRequestDto } from '@/infrastructure/cielo/cielo.types';
@@ -203,6 +205,21 @@ interface UpdateGroupDelayDto {
   delayMax: number | null;
 }
 
+interface BlacklistEntryResponse {
+  id: number;
+  blockedTelegramUserId: number;
+  blockedUsername: string | null;
+  blockedName: string | null;
+  scope: BlacklistScope;
+  createdAt: string;
+}
+
+interface AddToBlacklistDto {
+  identifier: string;
+  scope: BlacklistScope;
+  name?: string;
+}
+
 interface SubscriptionStatusResponse {
   subscription: {
     id: number;
@@ -250,6 +267,7 @@ export class DashboardController {
     private readonly userRepository: UserRepository,
     private readonly authErrorCache: AuthErrorCacheService,
     private readonly groupDelaySettingsRepository: GroupDelaySettingsRepository,
+    private readonly blacklistRepository: BlacklistRepository,
   ) {}
 
   /**
@@ -1649,5 +1667,198 @@ export class DashboardController {
         error: 'Erro ao iniciar período de teste. Tente novamente.',
       } satisfies ApiResponse);
     }
+  }
+
+  // ============================================================================
+  // Blacklist Management
+  // ============================================================================
+
+  /**
+   * GET /dashboard/blacklist/group-members - Browse members of a group for blacklisting
+   */
+  @Get('blacklist/group-members')
+  async getGroupMembers(
+    @Req() req: AuthenticatedRequest,
+    @Query('groupId') groupId: string,
+    @Query('query') query: string = '',
+    @Res() res: Response,
+  ): Promise<void> {
+    const userId = req.user.userId;
+
+    const groupIdNum = parseInt(groupId, 10);
+    if (!groupId || Number.isNaN(groupIdNum)) {
+      res.status(HttpStatus.BAD_REQUEST).json({
+        success: false,
+        error: 'groupId is required and must be a number',
+      } satisfies ApiResponse);
+      return;
+    }
+
+    try {
+      const members = await this.telegramUserClient.searchChatMembers(userId, groupIdNum, query || '');
+      res.status(HttpStatus.OK).json({
+        success: true,
+        data: members,
+      } satisfies ApiResponse);
+    } catch (error) {
+      this.logger.error('Error fetching group members', { error, userId, groupId: groupIdNum });
+      res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
+        success: false,
+        error: 'worker_unavailable',
+      } satisfies ApiResponse);
+    }
+  }
+
+  /**
+   * GET /dashboard/blacklist - Get all blacklisted users
+   */
+  @Get('blacklist')
+  async getBlacklist(
+    @Req() req: AuthenticatedRequest,
+  ): Promise<ApiResponse<BlacklistEntryResponse[]>> {
+    const userId = req.user.userId;
+    const entries = await this.blacklistRepository.getBlacklist(userId);
+
+    return {
+      success: true,
+      data: entries.map((e) => ({
+        id: e.id,
+        blockedTelegramUserId: e.blockedTelegramUserId,
+        blockedUsername: e.blockedUsername,
+        blockedName: e.blockedName,
+        scope: e.scope as BlacklistScope,
+        createdAt: e.createdAt.toISOString(),
+      })),
+    };
+  }
+
+  /**
+   * POST /dashboard/blacklist - Add a user to the blacklist
+   * Accepts @username or numeric Telegram user ID string.
+   */
+  @Post('blacklist')
+  async addToBlacklist(
+    @Req() req: AuthenticatedRequest,
+    @Body() body: AddToBlacklistDto,
+    @Res() res: Response,
+  ): Promise<void> {
+    const userId = req.user.userId;
+
+    if (!body.identifier || typeof body.identifier !== 'string' || !body.identifier.trim()) {
+      res.status(HttpStatus.BAD_REQUEST).json({
+        success: false,
+        error: 'identifier is required',
+      } satisfies ApiResponse);
+      return;
+    }
+
+    const validScopes: BlacklistScope[] = ['group', 'private', 'both'];
+    if (!validScopes.includes(body.scope)) {
+      res.status(HttpStatus.BAD_REQUEST).json({
+        success: false,
+        error: 'scope must be one of: group, private, both',
+      } satisfies ApiResponse);
+      return;
+    }
+
+    const identifier = body.identifier.trim();
+    let blockedTelegramUserId: number;
+    let blockedUsername: string | null = null;
+
+    // Determine if input is numeric ID or @username
+    const cleanIdentifier = identifier.replace(/^@/, '');
+    const numericId = Number(cleanIdentifier);
+    const isNumericId = !identifier.startsWith('@') && !Number.isNaN(numericId) && Number.isInteger(numericId) && numericId > 0;
+
+    if (isNumericId) {
+      blockedTelegramUserId = numericId;
+    } else {
+      // Resolve @username via TDLib
+      const username = cleanIdentifier;
+      blockedUsername = `@${username}`;
+
+      try {
+        const chatResult = await this.telegramUserClient.searchPublicChat(userId, username);
+
+        if (!chatResult) {
+          res.status(HttpStatus.NOT_FOUND).json({
+            success: false,
+            error: 'user_not_found',
+          } satisfies ApiResponse);
+          return;
+        }
+
+        if (chatResult.type?._ === 'chatTypePrivate' && chatResult.type.user_id) {
+          blockedTelegramUserId = chatResult.type.user_id;
+        } else if (chatResult.id > 0) {
+          blockedTelegramUserId = chatResult.id;
+        } else {
+          res.status(HttpStatus.BAD_REQUEST).json({
+            success: false,
+            error: 'identifier_is_not_a_user',
+          } satisfies ApiResponse);
+          return;
+        }
+      } catch (error) {
+        this.logger.error('Error resolving username for blacklist', { error, userId, identifier });
+        res.status(HttpStatus.BAD_REQUEST).json({
+          success: false,
+          error: 'worker_unavailable',
+        } satisfies ApiResponse);
+        return;
+      }
+    }
+
+    const blockedName = body.name?.trim() || null;
+
+    const entry = await this.blacklistRepository.add(userId, {
+      blockedTelegramUserId,
+      blockedUsername,
+      blockedName,
+      scope: body.scope,
+    });
+
+    this.logger.log(`Added user ${blockedTelegramUserId} (${blockedName || blockedUsername}) to blacklist for user ${userId}, scope=${body.scope}`);
+
+    res.status(HttpStatus.CREATED).json({
+      success: true,
+      data: {
+        id: entry.id,
+        blockedTelegramUserId: entry.blockedTelegramUserId,
+        blockedUsername: entry.blockedUsername,
+        blockedName: entry.blockedName,
+        scope: entry.scope as BlacklistScope,
+        createdAt: entry.createdAt.toISOString(),
+      },
+    } satisfies ApiResponse<BlacklistEntryResponse>);
+  }
+
+  /**
+   * DELETE /dashboard/blacklist/:id - Remove a user from the blacklist
+   */
+  @Delete('blacklist/:id')
+  async removeFromBlacklist(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') id: string,
+    @Res() res: Response,
+  ): Promise<void> {
+    const userId = req.user.userId;
+
+    const entryId = parseInt(id, 10);
+    if (Number.isNaN(entryId)) {
+      res.status(HttpStatus.BAD_REQUEST).json({
+        success: false,
+        error: 'Invalid id format. Must be a number.',
+      } satisfies ApiResponse);
+      return;
+    }
+
+    await this.blacklistRepository.remove(userId, entryId);
+
+    this.logger.log(`Removed blacklist entry id=${entryId} for user ${userId}`);
+
+    res.status(HttpStatus.OK).json({
+      success: true,
+    } satisfies ApiResponse);
   }
 }

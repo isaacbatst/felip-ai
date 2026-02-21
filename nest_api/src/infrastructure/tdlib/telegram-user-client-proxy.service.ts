@@ -12,7 +12,7 @@ import { randomUUID } from 'node:crypto';
 export type { CommandContext, TdlibCommand, TdlibCommandType };
 
 interface TdlibHttpCommandRequest {
-  type: 'sendMessage' | 'sendMessageToUser' | 'getChats' | 'getChat' | 'getGroups' | 'getMessage' | 'getAuthorizationState' | 'logOut' | 'getMe' | 'getUserId' | 'resendAuthenticationCode';
+  type: 'sendMessage' | 'sendMessageToUser' | 'getChats' | 'getChat' | 'getGroups' | 'getMessage' | 'getAuthorizationState' | 'logOut' | 'getMe' | 'getUserId' | 'resendAuthenticationCode' | 'searchPublicChat' | 'searchChatMembers';
   payload: unknown;
 }
 
@@ -303,6 +303,26 @@ export class TelegramUserClientProxyService implements OnModuleDestroy {
       type: 'resendAuthenticationCode',
       payload: {},
     });
+  }
+
+  /**
+   * Resolves a Telegram @username to a chat/user object via TDLib searchPublicChat
+   */
+  async searchPublicChat(workerUserId: string, username: string): Promise<{ id: number; type: { _: string; user_id?: number } } | null> {
+    return await this.sendHttpCommand(workerUserId, {
+      type: 'searchPublicChat',
+      payload: { username },
+    }) as { id: number; type: { _: string; user_id?: number } } | null;
+  }
+
+  /**
+   * Searches for members in a chat/group by name query
+   */
+  async searchChatMembers(workerUserId: string, chatId: number, query: string): Promise<Array<{ userId: number; firstName: string; lastName: string; username: string | null }>> {
+    return await this.sendHttpCommand(workerUserId, {
+      type: 'searchChatMembers',
+      payload: { chatId, query },
+    }) as Array<{ userId: number; firstName: string; lastName: string; username: string | null }>;
   }
 }
 

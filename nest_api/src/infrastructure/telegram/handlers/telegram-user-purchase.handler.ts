@@ -9,6 +9,7 @@ import { MessageParser, type ProgramOption } from '../../../domain/interfaces/me
 import { PriceTableProvider } from '../../../domain/interfaces/price-table-provider.interface';
 import { PriceCalculatorService } from '../../../domain/services/price-calculator.service';
 import { PrivateMessageBufferService } from '../private-message-buffer.service';
+import { BlacklistRepository } from '@/infrastructure/persistence/blacklist.repository';
 
 interface CalculatedPriceResult {
   price: number;
@@ -40,6 +41,7 @@ export class TelegramPurchaseHandler {
     private readonly privateMessageBuffer: PrivateMessageBufferService,
     private readonly botPreferenceRepository: BotPreferenceRepository,
     private readonly groupDelaySettingsRepository: GroupDelaySettingsRepository,
+    private readonly blacklistRepository: BlacklistRepository,
   ) {}
 
   async handlePurchase(
@@ -265,6 +267,13 @@ export class TelegramPurchaseHandler {
         }
       }
 
+      // Check blacklist before sending private message
+      const isCtaBlocked = await this.blacklistRepository.isBlocked(loggedInUserId, senderId, 'private');
+      if (isCtaBlocked) {
+        this.logger.warn('Sender is blacklisted (private scope), skipping call to action', { senderId });
+        return;
+      }
+
       this.logger.log('Sending call to action to buyer in private', {
         senderId,
         templateId,
@@ -319,6 +328,13 @@ export class TelegramPurchaseHandler {
       if (this.privateMessageBuffer.shouldSkip(key, ttlMs)) {
         return;
       }
+    }
+
+    // Check blacklist before sending private counter-offer
+    const isCounterOfferBlocked = await this.blacklistRepository.isBlocked(loggedInUserId, senderId, 'private');
+    if (isCounterOfferBlocked) {
+      this.logger.warn('Sender is blacklisted (private scope), skipping counter offer', { senderId });
+      return;
     }
 
     this.logger.log('Sending counter offer to buyer', {

@@ -378,6 +378,67 @@ export class TelegramUserClient {
   }
 
   /**
+   * Searches for a public chat by username
+   * Used to resolve @username to numeric Telegram user ID for blacklisting
+   */
+  async searchPublicChat(username: string): Promise<{ id: number; type: { _: string; user_id?: number }; title?: string } | null> {
+    const client = await this.ensureClientReady();
+    try {
+      const result = await client.invoke({
+        _: 'searchPublicChat',
+        username: username.replace(/^@/, ''),
+      });
+      return result as { id: number; type: { _: string; user_id?: number }; title?: string };
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Searches for members in a chat/group by name query
+   * Returns user info for each member found
+   */
+  async searchChatMembers(chatId: number, query: string): Promise<Array<{ userId: number; firstName: string; lastName: string; username: string | null }>> {
+    const client = await this.ensureClientReady();
+    const result = await client.invoke({
+      _: 'searchChatMembers',
+      chat_id: chatId,
+      query,
+      limit: 200,
+    } as Parameters<typeof client.invoke>[0]) as { members?: Array<{ member_id?: { _?: string; user_id?: number } }> };
+
+    const members: Array<{ userId: number; firstName: string; lastName: string; username: string | null }> = [];
+
+    if (!result?.members || !Array.isArray(result.members)) {
+      return members;
+    }
+
+    for (const member of result.members) {
+      const memberId = member?.member_id;
+      if (!memberId || memberId._  !== 'messageSenderUser' || !memberId.user_id) {
+        continue;
+      }
+      try {
+        const user = await client.invoke({
+          _: 'getUser',
+          user_id: memberId.user_id,
+        }) as { id?: number; first_name?: string; last_name?: string; usernames?: { editable_username?: string } };
+
+        members.push({
+          userId: user.id ?? memberId.user_id,
+          firstName: user.first_name ?? '',
+          lastName: user.last_name ?? '',
+          username: user.usernames?.editable_username ?? null,
+        });
+      } catch (error) {
+        console.warn(`[WARN] Error fetching user ${memberId.user_id}:`, error);
+      }
+    }
+
+    return members;
+  }
+
+  /**
    * Gets the current user's ID (bot's own user ID)
    * Fetches directly from the API each time
    */

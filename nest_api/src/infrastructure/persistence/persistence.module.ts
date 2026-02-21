@@ -36,6 +36,8 @@ import { CouponRepository } from "@/infrastructure/persistence/coupon.repository
 import { CouponDrizzleStore } from "@/infrastructure/persistence/drizzle/coupon-drizzle-store";
 import { GroupDelaySettingsRepository } from "@/infrastructure/persistence/group-delay-settings.repository";
 import { GroupDelaySettingsDrizzleStore } from "@/infrastructure/persistence/drizzle/group-delay-settings-drizzle-store";
+import { BlacklistRepository } from "@/infrastructure/persistence/blacklist.repository";
+import { BlacklistDrizzleStore } from "@/infrastructure/persistence/drizzle/blacklist-drizzle-store";
 
 @Module({
   imports: [DatabaseModule],
@@ -112,6 +114,10 @@ import { GroupDelaySettingsDrizzleStore } from "@/infrastructure/persistence/dri
       provide: GroupDelaySettingsRepository,
       useClass: GroupDelaySettingsDrizzleStore,
     },
+    {
+      provide: BlacklistRepository,
+      useClass: BlacklistDrizzleStore,
+    },
   ],
   exports: [
     ActiveGroupsRepository,
@@ -132,6 +138,7 @@ import { GroupDelaySettingsDrizzleStore } from "@/infrastructure/persistence/dri
     CieloWebhookEventRepository,
     CouponRepository,
     GroupDelaySettingsRepository,
+    BlacklistRepository,
   ],
 })
 export class PersistenceModule {}
