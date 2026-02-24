@@ -21,6 +21,15 @@ export class ProviderExtractionUtil {
     // Extract words for fuzzy matching (only needed if exact match fails)
     const words = ProviderExtractionUtil.extractWordsFromText(normalizedText);
 
+    // Collect all single-word keywords to exclude from Phase 3 word-level matching.
+    // Words like "latam", "smiles" that are complete program keywords should not
+    // trigger a match for compound programs like "LATAM WALLET".
+    const allSingleWordKeywords = new Set(
+      sortedPrograms.flatMap((p) =>
+        ProviderExtractionUtil.getKeywords(p.name).filter((kw) => !kw.includes(' ')),
+      ),
+    );
+
     for (const program of sortedPrograms) {
       const isLiminarProgram = program.name.toLowerCase().includes('liminar');
 
@@ -43,7 +52,7 @@ export class ProviderExtractionUtil {
       }
 
       // 3. Fallback: for multi-word keywords, check if a distinctive keyword word matches
-      if (keywords.some((kw) => ProviderExtractionUtil.fuzzyMatchKeywordWords(words, kw))) {
+      if (keywords.some((kw) => ProviderExtractionUtil.fuzzyMatchKeywordWords(words, kw, 0.8, allSingleWordKeywords))) {
         return program.id;
       }
     }
@@ -96,14 +105,19 @@ export class ProviderExtractionUtil {
    * Check if any word in the text fuzzy matches an individual word from a multi-word keyword.
    * Only considers keyword words longer than 4 characters to avoid false positives
    * with common short words like "azul" (4), "pelo" (4), "tudo" (4).
-   * Also excludes "liminar" since it's handled by special-case logic in extractProvider.
+   * Also excludes "liminar" (handled by special-case logic) and any words that are
+   * standalone program keywords (e.g. "latam" should not match "LATAM WALLET" when
+   * a plain "LATAM" program exists).
    */
   static fuzzyMatchKeywordWords(
     textWords: string[],
     keyword: string,
     threshold: number = 0.8,
+    excludeWords: Set<string> = new Set(),
   ): boolean {
-    const keywordWords = keyword.split(' ').filter((w) => w.length > 4 && w !== 'liminar');
+    const keywordWords = keyword
+      .split(' ')
+      .filter((w) => w.length > 4 && w !== 'liminar' && !excludeWords.has(w));
     if (keywordWords.length === 0) return false;
     return textWords.some((tw) =>
       keywordWords.some((kw) => FuzzyMatchUtil.stringSimilarity(tw, kw) >= threshold),

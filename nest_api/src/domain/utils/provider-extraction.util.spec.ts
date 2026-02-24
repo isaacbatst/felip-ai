@@ -13,6 +13,7 @@ describe('ProviderExtractionUtil', () => {
     { id: 21, name: 'SMILES LIMINAR' },
     { id: 22, name: 'LATAM LIMINAR' },
     { id: 23, name: 'AZUL LIMINAR' },
+    { id: 24, name: 'LATAM WALLET' },
   ];
 
   describe('normalizeText', () => {
@@ -187,6 +188,14 @@ describe('ProviderExtractionUtil', () => {
       expect(ProviderExtractionUtil.fuzzyMatchKeywordWords(['inter'], 'azul interline', 0.5)).toBe(true);
       expect(ProviderExtractionUtil.fuzzyMatchKeywordWords(['inter'], 'azul interline', 0.9)).toBe(false);
     });
+
+    it('should exclude words present in the excludeWords set', () => {
+      const exclude = new Set(['latam']);
+      // "latam" is excluded, so it won't match even though it's > 4 chars
+      expect(ProviderExtractionUtil.fuzzyMatchKeywordWords(['latam'], 'latam wallet', 0.8, exclude)).toBe(false);
+      // "wallet" is not excluded, so it still matches
+      expect(ProviderExtractionUtil.fuzzyMatchKeywordWords(['wallet'], 'latam wallet', 0.8, exclude)).toBe(true);
+    });
   });
 
   describe('extractProvider', () => {
@@ -327,6 +336,18 @@ describe('ProviderExtractionUtil', () => {
 
       it('should match "compro smile 100k" to SMILES (id 1) with letter-digit splitting', () => {
         expect(ProviderExtractionUtil.extractProvider('compro smile 100k', samplePrograms)).toBe(1);
+      });
+
+      it('should match "COMPRO latam 100k 1 cpf 25" to LATAM (id 19), not LATAM WALLET', () => {
+        expect(ProviderExtractionUtil.extractProvider('COMPRO latam\n100k\n1 cpf \n25', samplePrograms)).toBe(19);
+      });
+
+      it('should match "latam wallet" to LATAM WALLET (id 24) via exact match', () => {
+        expect(ProviderExtractionUtil.extractProvider('compro latam wallet', samplePrograms)).toBe(24);
+      });
+
+      it('should match "vendo wallet latam" to LATAM WALLET (id 24) via keyword word', () => {
+        expect(ProviderExtractionUtil.extractProvider('vendo wallet latam', samplePrograms)).toBe(24);
       });
     });
 
