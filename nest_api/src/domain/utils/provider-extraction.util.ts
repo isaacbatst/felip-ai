@@ -41,6 +41,11 @@ export class ProviderExtractionUtil {
       if (keywords.some((kw) => ProviderExtractionUtil.fuzzyMatchKeyword(words, kw))) {
         return program.id;
       }
+
+      // 3. Fallback: for multi-word keywords, check if a distinctive keyword word matches
+      if (keywords.some((kw) => ProviderExtractionUtil.fuzzyMatchKeywordWords(words, kw))) {
+        return program.id;
+      }
     }
 
     return null;
@@ -81,8 +86,28 @@ export class ProviderExtractionUtil {
       .normalize('NFD')
       .replace(/[\u0300-\u036f]/g, '') // Remove accents
       .replace(/[^\w\s]/g, ' ') // Replace special chars with space
+      .replace(/([a-z])(\d)/gi, '$1 $2') // Split letter-digit: "interline204" → "interline 204"
+      .replace(/(\d)([a-z])/gi, '$1 $2') // Split digit-letter: "204k" → "204 k"
       .replace(/\s+/g, ' ') // Normalize whitespace
       .trim();
+  }
+
+  /**
+   * Check if any word in the text fuzzy matches an individual word from a multi-word keyword.
+   * Only considers keyword words longer than 4 characters to avoid false positives
+   * with common short words like "azul" (4), "pelo" (4), "tudo" (4).
+   * Also excludes "liminar" since it's handled by special-case logic in extractProvider.
+   */
+  static fuzzyMatchKeywordWords(
+    textWords: string[],
+    keyword: string,
+    threshold: number = 0.8,
+  ): boolean {
+    const keywordWords = keyword.split(' ').filter((w) => w.length > 4 && w !== 'liminar');
+    if (keywordWords.length === 0) return false;
+    return textWords.some((tw) =>
+      keywordWords.some((kw) => FuzzyMatchUtil.stringSimilarity(tw, kw) >= threshold),
+    );
   }
 
   /**

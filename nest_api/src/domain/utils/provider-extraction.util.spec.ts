@@ -33,6 +33,13 @@ describe('ProviderExtractionUtil', () => {
       expect(ProviderExtractionUtil.normalizeText('hello@world.com')).toBe('hello world com');
     });
 
+    it('should split letter-digit boundaries', () => {
+      expect(ProviderExtractionUtil.normalizeText('interline204k13')).toBe('interline 204 k 13');
+      expect(ProviderExtractionUtil.normalizeText('Azul Interline204k13')).toBe('azul interline 204 k 13');
+      expect(ProviderExtractionUtil.normalizeText('100k')).toBe('100 k');
+      expect(ProviderExtractionUtil.normalizeText('smile100K')).toBe('smile 100 k');
+    });
+
     it('should normalize whitespace', () => {
       expect(ProviderExtractionUtil.normalizeText('AZUL   INTERLINE')).toBe('azul interline');
       expect(ProviderExtractionUtil.normalizeText('  SMILES  ')).toBe('smiles');
@@ -103,8 +110,8 @@ describe('ProviderExtractionUtil', () => {
 
   describe('extractWordsFromText', () => {
     it('should split text into words', () => {
-      const words = ProviderExtractionUtil.extractWordsFromText('compro smile 100k');
-      expect(words).toEqual(['compro', 'smile', '100k']);
+      const words = ProviderExtractionUtil.extractWordsFromText('compro smile 100 k');
+      expect(words).toEqual(['compro', 'smile', '100']);
     });
 
     it('should filter out words shorter than 3 characters', () => {
@@ -143,6 +150,42 @@ describe('ProviderExtractionUtil', () => {
     it('should accept custom threshold', () => {
       // With lower threshold, "azl" vs "azul" should match
       expect(ProviderExtractionUtil.fuzzyMatchKeyword(['azl'], 'azul', 0.7)).toBe(true);
+    });
+  });
+
+  describe('fuzzyMatchKeywordWords', () => {
+    it('should match when a text word fuzzy-matches a keyword word longer than 4 chars', () => {
+      expect(ProviderExtractionUtil.fuzzyMatchKeywordWords(['interline'], 'azul interline')).toBe(true);
+    });
+
+    it('should filter out keyword words with length <= 4', () => {
+      // "azul" has 4 chars, should be filtered out
+      expect(ProviderExtractionUtil.fuzzyMatchKeywordWords(['azul'], 'azul interline')).toBe(false);
+    });
+
+    it('should return false when keyword has no words longer than 4 chars', () => {
+      expect(ProviderExtractionUtil.fuzzyMatchKeywordWords(['tudo', 'azul'], 'tudo azul')).toBe(false);
+    });
+
+    it('should exclude "liminar" from keyword words (handled by special-case logic)', () => {
+      expect(ProviderExtractionUtil.fuzzyMatchKeywordWords(['liminar'], 'smiles liminar')).toBe(false);
+    });
+
+    it('should fuzzy match keyword words (e.g. "interlin" ~ "interline")', () => {
+      expect(ProviderExtractionUtil.fuzzyMatchKeywordWords(['interlin'], 'azul interline')).toBe(true);
+    });
+
+    it('should match "viagens" keyword word', () => {
+      expect(ProviderExtractionUtil.fuzzyMatchKeywordWords(['viagens'], 'azul viagens')).toBe(true);
+    });
+
+    it('should match "mundo" keyword word', () => {
+      expect(ProviderExtractionUtil.fuzzyMatchKeywordWords(['mundo'], 'azul pelo mundo')).toBe(true);
+    });
+
+    it('should accept custom threshold', () => {
+      expect(ProviderExtractionUtil.fuzzyMatchKeywordWords(['inter'], 'azul interline', 0.5)).toBe(true);
+      expect(ProviderExtractionUtil.fuzzyMatchKeywordWords(['inter'], 'azul interline', 0.9)).toBe(false);
     });
   });
 
@@ -258,6 +301,32 @@ describe('ProviderExtractionUtil', () => {
 
       it('should match "aeroplan" exactly, not via fuzzy', () => {
         expect(ProviderExtractionUtil.extractProvider('tenho aeroplan', samplePrograms)).toBe(3);
+      });
+    });
+
+    describe('letter-digit boundary and keyword word matching', () => {
+      it('should match "Interline204k13" to AZUL INTERLINE (id 18)', () => {
+        expect(ProviderExtractionUtil.extractProvider('Interline204k13', samplePrograms)).toBe(18);
+      });
+
+      it('should match "Azul Interline204k13" to AZUL INTERLINE (id 18)', () => {
+        expect(ProviderExtractionUtil.extractProvider('Azul Interline204k13', samplePrograms)).toBe(18);
+      });
+
+      it('should match "vendo interline" to AZUL INTERLINE (id 18)', () => {
+        expect(ProviderExtractionUtil.extractProvider('vendo interline', samplePrograms)).toBe(18);
+      });
+
+      it('should match "vendo interlin" to AZUL INTERLINE (id 18) via fuzzy', () => {
+        expect(ProviderExtractionUtil.extractProvider('vendo interlin', samplePrograms)).toBe(18);
+      });
+
+      it('should match "vendo azul" to AZUL (id 20), not AZUL INTERLINE', () => {
+        expect(ProviderExtractionUtil.extractProvider('vendo azul', samplePrograms)).toBe(20);
+      });
+
+      it('should match "compro smile 100k" to SMILES (id 1) with letter-digit splitting', () => {
+        expect(ProviderExtractionUtil.extractProvider('compro smile 100k', samplePrograms)).toBe(1);
       });
     });
 
