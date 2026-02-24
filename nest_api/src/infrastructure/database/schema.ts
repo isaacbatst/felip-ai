@@ -155,6 +155,8 @@ export const milesPrograms = pgTable(
     id: integer('id').primaryKey().generatedAlwaysAsIdentity(),
     name: text('name').notNull().unique(), // Program name (e.g., "SMILES", "SMILES LIMINAR")
     liminarOfId: integer('liminar_of_id'), // References miles_programs.id (NULL = normal, NOT NULL = liminar of that program)
+    absurdPriceMin: real('absurd_price_min'), // Minimum realistic price per milheiro (NULL = no filter)
+    absurdPriceMax: real('absurd_price_max'), // Maximum realistic price per milheiro (NULL = no filter)
     createdAt: timestamp('created_at').defaultNow().notNull(),
   },
   (table) => [

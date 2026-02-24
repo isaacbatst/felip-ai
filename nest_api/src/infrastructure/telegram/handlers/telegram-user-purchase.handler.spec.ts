@@ -73,12 +73,12 @@ describe('TelegramPurchaseHandler', () => {
 
   // Test programs data
   const testPrograms = [
-    { id: 1, name: 'SMILES', liminarOfId: null, createdAt: new Date() },
-    { id: 2, name: 'SMILES Liminar', liminarOfId: 1, createdAt: new Date() },
-    { id: 3, name: 'LATAM', liminarOfId: null, createdAt: new Date() },
-    { id: 4, name: 'LATAM Liminar', liminarOfId: 3, createdAt: new Date() },
-    { id: 5, name: 'AZUL/TUDO AZUL', liminarOfId: null, createdAt: new Date() },
-    { id: 6, name: 'AZUL Liminar', liminarOfId: 5, createdAt: new Date() },
+    { id: 1, name: 'SMILES', liminarOfId: null, absurdPriceMin: 10, absurdPriceMax: 25, createdAt: new Date() },
+    { id: 2, name: 'SMILES Liminar', liminarOfId: 1, absurdPriceMin: null, absurdPriceMax: null, createdAt: new Date() },
+    { id: 3, name: 'LATAM', liminarOfId: null, absurdPriceMin: 12, absurdPriceMax: 25, createdAt: new Date() },
+    { id: 4, name: 'LATAM Liminar', liminarOfId: 3, absurdPriceMin: null, absurdPriceMax: null, createdAt: new Date() },
+    { id: 5, name: 'AZUL/TUDO AZUL', liminarOfId: null, absurdPriceMin: 9, absurdPriceMax: 25, createdAt: new Date() },
+    { id: 6, name: 'AZUL Liminar', liminarOfId: 5, absurdPriceMin: null, absurdPriceMax: null, createdAt: new Date() },
   ];
 
   // Helper to create a mock PurchaseProposal array with single element (standard case)
@@ -712,6 +712,195 @@ describe('TelegramPurchaseHandler', () => {
         }));
 
         await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF aceito 22');
+
+        expect(mockTdlibUserClient.sendMessage).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('Absurd price filter', () => {
+      it('should skip when accepted price is below program absurd price min', async () => {
+        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
+          quantity: 30_000,
+          cpfCount: 1,
+          airlineId: PROGRAM_IDS.SMILES,
+          acceptedPrices: [5], // Below SMILES min (10)
+        }));
+
+        await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF aceito 5');
+
+        expect(mockTdlibUserClient.sendMessage).not.toHaveBeenCalled();
+      });
+
+      it('should skip when accepted price is above program absurd price max', async () => {
+        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
+          quantity: 30_000,
+          cpfCount: 1,
+          airlineId: PROGRAM_IDS.SMILES,
+          acceptedPrices: [30], // Above SMILES max (25)
+        }));
+
+        await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF aceito 30');
+
+        expect(mockTdlibUserClient.sendMessage).not.toHaveBeenCalled();
+      });
+
+      it('should process when accepted price is within program absurd price range', async () => {
+        availableMiles[2] = 10000; // SMILES LIMINAR - not enough (single price scenario)
+
+        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
+          quantity: 30_000,
+          cpfCount: 1,
+          airlineId: PROGRAM_IDS.SMILES,
+          acceptedPrices: [15], // Within SMILES range (10-19)
+        }));
+
+        await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF aceito 15');
+
+        expect(mockTdlibUserClient.sendMessage).toHaveBeenCalled();
+      });
+
+      it('should process when accepted price equals absurd price min', async () => {
+        availableMiles[2] = 10000;
+
+        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
+          quantity: 30_000,
+          cpfCount: 1,
+          airlineId: PROGRAM_IDS.SMILES,
+          acceptedPrices: [10], // Equals SMILES min (10)
+        }));
+
+        await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF aceito 10');
+
+        expect(mockTdlibUserClient.sendMessage).toHaveBeenCalled();
+      });
+
+      it('should process when accepted price equals absurd price max', async () => {
+        availableMiles[2] = 10000;
+
+        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
+          quantity: 30_000,
+          cpfCount: 1,
+          airlineId: PROGRAM_IDS.SMILES,
+          acceptedPrices: [25], // Equals SMILES max (25)
+        }));
+
+        await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF aceito 25');
+
+        expect(mockTdlibUserClient.sendMessage).toHaveBeenCalled();
+      });
+
+      it('should not filter when program has no absurd price range configured', async () => {
+        // SMILES Liminar has null absurdPriceMin/Max
+        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
+          quantity: 30_000,
+          cpfCount: 1,
+          airlineId: PROGRAM_IDS['SMILES Liminar'],
+          acceptedPrices: [999], // Any price should pass
+        }));
+
+        await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES LIMINAR 30k 1CPF aceito 999');
+
+        expect(mockTdlibUserClient.sendMessage).toHaveBeenCalled();
+      });
+
+      it('should not filter when no accepted prices are present', async () => {
+        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
+          quantity: 30_000,
+          cpfCount: 1,
+          airlineId: PROGRAM_IDS.SMILES,
+          acceptedPrices: [],
+        }));
+
+        await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF');
+
+        expect(mockTdlibUserClient.sendMessage).toHaveBeenCalled();
+      });
+
+      it('should filter by min only when only absurdPriceMin is configured', async () => {
+        mockMilesProgramRepository.getAllPrograms.mockResolvedValueOnce([
+          { ...testPrograms[0], absurdPriceMin: 10, absurdPriceMax: null },
+          ...testPrograms.slice(1),
+        ]);
+        availableMiles[2] = 10000;
+
+        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
+          quantity: 30_000,
+          cpfCount: 1,
+          airlineId: PROGRAM_IDS.SMILES,
+          acceptedPrices: [5], // Below min, max is null
+        }));
+
+        await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF aceito 5');
+
+        expect(mockTdlibUserClient.sendMessage).not.toHaveBeenCalled();
+      });
+
+      it('should not filter above when only absurdPriceMin is configured', async () => {
+        mockMilesProgramRepository.getAllPrograms.mockResolvedValueOnce([
+          { ...testPrograms[0], absurdPriceMin: 10, absurdPriceMax: null },
+          ...testPrograms.slice(1),
+        ]);
+        availableMiles[2] = 10000;
+
+        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
+          quantity: 30_000,
+          cpfCount: 1,
+          airlineId: PROGRAM_IDS.SMILES,
+          acceptedPrices: [999], // Way above, but no max configured
+        }));
+
+        await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF aceito 999');
+
+        expect(mockTdlibUserClient.sendMessage).toHaveBeenCalled();
+      });
+
+      it('should filter by max only when only absurdPriceMax is configured', async () => {
+        mockMilesProgramRepository.getAllPrograms.mockResolvedValueOnce([
+          { ...testPrograms[0], absurdPriceMin: null, absurdPriceMax: 25 },
+          ...testPrograms.slice(1),
+        ]);
+        availableMiles[2] = 10000;
+
+        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
+          quantity: 30_000,
+          cpfCount: 1,
+          airlineId: PROGRAM_IDS.SMILES,
+          acceptedPrices: [30], // Above max, min is null
+        }));
+
+        await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF aceito 30');
+
+        expect(mockTdlibUserClient.sendMessage).not.toHaveBeenCalled();
+      });
+
+      it('should not filter below when only absurdPriceMax is configured', async () => {
+        mockMilesProgramRepository.getAllPrograms.mockResolvedValueOnce([
+          { ...testPrograms[0], absurdPriceMin: null, absurdPriceMax: 25 },
+          ...testPrograms.slice(1),
+        ]);
+        availableMiles[2] = 10000;
+
+        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
+          quantity: 30_000,
+          cpfCount: 1,
+          airlineId: PROGRAM_IDS.SMILES,
+          acceptedPrices: [1], // Way below, but no min configured
+        }));
+
+        await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF aceito 1');
+
+        expect(mockTdlibUserClient.sendMessage).toHaveBeenCalled();
+      });
+
+      it('should filter based on the identified program range (LATAM)', async () => {
+        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
+          quantity: 30_000,
+          cpfCount: 1,
+          airlineId: PROGRAM_IDS.LATAM,
+          acceptedPrices: [5], // Below LATAM min (12)
+        }));
+
+        await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'LATAM 30k 1CPF aceito 5');
 
         expect(mockTdlibUserClient.sendMessage).not.toHaveBeenCalled();
       });

@@ -37,6 +37,8 @@ export class MilesProgramDrizzleStore extends MilesProgramRepository {
       id: row.id,
       name: row.name,
       liminarOfId: row.liminarOfId,
+      absurdPriceMin: row.absurdPriceMin,
+      absurdPriceMax: row.absurdPriceMax,
       createdAt: row.createdAt,
     };
   }

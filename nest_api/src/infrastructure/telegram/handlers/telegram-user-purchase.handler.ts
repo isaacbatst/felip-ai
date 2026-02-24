@@ -136,6 +136,28 @@ export class TelegramPurchaseHandler {
 
     this.logger.debug('Selected program', { id: program.id, name: program.name });
 
+    // Validação: preço aceito fora do range realista do programa (filtro de demandas absurdas)
+    // acceptedPrices.length > 1 já retornou acima (multi-price bot trap), aqui só pode ser 0 ou 1
+    if (purchaseRequest.acceptedPrices.length === 1) {
+      const acceptedPrice = purchaseRequest.acceptedPrices[0];
+      if (program.absurdPriceMin !== null && acceptedPrice < program.absurdPriceMin) {
+        this.logger.warn('Accepted price below realistic minimum, likely bait — skipping', {
+          acceptedPrice,
+          absurdPriceMin: program.absurdPriceMin,
+          programName: program.name,
+        });
+        return;
+      }
+      if (program.absurdPriceMax !== null && acceptedPrice > program.absurdPriceMax) {
+        this.logger.warn('Accepted price above realistic maximum, likely bait — skipping', {
+          acceptedPrice,
+          absurdPriceMax: program.absurdPriceMax,
+          programName: program.name,
+        });
+        return;
+      }
+    }
+
     const configuredProgramIds = await this.priceTableProvider.getConfiguredProgramIds(loggedInUserId);
 
     // Determine effective programs (normal and/or liminar) based on miles availability and min quantity

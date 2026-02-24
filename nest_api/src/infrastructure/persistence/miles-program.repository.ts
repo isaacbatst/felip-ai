@@ -5,6 +5,8 @@ export interface MilesProgramData {
   id: number;
   name: string;
   liminarOfId: number | null;
+  absurdPriceMin: number | null;
+  absurdPriceMax: number | null;
   createdAt: Date;
 }
 
