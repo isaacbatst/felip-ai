@@ -772,7 +772,8 @@ export class SubscriptionService implements OnModuleInit {
       baseAmount = this.couponService.applyPlanDiscount(baseAmount, coupon);
     }
 
-    const groupPrice = this.couponService.getExtraGroupPrice(coupon);
+    const couponActive = coupon && couponDiscountMonthsRemaining !== 0;
+    const groupPrice = this.couponService.getExtraGroupPrice(couponActive ? coupon : null);
     return baseAmount + extraGroups * groupPrice;
   }
 

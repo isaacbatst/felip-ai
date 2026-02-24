@@ -369,10 +369,16 @@ describe('SubscriptionService', () => {
       expect(amount).toBe(4900);
     });
 
-    it('should use custom extra group price from coupon', () => {
-      // extraGroupPriceInCents = 1500 instead of 2900
-      const amount = service.calculateRecurrenceAmount(starterPlan, 0, 2, groupPriceCoupon, 0);
+    it('should use custom extra group price from coupon when discount is active', () => {
+      // extraGroupPriceInCents = 1500 instead of 2900, discount active (3 months remaining)
+      const amount = service.calculateRecurrenceAmount(starterPlan, 0, 2, groupPriceCoupon, 3);
       expect(amount).toBe(4900 + 2 * 1500);
+    });
+
+    it('should revert to default extra group price when coupon discount expires', () => {
+      // couponDiscountMonthsRemaining = 0 → coupon expired, use default R$29
+      const amount = service.calculateRecurrenceAmount(starterPlan, 0, 2, groupPriceCoupon, 0);
+      expect(amount).toBe(4900 + 2 * EXTRA_GROUP_PRICE_IN_CENTS);
     });
 
     it('should NOT apply coupon discount when promo is active (no stacking)', () => {
