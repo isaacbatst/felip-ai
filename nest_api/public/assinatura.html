@@ -723,7 +723,7 @@
           <!-- Buy mode -->
           <template x-if="extraGroupsAction === 'buy'">
             <div>
-              <p class="text-sm text-gray-600 mb-4">R$ 29,00/mês por grupo extra. O valor será adicionado à sua próxima cobrança.</p>
+              <p class="text-sm text-gray-600 mb-4">R$ <span x-text="((subscription?.extraGroupPriceInCents ?? 2900) / 100).toFixed(2).replace('.', ',')"></span>/mês por grupo extra. O valor será adicionado à sua próxima cobrança.</p>
               <div class="mb-4">
                 <label class="block text-sm font-medium text-gray-700 mb-2">Quantidade</label>
                 <div class="flex items-center gap-3">
@@ -743,7 +743,7 @@
               <div class="bg-gray-50 rounded-xl p-4 mb-4">
                 <div class="flex justify-between text-sm mb-1">
                   <span class="text-gray-500">Adicional mensal</span>
-                  <span class="font-semibold text-gray-800" x-text="`R$ ${(extraGroupsCount * 29).toFixed(2).replace('.', ',')}`"></span>
+                  <span class="font-semibold text-gray-800" x-text="`R$ ${(extraGroupsCount * (subscription?.extraGroupPriceInCents ?? 2900) / 100).toFixed(2).replace('.', ',')}`"></span>
                 </div>
                 <div class="flex justify-between text-sm">
                   <span class="text-gray-500">Novo limite de grupos</span>
@@ -788,7 +788,7 @@
                   <div class="bg-gray-50 rounded-xl p-4 mb-4">
                     <div class="flex justify-between text-sm mb-1">
                       <span class="text-gray-500">Economia mensal</span>
-                      <span class="font-semibold text-emerald-600" x-text="`- R$ ${(extraGroupsCount * 29).toFixed(2).replace('.', ',')}`"></span>
+                      <span class="font-semibold text-emerald-600" x-text="`- R$ ${(extraGroupsCount * (subscription?.extraGroupPriceInCents ?? 2900) / 100).toFixed(2).replace('.', ',')}`"></span>
                     </div>
                     <div class="flex justify-between text-sm">
                       <span class="text-gray-500">Novo limite de grupos</span>

@@ -64,6 +64,7 @@ interface SubscriptionDataResponse {
     totalGroupLimit: number | null;
     activeGroupsCount: number;
     daysRemaining: number;
+    extraGroupPriceInCents: number;
   } | null;
 }
 
@@ -132,6 +133,9 @@ export class SubscriptionController {
     // Calculate days remaining
     const daysRemaining = await this.subscriptionService.getDaysRemaining(userId) ?? 0;
 
+    // Get effective extra group price (considers coupon status)
+    const extraGroupPriceInCents = await this.subscriptionService.getExtraGroupPriceInCents(subscription);
+
     const response: SubscriptionDataResponse = {
       subscription: {
         id: subscription.id,
@@ -165,6 +169,7 @@ export class SubscriptionController {
           : null,
         activeGroupsCount,
         daysRemaining,
+        extraGroupPriceInCents,
       },
     };
 
@@ -597,11 +602,12 @@ export class SubscriptionController {
       const activeGroups = await this.activeGroupsRepository.getActiveGroups(userId);
       const activeGroupsCount = activeGroups?.length ?? 0;
       const daysRemaining = await this.subscriptionService.getDaysRemaining(userId) ?? 0;
+      const extraGroupPriceInCents = await this.subscriptionService.getExtraGroupPriceInCents(updated);
 
       res.status(HttpStatus.OK).json({
         success: true,
         data: {
-          subscription: this.formatSubscriptionResponse(updated, activeGroupsCount, daysRemaining),
+          subscription: this.formatSubscriptionResponse(updated, activeGroupsCount, daysRemaining, extraGroupPriceInCents),
         },
       } satisfies ApiResponse);
     } catch (error) {
@@ -648,11 +654,12 @@ export class SubscriptionController {
       const activeGroups = await this.activeGroupsRepository.getActiveGroups(userId);
       const activeGroupsCount = activeGroups?.length ?? 0;
       const daysRemaining = await this.subscriptionService.getDaysRemaining(userId) ?? 0;
+      const extraGroupPriceInCents = await this.subscriptionService.getExtraGroupPriceInCents(updated);
 
       res.status(HttpStatus.OK).json({
         success: true,
         data: {
-          subscription: this.formatSubscriptionResponse(updated, activeGroupsCount, daysRemaining),
+          subscription: this.formatSubscriptionResponse(updated, activeGroupsCount, daysRemaining, extraGroupPriceInCents),
         },
       } satisfies ApiResponse);
     } catch (error) {
@@ -767,6 +774,7 @@ export class SubscriptionController {
     sub: import('@/infrastructure/persistence/subscription.repository').SubscriptionWithPlan,
     activeGroupsCount: number,
     daysRemaining: number,
+    extraGroupPriceInCents: number,
   ): SubscriptionDataResponse['subscription'] {
     return {
       id: sub.id,
@@ -800,6 +808,7 @@ export class SubscriptionController {
         : null,
       activeGroupsCount,
       daysRemaining,
+      extraGroupPriceInCents,
     };
   }
 }

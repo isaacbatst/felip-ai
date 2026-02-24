@@ -169,6 +169,19 @@ export class SubscriptionService implements OnModuleInit {
   }
 
   /**
+   * Get the effective extra group price for a subscription,
+   * considering whether the coupon discount is still active.
+   */
+  async getExtraGroupPriceInCents(subscription: SubscriptionData): Promise<number> {
+    const couponActive = subscription.couponDiscountMonthsRemaining !== 0;
+    if (couponActive) {
+      const coupon = await this.loadCouponForSubscription(subscription);
+      return this.couponService.getExtraGroupPrice(coupon);
+    }
+    return EXTRA_GROUP_PRICE_IN_CENTS;
+  }
+
+  /**
    * Check if a user has used their free trial
    */
   async hasUsedTrial(userId: string): Promise<boolean> {
