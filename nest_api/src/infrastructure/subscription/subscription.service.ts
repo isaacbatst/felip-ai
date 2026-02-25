@@ -828,20 +828,20 @@ export class SubscriptionService implements OnModuleInit {
       recurrentPayment.StartDate = startDate;
     }
 
-    const hasPromo =
-      plan.promotionalPriceInCents !== null && plan.promotionalPriceInCents !== undefined;
-    // biome-ignore lint/style/noNonNullAssertion: above check ensures it's not null
-        let chargeAmount = hasPromo ? plan.promotionalPriceInCents! : plan.priceInCents;
     // -1 = permanent discount, null discountDurationMonths means permanent
     const couponDiscountMonthsRemaining = coupon
       ? coupon.discountDurationMonths === null
         ? -1
         : coupon.discountDurationMonths || 0
       : 0;
-    // Coupon discount only applies when promo is NOT active (no stacking)
-    if (coupon && couponDiscountMonthsRemaining !== 0 && !hasPromo) {
-      chargeAmount = this.couponService.applyPlanDiscount(chargeAmount, coupon);
-    }
+    const promotionalPaymentsRemaining = plan.promotionalMonths ?? 0;
+    const chargeAmount = this.calculateRecurrenceAmount(
+      plan,
+      promotionalPaymentsRemaining,
+      0, // no extra groups at subscription creation
+      coupon,
+      couponDiscountMonthsRemaining,
+    );
 
     const cieloRequest = {
       MerchantOrderId: merchantOrderId,
