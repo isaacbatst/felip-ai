@@ -88,8 +88,15 @@ export class TelegramPurchaseHandler {
     // Demandas reais seguem o padrão: programa + quantidade + CPF + preço aceito (opcional)
     // Palavras como "bot", "robô", "pegadinha", "teste", "armadilha" indicam armadilha ou teste
     const normalizedForTrapCheck = trimmedText.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-    const trapWords = ['bot', 'robo', 'robot', 'pegadinha', 'teste', 'armadilha'];
-    if (trapWords.some(word => normalizedForTrapCheck.includes(word))) {
+    const trapWords = [
+      'bot', 'robo', 'robot', 'pegadinha', 'teste', 'armadilha',
+      'transferencia', 'tenho', 'faco', 'vendo', 'teto smiles',
+      'interessar', 'interesse', 'banimento', 'ia', 'brincadeira',
+      'joke', 'malandragem', 'compramos', 'negociar', 'chama',
+      'informacoes', 'pv', 'privado',
+    ];
+    const trapPattern = new RegExp(trapWords.map(w => `\\b${w}\\b`).join('|'));
+    if (trapPattern.test(normalizedForTrapCheck)) {
       this.logger.log('Skipping: message contains trap word', { text: trimmedText });
       return;
     }
