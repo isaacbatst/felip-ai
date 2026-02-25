@@ -1270,7 +1270,6 @@ describe('TelegramPurchaseHandler', () => {
     describe('Trap word filter', () => {
       it.each([
         ['bot', 'SMILES 30k 1CPF bot'],
-        ['bots', 'compra de bots SMILES 30k'],
         ['BOT (uppercase)', 'SMILES 30k 1CPF BOT'],
         ['Bot (mixed case)', 'Pegadinha pro Bot SMILES 30k'],
         ['robot', 'SMILES 30k 1CPF robot'],
@@ -1279,22 +1278,24 @@ describe('TelegramPurchaseHandler', () => {
         ['pegadinha', 'Latam 180k 1cpf 20 Pegadinha pro bot'],
         ['teste', 'SMILES 30k 1CPF teste'],
         ['armadilha', 'SMILES 30k 1CPF armadilha'],
-      ])('should skip message containing "%s"', async (_label, text) => {
-        await handler.handlePurchase(
-          loggedInUserId,
-          telegramUserId,
-          chatId,
-          messageId,
-          text,
-        );
-
-        expect(mockMessageParser.parse).not.toHaveBeenCalled();
-        expect(mockTdlibUserClient.sendMessage).not.toHaveBeenCalled();
-      });
-
-      it.each([
-        ['Botafogo (contains "bot")', 'SMILES 30k 1CPF Botafogo'],
-        ['robotics (contains "robot")', 'SMILES 30k 1CPF robotics'],
+        ['transferência', 'SMILES 30k 1CPF transferência'],
+        ['tenho', 'tenho SMILES 30k 1CPF'],
+        ['faço', 'faço SMILES 30k 1CPF'],
+        ['vendo', 'vendo SMILES 30k 1CPF'],
+        ['teto smiles', 'teto smiles 30k 1CPF 20'],
+        ['interessar', 'SMILES 30k 1CPF interessar'],
+        ['interesse', 'SMILES 30k 1CPF interesse'],
+        ['banimento', 'SMILES 30k 1CPF banimento'],
+        ['ia', 'SMILES 30k 1CPF ia'],
+        ['brincadeira', 'SMILES 30k 1CPF brincadeira'],
+        ['joke', 'SMILES 30k 1CPF joke'],
+        ['malandragem', 'SMILES 30k 1CPF malandragem'],
+        ['compramos', 'compramos SMILES 30k 1CPF'],
+        ['negociar', 'SMILES 30k 1CPF negociar'],
+        ['chama', 'chama SMILES 30k 1CPF'],
+        ['informações', 'SMILES 30k 1CPF informações'],
+        ['pv', 'SMILES 30k 1CPF pv'],
+        ['privado', 'SMILES 30k 1CPF privado'],
       ])('should skip message containing "%s"', async (_label, text) => {
         await handler.handlePurchase(
           loggedInUserId,
@@ -1311,6 +1312,9 @@ describe('TelegramPurchaseHandler', () => {
       it.each([
         ['normal purchase message', 'SMILES 30k 1CPF'],
         ['purchase with price', 'SMILES 30k 1CPF 15,50'],
+        ['Botafogo (contains "bot" as substring)', 'SMILES 30k 1CPF Botafogo'],
+        ['robotics (contains "robot" as substring)', 'SMILES 30k 1CPF robotics'],
+        ['bots (plural, not exact word "bot")', 'compra de bots SMILES 30k'],
       ])('should NOT skip message with "%s"', async (_label, text) => {
         mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray());
 
