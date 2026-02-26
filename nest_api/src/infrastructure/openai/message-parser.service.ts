@@ -104,7 +104,7 @@ export class MessageParserService extends MessageParser {
         }
       },
       reasoning: {
-        effort: 'minimal',
+        effort: 'medium',
       },
       text: {
         verbosity: 'low',
