@@ -1296,6 +1296,10 @@ describe('TelegramPurchaseHandler', () => {
         ['informações', 'SMILES 30k 1CPF informações'],
         ['pv', 'SMILES 30k 1CPF pv'],
         ['privado', 'SMILES 30k 1CPF privado'],
+        ['conta cheia', 'SMILES 30k conta cheia'],
+        ['contas cheias', 'SMILES 30k contas cheias'],
+        ['conta fechada', 'SMILES 30k conta fechada'],
+        ['contas fechadas', 'SMILES 30k contas fechadas'],
       ])('should skip message containing "%s"', async (_label, text) => {
         await handler.handlePurchase(
           loggedInUserId,

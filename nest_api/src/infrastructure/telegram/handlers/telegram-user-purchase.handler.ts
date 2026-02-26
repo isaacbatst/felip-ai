@@ -94,6 +94,7 @@ export class TelegramPurchaseHandler {
       'interessar', 'interesse', 'banimento', 'ia', 'brincadeira',
       'joke', 'malandragem', 'compramos', 'negociar', 'chama',
       'informacoes', 'pv', 'privado',
+      'conta cheia', 'contas cheias', 'conta fechada', 'contas fechadas',
     ];
     const trapPattern = new RegExp(trapWords.map(w => `\\b${w}\\b`).join('|'));
     if (trapPattern.test(normalizedForTrapCheck)) {
