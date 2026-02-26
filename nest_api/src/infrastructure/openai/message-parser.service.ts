@@ -4,10 +4,12 @@ import { zodTextFormat } from 'openai/helpers/zod';
 import { MessageParser, type ProgramOption } from '../../domain/interfaces/message-parser.interface';
 import {
   type PurchaseProposal,
-  DataExtractionRequestSchema,
-  type DataExtractionOutput,
+  RawDataExtractionRequestSchema,
+  type RawDataExtractionOutput,
 } from '../../domain/types/purchase.types';
 import { ProviderExtractionUtil } from '../../domain/utils/provider-extraction.util';
+import { QuantityNormalizationUtil } from '../../domain/utils/quantity-normalization.util';
+import { PriceNormalizationUtil } from '../../domain/utils/price-normalization.util';
 import { OpenAIService } from './openai.service';
 import { PromptConfigRepository } from '../persistence/prompt-config.repository';
 
@@ -69,13 +71,33 @@ export class MessageParserService extends MessageParser {
         return null;
       }
 
-      return data.proposals.map((proposal) => ({
-        isPurchaseProposal: true as const,
-        quantity: proposal.quantity,
-        cpfCount: proposal.cpfCount,
-        airlineId,
-        acceptedPrices: proposal.acceptedPrices,
-      }));
+      const proposals: PurchaseProposal[] = [];
+
+      for (const proposal of data.proposals) {
+        const quantity = QuantityNormalizationUtil.parse(proposal.rawQuantity);
+
+        if (quantity === null) {
+          this.logger.warn('Skipping proposal: quantity invalid or below 1000', {
+            id,
+            rawQuantity: proposal.rawQuantity,
+          });
+          continue;
+        }
+
+        const acceptedPrices = proposal.rawPrices
+          .map((r) => PriceNormalizationUtil.parse(r))
+          .filter((p): p is number => p !== null);
+
+        proposals.push({
+          isPurchaseProposal: true as const,
+          quantity,
+          cpfCount: proposal.cpfCount,
+          airlineId,
+          acceptedPrices,
+        });
+      }
+
+      return proposals.length > 0 ? proposals : null;
     } catch (error) {
       this.logger.error('[ERROR] Error parsing message with GPT:', { id, error });
       return null;
@@ -85,7 +107,7 @@ export class MessageParserService extends MessageParser {
   /**
    * Extract data (quantity, cpfCount, acceptedPrices) using AI
    */
-  private async extractDataWithAI(text: string, id: string): Promise<DataExtractionOutput | null> {
+  private async extractDataWithAI(text: string, id: string): Promise<RawDataExtractionOutput | null> {
     const client = this.openaiService.getClient();
 
     const promptConfig = await this.promptConfigRepository.getByKey(
@@ -108,7 +130,7 @@ export class MessageParserService extends MessageParser {
       },
       text: {
         verbosity: 'low',
-        format: zodTextFormat(DataExtractionRequestSchema, 'dataExtraction'),
+        format: zodTextFormat(RawDataExtractionRequestSchema, 'dataExtraction'),
       },
     });
 

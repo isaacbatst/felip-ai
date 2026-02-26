@@ -1,31 +1,6 @@
 import { z } from 'zod';
 
 /**
- * Schema para quando a mensagem É uma proposta de compra
- */
-const PurchaseProposalSchema = z.object({
-  isPurchaseProposal: z.literal(true).describe('Se a mensagem é uma proposta de compra'),
-  quantity: z
-    .number()
-    .positive()
-    .describe(
-      'Quantidade em milhares (número decimal). Exemplos: 84 para "84k" ou "84000", 26.1 para "26.100" ou "26.1k", 69.4 para "69,4k" ou "69400"',
-    ),
-  cpfCount: z.number().int().positive().describe('Número de CPFs (ex: 2 para 2CPF)'),
-  airlineId: z
-    .number()
-    .int()
-    .positive()
-    .describe('ID do programa de milhas selecionado da lista de programas disponíveis'),
-  acceptedPrices: z
-    .array(z.number().positive())
-    .default([])
-    .describe(
-      'Lista de valores que o usuário aceita pagar. Se não mencionado na mensagem, retorne array vazio.',
-    ),
-});
-
-/**
  * Schema para quando a mensagem NÃO é uma proposta de compra
  */
 const NonPurchaseProposalSchema = z.object({
@@ -33,57 +8,51 @@ const NonPurchaseProposalSchema = z.object({
 }).describe('Nenhuma proposta de compra foi encontrada na mensagem');
 
 /**
- * Schema Zod para validação da proposta de compra usando discriminated union
+ * Schema para extração de dados brutos via AI (strings, não números).
+ * A normalização de quantidade e preço é feita em código após a extração.
  */
-export const PurchaseRequestOutputSchema = z.discriminatedUnion('isPurchaseProposal', [
-  PurchaseProposalSchema,
-  NonPurchaseProposalSchema,
-]);
-
-export const PurchaseRequestSchema = z.object({
-  output: PurchaseRequestOutputSchema,
-});
-
-const ProposalSchema = z.object({
-  quantity: z
-    .number()
-    .min(1000)
+const RawProposalSchema = z.object({
+  rawQuantity: z
+    .string()
     .describe(
-      'Quantidade de milhas.'
+      'Quantidade bruta como aparece na mensagem. Exemplos: "242k", "26.1k", "84000", "1kk", "1M", "10", "302,900k"',
     ),
-  cpfCount: z.number().int().positive().describe('Número de CPFs/Passageiros/PAX, contando com bebês (ex: 2 para 2CPF, 4 para 3CPF + 1 bebê/bb/baby)'),
-  acceptedPrices: z
-    .array(z.number().positive())
+  cpfCount: z.number().int().positive().describe('Numero de CPFs/Passageiros/PAX, contando com bebes (ex: 2 para 2CPF, 4 para 3CPF + 1 bebe/bb/baby)'),
+  rawPrices: z
+    .array(z.string())
     .default([])
     .describe(
-      'Lista de valores que o usuário aceita pagar. Se não mencionado na mensagem, retorne array vazio.',
+      'Lista de valores brutos que o usuario aceita pagar, como aparecem na mensagem. Exemplos: ["15,5"], ["R$ 20"], ["14$"]. Se nao mencionado, retorne array vazio.',
     ),
 });
 
-/**
- * Schema para extração de dados via AI (sem airlineId - provider é extraído por keyword)
- */
-const DataExtractionOutputSchema = z.object({
-  isPurchaseProposal: z.literal(true).describe('Se a mensagem é uma proposta de compra'),
-  proposals: z.array(ProposalSchema).min(1).describe('Lista de propostas de compra na mensagem'),
-}).describe('Dados extraídos da mensagem, contendo uma ou mais propostas de compra');
+const RawDataExtractionOutputSchema = z.object({
+  isPurchaseProposal: z.literal(true).describe('Se a mensagem e uma proposta de compra'),
+  proposals: z.array(RawProposalSchema).min(1).describe('Lista de propostas de compra na mensagem'),
+}).describe('Dados extraidos da mensagem, contendo uma ou mais propostas de compra');
 
-/**
- * Schema para resposta da extração de dados via AI
- */
-export const DataExtractionRequestSchema = z.object({
+export const RawDataExtractionRequestSchema = z.object({
   output: z.discriminatedUnion('isPurchaseProposal', [
-    DataExtractionOutputSchema,
+    RawDataExtractionOutputSchema,
     NonPurchaseProposalSchema,
   ]),
 });
 
-export type DataExtractionRequest = z.infer<typeof DataExtractionRequestSchema>;
-export type DataExtractionOutput = z.infer<typeof DataExtractionOutputSchema>;
+export type RawDataExtractionRequest = z.infer<typeof RawDataExtractionRequestSchema>;
+export type RawDataExtractionOutput = z.infer<typeof RawDataExtractionOutputSchema>;
+export type RawProposal = z.infer<typeof RawProposalSchema>;
 
-export type PurchaseRequest = z.infer<typeof PurchaseRequestSchema>;
-export type PurchaseProposal = z.infer<typeof PurchaseProposalSchema>;
-export type NonPurchaseProposal = z.infer<typeof NonPurchaseProposalSchema>;
+/**
+ * Proposta de compra normalizada (quantidade em milhas absolutas, preços numéricos).
+ */
+export interface PurchaseProposal {
+  isPurchaseProposal: true;
+  /** Quantidade absoluta de milhas. Ex: 84000 para "84k", 242000 para "242k" */
+  quantity: number;
+  cpfCount: number;
+  airlineId: number;
+  acceptedPrices: number[];
+}
 
 /**
  * Dados validados de uma proposta de compra
