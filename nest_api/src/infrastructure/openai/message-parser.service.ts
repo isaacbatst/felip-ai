@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto';
 import { Injectable, Logger } from '@nestjs/common';
 import { zodTextFormat } from 'openai/helpers/zod';
 import { MessageParser, type ProgramOption } from '../../domain/interfaces/message-parser.interface';
@@ -48,26 +47,24 @@ export class MessageParserService extends MessageParser {
   }
 
   async parse(text: string, programs?: ProgramOption[]): Promise<PurchaseProposal[] | null> {
-    const id = randomUUID();
-
     try {
-      this.logger.log('Parsing message', { id, text });
+      this.logger.log('Parsing message', { text });
 
       // Step 1: Extract provider using keyword matching
       const airlineId = ProviderExtractionUtil.extractProvider(text, programs);
 
       if (airlineId === null) {
-        this.logger.log('No provider found in message', { id });
+        this.logger.log('No provider found in message');
         return null;
       }
 
-      this.logger.log('Provider found via keyword matching', { id, airlineId });
+      this.logger.log('Provider found via keyword matching', { airlineId });
 
       // Step 2: Extract other data using AI (only if provider found)
-      const data = await this.extractDataWithAI(text, id);
+      const data = await this.extractDataWithAI(text);
 
       if (!data || !data.isPurchaseProposal) {
-        this.logger.log('AI extraction returned non-purchase proposal', { id });
+        this.logger.log('AI extraction returned non-purchase proposal');
         return null;
       }
 
@@ -78,7 +75,6 @@ export class MessageParserService extends MessageParser {
 
         if (quantity === null) {
           this.logger.warn('Skipping proposal: quantity invalid or below 1000', {
-            id,
             rawQuantity: proposal.rawQuantity,
           });
           continue;
@@ -99,7 +95,7 @@ export class MessageParserService extends MessageParser {
 
       return proposals.length > 0 ? proposals : null;
     } catch (error) {
-      this.logger.error('[ERROR] Error parsing message with GPT:', { id, error });
+      this.logger.error('[ERROR] Error parsing message with GPT:', { error });
       return null;
     }
   }
@@ -107,7 +103,7 @@ export class MessageParserService extends MessageParser {
   /**
    * Extract data (quantity, cpfCount, acceptedPrices) using AI
    */
-  private async extractDataWithAI(text: string, id: string): Promise<RawDataExtractionOutput | null> {
+  private async extractDataWithAI(text: string): Promise<RawDataExtractionOutput | null> {
     const client = this.openaiService.getClient();
 
     const promptConfig = await this.promptConfigRepository.getByKey(
@@ -136,7 +132,7 @@ export class MessageParserService extends MessageParser {
 
     const parsed = response.output_parsed;
 
-    this.logger.log('[PARSED] AI extraction result:', { id, ...parsed });
+    this.logger.log('[PARSED] AI extraction result:', parsed);
 
     if (!parsed || !parsed.output.isPurchaseProposal) {
       return null;

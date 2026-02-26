@@ -48,6 +48,7 @@
     "drizzle-orm": "^0.45.1",
     "googleapis": "^167.0.0",
     "grammy": "^1.38.4",
+    "nestjs-cls": "^6.2.0",
     "openai": "^6.10.0",
     "postgres": "^3.4.7",
     "redis": "^5.10.0",

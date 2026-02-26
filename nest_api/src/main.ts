@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import cookieParser from 'cookie-parser';
 import { UnauthorizedRedirectFilter } from '@/infrastructure/http/filters/unauthorized-redirect.filter';
 import { NotFoundFilter } from '@/infrastructure/http/filters/not-found.filter';
+import { ContextLoggerService } from '@/infrastructure/logging/context-logger.service';
 
 async function bootstrap() {
   const logger = new ConsoleLogger();
@@ -16,6 +17,10 @@ async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     logger,
   });
+
+  // Replace default logger with context-aware logger (auto-prefixes traceId, userId, etc.)
+  const contextLogger = app.get(ContextLoggerService);
+  app.useLogger(contextLogger);
 
   // Enable cookie parsing
   app.use(cookieParser());

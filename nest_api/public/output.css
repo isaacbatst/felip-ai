@@ -538,9 +538,6 @@
   .h-full {
     height: 100%;
   }
-  .max-h-64 {
-    max-height: calc(var(--spacing) * 64);
-  }
   .max-h-72 {
     max-height: calc(var(--spacing) * 72);
   }
@@ -1119,9 +1116,6 @@
   .p-2 {
     padding: calc(var(--spacing) * 2);
   }
-  .p-2\.5 {
-    padding: calc(var(--spacing) * 2.5);
-  }
   .p-3 {
     padding: calc(var(--spacing) * 3);
   }
@@ -1566,6 +1560,9 @@
     --tw-outline-style: none;
     outline-style: none;
   }
+  .\[t\:abc-123\] {
+    t: abc-123;
+  }
   .group-hover\:text-red-400 {
     &:is(:where(.group):hover *) {
       @media (hover: hover) {
@@ -1817,13 +1814,6 @@
         @supports (color: color-mix(in lab, red, red)) {
           background-color: color-mix(in oklab, var(--color-gray-50) 50%, transparent);
         }
-      }
-    }
-  }
-  .hover\:bg-gray-100 {
-    &:hover {
-      @media (hover: hover) {
-        background-color: var(--color-gray-100);
       }
     }
   }

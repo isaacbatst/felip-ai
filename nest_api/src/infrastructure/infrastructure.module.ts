@@ -35,6 +35,7 @@ import { TelegramBotSubscriptionHandler } from './telegram/handlers/telegram-bot
 import { AuthErrorCacheService } from './tdlib/auth-error-cache.service';
 import { PrivateMessageBufferService } from './telegram/private-message-buffer.service';
 import { CouponService } from './subscription/coupon.service';
+import { ContextLoggerService } from './logging/context-logger.service';
 
 /**
  * Module responsável por serviços de infraestrutura
@@ -78,6 +79,8 @@ import { CouponService } from './subscription/coupon.service';
     TelegramBotSubscriptionHandler,
     // Guards
     SessionGuard,
+    // Logging
+    ContextLoggerService,
   ],
   exports: [
     MessageParser,
@@ -89,6 +92,7 @@ import { CouponService } from './subscription/coupon.service';
     SubscriptionAuthorizationService,
     HybridAuthorizationService,
     AuthErrorCacheService,
+    ContextLoggerService,
   ],
 })
 export class InfrastructureModule {}

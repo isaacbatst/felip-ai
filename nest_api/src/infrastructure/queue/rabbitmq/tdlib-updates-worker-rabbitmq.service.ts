@@ -1,9 +1,12 @@
 import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { ClsService } from 'nestjs-cls';
+import { randomUUID } from 'node:crypto';
 import { connect, Connection, Channel } from 'amqplib';
 import { TdlibUpdateJobData } from '../../tdlib/tdlib-update.types';
 import { TdlibCommandResponseHandler } from '../../tdlib/tdlib-command-response.handler';
 import { TelegramUserMessageProcessor } from '../../telegram/telegram-user-message-processor';
+import { CLS_TRACE_ID, CLS_USER_ID } from '../../logging/log-context';
 
 /**
  * Worker that consumes updates from tdlib_worker via RabbitMQ
@@ -26,6 +29,7 @@ export class TdlibUpdatesWorkerRabbitMQ implements OnModuleInit, OnModuleDestroy
     private readonly configService: ConfigService,
     private readonly messageProcessor: TelegramUserMessageProcessor,
     private readonly commandResponseHandler: TdlibCommandResponseHandler,
+    private readonly cls: ClsService,
   ) {
     const host = this.configService.get<string>('RABBITMQ_HOST') || 'localhost';
     const port = this.configService.get<string>('RABBITMQ_PORT') || '5672';
@@ -97,22 +101,30 @@ export class TdlibUpdatesWorkerRabbitMQ implements OnModuleInit, OnModuleDestroy
           return;
         }
 
-        try {
-          const jobData = JSON.parse(msg.content.toString()) as {
-            pattern: string;
-            data: TdlibUpdateJobData;
-          };
+        await this.cls.run(async () => {
+          this.cls.set(CLS_TRACE_ID, randomUUID().slice(0, 8));
 
-          await this.process(jobData.pattern, jobData.data);
+          try {
+            const jobData = JSON.parse(msg.content.toString()) as {
+              pattern: string;
+              data: TdlibUpdateJobData;
+            };
 
-          // Acknowledge message after successful processing
-          this.channel?.ack(msg);
-        } catch (error) {
-          this.logger.error(`[ERROR] Error processing update: ${error}`);
+            if (jobData.data.userId) {
+              this.cls.set(CLS_USER_ID, jobData.data.userId.toString());
+            }
 
-          // Acknowledge message to remove from queue (accept failure)
-          this.channel?.ack(msg);
-        }
+            await this.process(jobData.pattern, jobData.data);
+
+            // Acknowledge message after successful processing
+            this.channel?.ack(msg);
+          } catch (error) {
+            this.logger.error(`[ERROR] Error processing update: ${error}`);
+
+            // Acknowledge message to remove from queue (accept failure)
+            this.channel?.ack(msg);
+          }
+        });
       },
       {
         noAck: false, // Manual acknowledgment

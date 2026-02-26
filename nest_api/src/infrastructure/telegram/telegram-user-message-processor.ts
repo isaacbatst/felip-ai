@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { ClsService } from 'nestjs-cls';
 import { TelegramPurchaseHandler } from './handlers/telegram-user-purchase.handler';
 import { TelegramUserClientProxyService } from '../tdlib/telegram-user-client-proxy.service';
 import { QueuedMessage } from './interfaces/queued-message';
@@ -8,6 +9,7 @@ import { BotPreferenceRepository } from '@/infrastructure/persistence/bot-status
 import { TdlibUpdateNewMessage } from '../tdlib/tdlib-update.types';
 import { HybridAuthorizationService } from '@/infrastructure/subscription/hybrid-authorization.service';
 import { BlacklistRepository } from '@/infrastructure/persistence/blacklist.repository';
+import { CLS_CHAT_ID, CLS_SENDER_ID } from '../logging/log-context';
 
 /**
  * Processor responsável por processar mensagens da fila
@@ -25,6 +27,7 @@ export class TelegramUserMessageProcessor {
     private readonly botPreferenceRepository: BotPreferenceRepository,
     private readonly hybridAuthorizationService: HybridAuthorizationService,
     private readonly blacklistRepository: BlacklistRepository,
+    private readonly cls: ClsService,
   ) {}
 
   /**
@@ -55,6 +58,10 @@ export class TelegramUserMessageProcessor {
 
       const chatId = message.chat_id;
       const senderId = message.sender_id?.user_id;
+
+      // Enrich CLS context for downstream logging
+      if (chatId && this.cls.isActive()) this.cls.set(CLS_CHAT_ID, chatId.toString());
+      if (senderId && this.cls.isActive()) this.cls.set(CLS_SENDER_ID, senderId.toString());
 
       if (!chatId) {
         this.logger.warn('Could not fetch chat ID, ignoring...');
