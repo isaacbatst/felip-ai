@@ -10,6 +10,7 @@ import { PriceTableProvider } from '../../../domain/interfaces/price-table-provi
 import { PriceCalculatorService } from '../../../domain/services/price-calculator.service';
 import { PrivateMessageBufferService } from '../private-message-buffer.service';
 import { BlacklistRepository } from '@/infrastructure/persistence/blacklist.repository';
+import { AppConfigService } from '@/config/app.config';
 
 interface CalculatedPriceResult {
   price: number;
@@ -42,6 +43,7 @@ export class TelegramPurchaseHandler {
     private readonly botPreferenceRepository: BotPreferenceRepository,
     private readonly groupDelaySettingsRepository: GroupDelaySettingsRepository,
     private readonly blacklistRepository: BlacklistRepository,
+    private readonly appConfig: AppConfigService,
   ) {}
 
   async handlePurchase(
@@ -95,6 +97,9 @@ export class TelegramPurchaseHandler {
       'joke', 'malandragem', 'compramos', 'negociar', 'chama',
       'informacoes', 'pv', 'privado',
       'conta cheia', 'contas cheias', 'conta fechada', 'contas fechadas',
+      'na conversa', 'internamente', 'estruturada em', 'estruturado em',
+      'em relacao', 'voltando ao assunto', 'disse que', 'afirmou que',
+      'informou que', 'se confirmar', 'se estiver',
     ];
     const trapPattern = new RegExp(trapWords.map(w => `\\b${w}\\b`).join('|'));
     if (trapPattern.test(normalizedForTrapCheck)) {
@@ -144,6 +149,19 @@ export class TelegramPurchaseHandler {
 
     this.logger.debug('Selected program', { id: program.id, name: program.name });
 
+    // cpfCount=0: tratar como 1 para Azul Viagens, rejeitar para outros
+    let effectiveCpfCount = purchaseRequest.cpfCount;
+    if (purchaseRequest.cpfCount === 0) {
+      const azulViagensId = this.appConfig.azulViagensProgramId;
+      if (program.id === azulViagensId) {
+        effectiveCpfCount = 1;
+        this.logger.log('cpfCount=0 overridden to 1 for Azul Viagens', { programId: program.id });
+      } else {
+        this.logger.log('Skipping: cpfCount=0 not supported for this program', { programId: program.id });
+        return;
+      }
+    }
+
     // Validação: preço aceito fora do range realista do programa (filtro de demandas absurdas)
     // acceptedPrices.length > 1 já retornou acima (multi-price bot trap), aqui só pode ser 0 ou 1
     if (purchaseRequest.acceptedPrices.length === 1) {
@@ -174,7 +192,7 @@ export class TelegramPurchaseHandler {
       program.id,
       program.name,
       purchaseRequest.quantity,
-      purchaseRequest.cpfCount,
+      effectiveCpfCount,
       configuredProgramIds,
     );
 
@@ -199,7 +217,7 @@ export class TelegramPurchaseHandler {
 
       const priceResult = this.priceCalculator.calculate(
         purchaseRequest.quantity / 1000,
-        purchaseRequest.cpfCount,
+        effectiveCpfCount,
         priceTable,
         options,
       );
@@ -223,7 +241,7 @@ export class TelegramPurchaseHandler {
 
     // Group message dedup check (after parse, before any response)
     if (counterOfferSettings?.groupDedupEnabled && senderId) {
-      const groupKey = `grp:${loggedInUserId}:${senderId}:${chatId}:${purchaseRequest.airlineId}:${purchaseRequest.quantity}:${purchaseRequest.cpfCount}`;
+      const groupKey = `grp:${loggedInUserId}:${senderId}:${chatId}:${purchaseRequest.airlineId}:${purchaseRequest.quantity}:${effectiveCpfCount}`;
       const ttlMs = counterOfferSettings.groupDedupWindowMinutes * 60 * 1000;
       if (this.privateMessageBuffer.shouldSkip(groupKey, ttlMs)) {
         this.logger.log('Group dedup: skipping duplicate request', {
@@ -231,7 +249,7 @@ export class TelegramPurchaseHandler {
           chatId,
           airlineId: purchaseRequest.airlineId,
           quantity: purchaseRequest.quantity,
-          cpfCount: purchaseRequest.cpfCount,
+          cpfCount: effectiveCpfCount,
         });
         return;
       }
@@ -285,7 +303,7 @@ export class TelegramPurchaseHandler {
         templateId,
         programaForMessage,
         purchaseRequest.quantity,
-        purchaseRequest.cpfCount,
+        effectiveCpfCount,
         this.formatPrivatePrice(pricesForCTA),
       );
 
@@ -348,7 +366,7 @@ export class TelegramPurchaseHandler {
       counterOfferSettings.messageTemplateId,
       programaForMessage,
       purchaseRequest.quantity,
-      purchaseRequest.cpfCount,
+      effectiveCpfCount,
       this.formatPrivatePrice(calculatedPrices),
     );
 

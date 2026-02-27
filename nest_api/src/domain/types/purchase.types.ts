@@ -17,7 +17,7 @@ const RawProposalSchema = z.object({
     .describe(
       'Quantidade bruta como aparece na mensagem. Exemplos: "242k", "26.1k", "84000", "1kk", "1M", "10", "302,900k"',
     ),
-  cpfCount: z.number().int().positive().describe('Numero de CPFs/Passageiros/PAX, contando com bebes (ex: 2 para 2CPF, 4 para 3CPF + 1 bebe/bb/baby)'),
+  cpfCount: z.number().int().nonnegative().describe('Numero de CPFs/Passageiros/PAX, contando com bebes (ex: 2 para 2CPF, 4 para 3CPF + 1 bebe/bb/baby). Retorne 0 quando a mensagem diz "sem CPF".'),
   rawPrices: z
     .array(z.string())
     .default([])

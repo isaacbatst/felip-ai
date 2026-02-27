@@ -11,6 +11,7 @@ import { PrivateMessageBufferService } from '@/infrastructure/telegram/private-m
 import { BotPreferenceRepository } from '@/infrastructure/persistence/bot-status.repository';
 import { GroupDelaySettingsRepository } from '@/infrastructure/persistence/group-delay-settings.repository';
 import { BlacklistRepository } from '@/infrastructure/persistence/blacklist.repository';
+import { AppConfigService } from '@/config/app.config';
 import type { PriceTableV2 } from '@/domain/types/price.types';
 import type { PurchaseProposal } from '@/domain/types/purchase.types';
 
@@ -36,6 +37,7 @@ describe('TelegramPurchaseHandler', () => {
     4: { 15: 22, 30: 20, 50: 18 }, // LATAM LIMINAR
     5: { 15: 20, 30: 18, 50: 16 }, // AZUL/TUDO AZUL
     6: { 15: 21, 30: 19, 50: 17 }, // AZUL LIMINAR
+    18: { 15: 19, 30: 17, 50: 15 }, // AZUL VIAGENS
   };
 
   // Fake available miles by program ID
@@ -46,6 +48,7 @@ describe('TelegramPurchaseHandler', () => {
     4: 20000, // LATAM LIMINAR
     5: 60000, // AZUL/TUDO AZUL
     6: 25000, // AZUL LIMINAR
+    18: 50000, // AZUL VIAGENS
   };
 
   // Fake max prices by program ID
@@ -56,10 +59,11 @@ describe('TelegramPurchaseHandler', () => {
     4: 22, // LATAM LIMINAR
     5: 20, // AZUL/TUDO AZUL
     6: 21, // AZUL LIMINAR
+    18: 19, // AZUL VIAGENS
   };
 
   // Default configured program IDs
-  let configuredProgramIds = [1, 2, 3, 4, 5, 6];
+  let configuredProgramIds = [1, 2, 3, 4, 5, 6, 18];
 
   // Mapping of program names to IDs for tests
   const PROGRAM_IDS = {
@@ -69,6 +73,7 @@ describe('TelegramPurchaseHandler', () => {
     'LATAM Liminar': 4,
     'AZUL/TUDO AZUL': 5,
     'AZUL Liminar': 6,
+    'AZUL VIAGENS': 18,
   } as const;
 
   // Test programs data
@@ -79,6 +84,7 @@ describe('TelegramPurchaseHandler', () => {
     { id: 4, name: 'LATAM Liminar', liminarOfId: 3, absurdPriceMin: null, absurdPriceMax: null, createdAt: new Date() },
     { id: 5, name: 'AZUL/TUDO AZUL', liminarOfId: null, absurdPriceMin: 9, absurdPriceMax: 25, createdAt: new Date() },
     { id: 6, name: 'AZUL Liminar', liminarOfId: 5, absurdPriceMin: null, absurdPriceMax: null, createdAt: new Date() },
+    { id: 18, name: 'AZUL VIAGENS', liminarOfId: null, absurdPriceMin: 9, absurdPriceMax: 25, createdAt: new Date() },
   ];
 
   // Helper to create a mock PurchaseProposal array with single element (standard case)
@@ -100,8 +106,9 @@ describe('TelegramPurchaseHandler', () => {
       4: 20000, // LATAM LIMINAR
       5: 60000, // AZUL/TUDO AZUL
       6: 25000, // AZUL LIMINAR
+      18: 50000, // AZUL VIAGENS
     };
-    configuredProgramIds = [1, 2, 3, 4, 5, 6];
+    configuredProgramIds = [1, 2, 3, 4, 5, 6, 18];
 
     // Create mocks
     mockMessageParser = {
@@ -210,6 +217,12 @@ describe('TelegramPurchaseHandler', () => {
             getBlacklist: jest.fn().mockResolvedValue([]),
             add: jest.fn(),
             remove: jest.fn(),
+          },
+        },
+        {
+          provide: AppConfigService,
+          useValue: {
+            azulViagensProgramId: 18,
           },
         },
       ],
@@ -1300,6 +1313,17 @@ describe('TelegramPurchaseHandler', () => {
         ['contas cheias', 'SMILES 30k contas cheias'],
         ['conta fechada', 'SMILES 30k conta fechada'],
         ['contas fechadas', 'SMILES 30k contas fechadas'],
+        ['na conversa', '16 foi a quantidade informada na conversa SMILES 100k'],
+        ['internamente', 'Confirmando internamente SMILES 100k 16 CPF Compro'],
+        ['estruturada em', 'A negociação está estruturada em 100k SMILES'],
+        ['estruturado em', 'O acordo está estruturado em 100k SMILES 16 CPF'],
+        ['em relação', 'Em relação à SMILES recebi proposta de 100k 16 CPF Compro'],
+        ['voltando ao assunto', 'Voltando ao assunto SMILES 100k 16 CPF Compro'],
+        ['disse que', 'O contato disse que consegue 100k SMILES 16 CPF'],
+        ['afirmou que', 'O anunciante afirmou que atende 16 CPFs SMILES 100k'],
+        ['informou que', 'O vendedor informou que tem 100k SMILES 16 CPF'],
+        ['se confirmar', 'Se confirmar disponibilidade SMILES 100k 16 CPF Compro'],
+        ['se estiver', 'Se estiver alinhado SMILES 100k 16 CPF Compro'],
       ])('should skip message containing "%s"', async (_label, text) => {
         await handler.handlePurchase(
           loggedInUserId,
@@ -1468,6 +1492,35 @@ describe('TelegramPurchaseHandler', () => {
         await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'LATAM 30k 1CPF', senderId);
 
         expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledTimes(2);
+      });
+    });
+
+    describe('cpfCount=0 handling', () => {
+      it('should process with cpfCount=1 when cpfCount=0 and program is Azul Viagens', async () => {
+        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
+          quantity: 30_000,
+          cpfCount: 0,
+          airlineId: PROGRAM_IDS['AZUL VIAGENS'],
+        }));
+
+        await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'Azul Viagens 30k sem CPF');
+
+        expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledTimes(1);
+        // Price should be calculated with cpfCount=1 (overridden from 0)
+        const sentMessage = mockTdlibUserClient.sendMessage.mock.calls[0][2];
+        expect(sentMessage).toBeDefined();
+      });
+
+      it('should reject (no response) when cpfCount=0 and program is not Azul Viagens', async () => {
+        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
+          quantity: 30_000,
+          cpfCount: 0,
+          airlineId: PROGRAM_IDS.SMILES,
+        }));
+
+        await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k sem CPF');
+
+        expect(mockTdlibUserClient.sendMessage).not.toHaveBeenCalled();
       });
     });
   });

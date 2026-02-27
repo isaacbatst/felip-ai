@@ -183,6 +183,13 @@ export class AppConfigService {
   }
 
   /**
+   * Program ID for Azul Viagens (used for cpfCount=0 override)
+   */
+  get azulViagensProgramId(): number {
+    return Number(this.configService.get<string>('AZUL_VIAGENS_PROGRAM_ID', '18'));
+  }
+
+  /**
    * Trial period duration in days
    */
   getTrialDurationDays(): number {
