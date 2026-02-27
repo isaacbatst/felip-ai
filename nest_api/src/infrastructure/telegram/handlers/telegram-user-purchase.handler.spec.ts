@@ -1280,6 +1280,56 @@ describe('TelegramPurchaseHandler', () => {
       });
     });
 
+    describe('Max message length filter', () => {
+      it('should skip message with 151+ chars', async () => {
+        // 151 chars: exceeds the 150-char limit
+        const longMessage = 'SMILES 30k 1CPF ' + 'a'.repeat(151 - 'SMILES 30k 1CPF '.length);
+        expect(longMessage.length).toBe(151);
+
+        await handler.handlePurchase(
+          loggedInUserId,
+          telegramUserId,
+          chatId,
+          messageId,
+          longMessage,
+        );
+
+        expect(mockMessageParser.parse).not.toHaveBeenCalled();
+        expect(mockTdlibUserClient.sendMessage).not.toHaveBeenCalled();
+      });
+
+      it('should accept message with exactly 150 chars', async () => {
+        const message = 'SMILES 30k 1CPF ' + 'a'.repeat(150 - 'SMILES 30k 1CPF '.length);
+        expect(message.length).toBe(150);
+
+        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray());
+
+        await handler.handlePurchase(
+          loggedInUserId,
+          telegramUserId,
+          chatId,
+          messageId,
+          message,
+        );
+
+        expect(mockMessageParser.parse).toHaveBeenCalled();
+      });
+
+      it('should accept short telegraphic message (not affected by max length)', async () => {
+        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray());
+
+        await handler.handlePurchase(
+          loggedInUserId,
+          telegramUserId,
+          chatId,
+          messageId,
+          'SMILES 30k 1CPF',
+        );
+
+        expect(mockMessageParser.parse).toHaveBeenCalled();
+      });
+    });
+
     describe('Trap word filter', () => {
       it.each([
         ['bot', 'SMILES 30k 1CPF bot'],

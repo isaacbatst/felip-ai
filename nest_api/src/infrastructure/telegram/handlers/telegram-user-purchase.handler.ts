@@ -66,27 +66,36 @@ export class TelegramPurchaseHandler {
       return;
     }
 
-    // Validação 2: mensagem é só números (com vírgulas/pontos decimais)
+    // Validação 2: mensagem muito longa (propostas reais são telegráficas, ~18-46 chars)
+    if (trimmedText.length > 150) {
+      this.logger.log('Skipping: message too long for a real purchase proposal', {
+        length: trimmedText.length,
+        text: trimmedText.substring(0, 80) + '...',
+      });
+      return;
+    }
+
+    // Validação 3: mensagem é só números (com vírgulas/pontos decimais)
     const onlyNumbersPattern = /^[\d.,\s]+$/;
     if (onlyNumbersPattern.test(trimmedText)) {
       this.logger.log('Skipping: message contains only numbers', { text: trimmedText });
       return;
     }
 
-    // Validação 3: mensagem não contém números
+    // Validação 4: mensagem não contém números
     const hasNumbersPattern = /\d/;
     if (!hasNumbersPattern.test(trimmedText)) {
       this.logger.log('Skipping: message has no numbers', { text: trimmedText });
       return;
     }
 
-    // Validação 4: mensagem é uma resposta (reply) a outra mensagem
+    // Validação 5: mensagem é uma resposta (reply) a outra mensagem
     if (isReply) {
       this.logger.log('Skipping: message is a reply to another message');
       return;
     }
 
-    // Validação 5: mensagem contém palavras que não aparecem em demandas reais
+    // Validação 6: mensagem contém palavras que não aparecem em demandas reais
     // Demandas reais seguem o padrão: programa + quantidade + CPF + preço aceito (opcional)
     // Palavras como "bot", "robô", "pegadinha", "teste", "armadilha" indicam armadilha ou teste
     const normalizedForTrapCheck = trimmedText.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();

@@ -122,7 +122,7 @@ export class MessageParserService extends MessageParser {
         }
       },
       reasoning: {
-        effort: 'medium',
+        effort: 'high',
       },
       text: {
         verbosity: 'low',
