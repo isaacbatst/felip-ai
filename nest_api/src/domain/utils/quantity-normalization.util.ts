@@ -30,6 +30,7 @@ export class QuantityNormalizationUtil {
       trimmed = trimmed.slice(0, -1);
     }
 
+    trimmed = trimmed.trim();
     trimmed = SeparatorNormalizationUtil.normalize(trimmed);
 
     // Reject strings with non-numeric characters (e.g. fractions like "1/4")

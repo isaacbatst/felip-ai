@@ -107,6 +107,18 @@ describe('QuantityNormalizationUtil', () => {
     it('parses " 242k " with whitespace -> 242000', () => {
       expect(QuantityNormalizationUtil.parse(' 242k ')).toBe(242000);
     });
+
+    it('parses "51 k" with space before suffix -> 51000', () => {
+      expect(QuantityNormalizationUtil.parse('51 k')).toBe(51000);
+    });
+
+    it('parses "100 kk" with space before suffix -> 100000000', () => {
+      expect(QuantityNormalizationUtil.parse('100 kk')).toBe(100_000_000);
+    });
+
+    it('parses "2 m" with space before suffix -> 2000000', () => {
+      expect(QuantityNormalizationUtil.parse('2 m')).toBe(2_000_000);
+    });
   });
 
   describe('fractions (trap detection)', () => {
