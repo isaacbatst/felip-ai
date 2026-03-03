@@ -127,7 +127,7 @@ export class TelegramPurchaseHandler {
       loggedInUserId,
       chatId,
     );
-    const reasoningEffort = reasoningSetting?.reasoningMode === 'precise' ? 'high' as const : 'low' as const;
+    const reasoningEffort = reasoningSetting?.reasoningMode === 'precise' ? 'high' as const : 'minimal' as const;
 
     // Passa os programas como contexto para ajudar o modelo a reconhecer melhor
     const purchaseRequests = await this.messageParser.parse(text, programsForParser, reasoningEffort);

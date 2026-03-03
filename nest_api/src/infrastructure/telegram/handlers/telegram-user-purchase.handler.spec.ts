@@ -1586,7 +1586,7 @@ describe('TelegramPurchaseHandler', () => {
     });
 
     describe('Reasoning effort per group', () => {
-      it('should pass reasoning effort "low" when no reasoning setting exists', async () => {
+      it('should pass reasoning effort "minimal" when no reasoning setting exists', async () => {
         mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
           quantity: 30_000,
           cpfCount: 1,
@@ -1598,11 +1598,11 @@ describe('TelegramPurchaseHandler', () => {
         expect(mockMessageParser.parse).toHaveBeenCalledWith(
           'SMILES 30k 1CPF',
           expect.any(Array),
-          'low',
+          'minimal',
         );
       });
 
-      it('should pass reasoning effort "low" when reasoning mode is "fast"', async () => {
+      it('should pass reasoning effort "minimal" when reasoning mode is "fast"', async () => {
         mockGroupReasoningSettingsRepository.getGroupReasoningSetting.mockResolvedValue({
           userId: loggedInUserId,
           groupId: chatId,
@@ -1622,7 +1622,7 @@ describe('TelegramPurchaseHandler', () => {
         expect(mockMessageParser.parse).toHaveBeenCalledWith(
           'SMILES 30k 1CPF',
           expect.any(Array),
-          'low',
+          'minimal',
         );
       });
 

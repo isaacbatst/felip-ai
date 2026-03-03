@@ -46,7 +46,7 @@ export class MessageParserService extends MessageParser {
     };
   }
 
-  async parse(text: string, programs?: ProgramOption[], reasoningEffort: 'low' | 'high' = 'low'): Promise<PurchaseProposal[] | null> {
+  async parse(text: string, programs?: ProgramOption[], reasoningEffort: 'minimal' | 'high' = 'minimal'): Promise<PurchaseProposal[] | null> {
     try {
       this.logger.log('Parsing message', { text });
 
@@ -103,7 +103,7 @@ export class MessageParserService extends MessageParser {
   /**
    * Extract data (quantity, cpfCount, acceptedPrices) using AI
    */
-  private async extractDataWithAI(text: string, reasoningEffort: 'low' | 'high' = 'low'): Promise<RawDataExtractionOutput | null> {
+  private async extractDataWithAI(text: string, reasoningEffort: 'minimal' | 'high' = 'minimal'): Promise<RawDataExtractionOutput | null> {
     const client = this.openaiService.getClient();
 
     const promptConfig = await this.promptConfigRepository.getByKey(

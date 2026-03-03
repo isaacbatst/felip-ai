@@ -142,7 +142,7 @@ export const groupDelaySettings = pgTable(
 
 /**
  * Group reasoning settings table - per-group AI reasoning mode
- * 'fast' = reasoning.effort='low' (default), 'precise' = reasoning.effort='high'
+ * 'fast' = reasoning.effort='minimal' (default), 'precise' = reasoning.effort='high'
  */
 export const groupReasoningSettings = pgTable(
   'group_reasoning_settings',
