@@ -103,7 +103,7 @@ export class TelegramPurchaseHandler {
     const normalizedForTrapCheck = trimmedText.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
     const trapWords = [
       'bot', 'robo', 'robot', 'pegadinha', 'teste', 'armadilha',
-      'transferencia', 'tenho', 'faco', 'vendo', 'teto smiles',
+      'transferencia', 'tenho', 'faco', 'vendo', 'teto smiles', 'smiles teto',
       'interessar', 'interesse', 'banimento', 'ia', 'brincadeira',
       'joke', 'malandragem', 'compramos', 'negociar', 'chama',
       'informacoes', 'pv', 'privado',
