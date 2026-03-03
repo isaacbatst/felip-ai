@@ -20,8 +20,9 @@ export abstract class MessageParser {
    * Faz parsing de uma mensagem de texto para identificar propostas de compra
    * @param text Texto da mensagem a ser analisado
    * @param programs Lista de programas de milhas disponíveis (com ID e nome)
+   * @param reasoningEffort Nível de raciocínio da IA ('low' = Rápido, 'high' = Preciso)
    * @returns Array de PurchaseProposal quando há propostas válidas, null caso contrário
    */
-  abstract parse(text: string, programs?: ProgramOption[]): Promise<PurchaseProposal[] | null>;
+  abstract parse(text: string, programs?: ProgramOption[], reasoningEffort?: 'low' | 'high'): Promise<PurchaseProposal[] | null>;
 }
 

@@ -38,6 +38,8 @@ import { GroupDelaySettingsRepository } from "@/infrastructure/persistence/group
 import { GroupDelaySettingsDrizzleStore } from "@/infrastructure/persistence/drizzle/group-delay-settings-drizzle-store";
 import { BlacklistRepository } from "@/infrastructure/persistence/blacklist.repository";
 import { BlacklistDrizzleStore } from "@/infrastructure/persistence/drizzle/blacklist-drizzle-store";
+import { GroupReasoningSettingsRepository } from "@/infrastructure/persistence/group-reasoning-settings.repository";
+import { GroupReasoningSettingsDrizzleStore } from "@/infrastructure/persistence/drizzle/group-reasoning-settings-drizzle-store";
 
 @Module({
   imports: [DatabaseModule],
@@ -118,6 +120,10 @@ import { BlacklistDrizzleStore } from "@/infrastructure/persistence/drizzle/blac
       provide: BlacklistRepository,
       useClass: BlacklistDrizzleStore,
     },
+    {
+      provide: GroupReasoningSettingsRepository,
+      useClass: GroupReasoningSettingsDrizzleStore,
+    },
   ],
   exports: [
     ActiveGroupsRepository,
@@ -139,6 +145,7 @@ import { BlacklistDrizzleStore } from "@/infrastructure/persistence/drizzle/blac
     CouponRepository,
     GroupDelaySettingsRepository,
     BlacklistRepository,
+    GroupReasoningSettingsRepository,
   ],
 })
 export class PersistenceModule {}

@@ -12,6 +12,7 @@ import { BotPreferenceRepository } from '@/infrastructure/persistence/bot-status
 import { GroupDelaySettingsRepository } from '@/infrastructure/persistence/group-delay-settings.repository';
 import { BlacklistRepository } from '@/infrastructure/persistence/blacklist.repository';
 import { AppConfigService } from '@/config/app.config';
+import { GroupReasoningSettingsRepository } from '@/infrastructure/persistence/group-reasoning-settings.repository';
 import type { PriceTableV2 } from '@/domain/types/price.types';
 import type { PurchaseProposal } from '@/domain/types/purchase.types';
 
@@ -22,6 +23,7 @@ describe('TelegramPurchaseHandler', () => {
   let mockTdlibUserClient: jest.Mocked<TelegramUserClientProxyService>;
   let mockCounterOfferSettingsRepository: jest.Mocked<CounterOfferSettingsRepository>;
   let mockMilesProgramRepository: jest.Mocked<MilesProgramRepository>;
+  let mockGroupReasoningSettingsRepository: jest.Mocked<GroupReasoningSettingsRepository>;
 
   // Test constants
   const loggedInUserId = 'test-logged-in-user-123';
@@ -225,10 +227,19 @@ describe('TelegramPurchaseHandler', () => {
             azulViagensProgramId: 18,
           },
         },
+        {
+          provide: GroupReasoningSettingsRepository,
+          useValue: {
+            getGroupReasoningSetting: jest.fn().mockResolvedValue(null),
+            getAllGroupReasoningSettings: jest.fn().mockResolvedValue([]),
+            upsertGroupReasoningSetting: jest.fn(),
+          },
+        },
       ],
     }).compile();
 
     handler = module.get<TelegramPurchaseHandler>(TelegramPurchaseHandler);
+    mockGroupReasoningSettingsRepository = module.get(GroupReasoningSettingsRepository);
   });
 
   afterEach(() => {
@@ -1571,6 +1582,72 @@ describe('TelegramPurchaseHandler', () => {
         await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k sem CPF');
 
         expect(mockTdlibUserClient.sendMessage).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('Reasoning effort per group', () => {
+      it('should pass reasoning effort "low" when no reasoning setting exists', async () => {
+        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
+          quantity: 30_000,
+          cpfCount: 1,
+          airlineId: PROGRAM_IDS.SMILES,
+        }));
+
+        await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF');
+
+        expect(mockMessageParser.parse).toHaveBeenCalledWith(
+          'SMILES 30k 1CPF',
+          expect.any(Array),
+          'low',
+        );
+      });
+
+      it('should pass reasoning effort "low" when reasoning mode is "fast"', async () => {
+        mockGroupReasoningSettingsRepository.getGroupReasoningSetting.mockResolvedValue({
+          userId: loggedInUserId,
+          groupId: chatId,
+          reasoningMode: 'fast',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+
+        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
+          quantity: 30_000,
+          cpfCount: 1,
+          airlineId: PROGRAM_IDS.SMILES,
+        }));
+
+        await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF');
+
+        expect(mockMessageParser.parse).toHaveBeenCalledWith(
+          'SMILES 30k 1CPF',
+          expect.any(Array),
+          'low',
+        );
+      });
+
+      it('should pass reasoning effort "high" when reasoning mode is "precise"', async () => {
+        mockGroupReasoningSettingsRepository.getGroupReasoningSetting.mockResolvedValue({
+          userId: loggedInUserId,
+          groupId: chatId,
+          reasoningMode: 'precise',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+
+        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
+          quantity: 30_000,
+          cpfCount: 1,
+          airlineId: PROGRAM_IDS.SMILES,
+        }));
+
+        await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF');
+
+        expect(mockMessageParser.parse).toHaveBeenCalledWith(
+          'SMILES 30k 1CPF',
+          expect.any(Array),
+          'high',
+        );
       });
     });
   });

@@ -572,6 +572,31 @@
                       </div>
                     </template>
                   </div>
+                  <!-- Per-group reasoning mode -->
+                  <div class="mt-3 pt-3 border-t border-gray-100">
+                    <div class="flex items-center justify-between">
+                      <div class="flex items-center gap-2">
+                        <i class="fa-solid fa-brain text-gray-400 text-xs"></i>
+                        <span class="text-xs font-medium text-gray-600">Modo de Análise</span>
+                      </div>
+                      <div class="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5">
+                        <button type="button"
+                          class="px-2.5 py-1 text-xs font-medium rounded-md transition-all disabled:opacity-50"
+                          :class="getGroupReasoning(group.id) === 'fast' ? 'bg-white text-primary shadow-sm' : 'bg-transparent text-gray-500 hover:text-primary'"
+                          :disabled="savingGroupReasoning === group.id"
+                          @click="saveGroupReasoning(group.id, 'fast')">
+                          Rápido
+                        </button>
+                        <button type="button"
+                          class="px-2.5 py-1 text-xs font-medium rounded-md transition-all disabled:opacity-50"
+                          :class="getGroupReasoning(group.id) === 'precise' ? 'bg-white text-primary shadow-sm' : 'bg-transparent text-gray-500 hover:text-primary'"
+                          :disabled="savingGroupReasoning === group.id"
+                          @click="saveGroupReasoning(group.id, 'precise')">
+                          Preciso
+                        </button>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </template>
             </div>
@@ -1260,9 +1285,11 @@
         // Delay settings state
         delayDefaults: { delayMin: 0, delayMax: 0 },
         groupDelaySettings: {},  // Map of groupId -> { delayEnabled, delayMin, delayMax }
+        groupReasoningSettings: {},  // Map of groupId -> 'fast' | 'precise'
         savingDelayDefaults: false,
         delayDefaultsChanged: false,
         savingGroupDelay: null,   // groupId being saved
+        savingGroupReasoning: null,  // groupId being saved
 
         // Bot status state (preference)
         botStatus: { isEnabled: false },
@@ -1544,14 +1571,17 @@
             if (data.success) {
               this.delayDefaults = data.data.defaults;
               const map = {};
+              const reasoningMap = {};
               for (const g of data.data.groups) {
                 map[g.groupId] = {
                   delayEnabled: g.delayEnabled,
                   delayMin: g.delayMin,
                   delayMax: g.delayMax,
                 };
+                reasoningMap[g.groupId] = g.reasoningMode || 'fast';
               }
               this.groupDelaySettings = map;
+              this.groupReasoningSettings = reasoningMap;
             } else {
               console.warn('Failed to fetch delay settings:', data.error);
             }
@@ -1562,6 +1592,35 @@
 
         getGroupDelay(groupId) {
           return this.groupDelaySettings[groupId] || { delayEnabled: false, delayMin: null, delayMax: null };
+        },
+
+        getGroupReasoning(groupId) {
+          return this.groupReasoningSettings[groupId] || 'fast';
+        },
+
+        async saveGroupReasoning(groupId, mode) {
+          const previous = this.getGroupReasoning(groupId);
+          this.groupReasoningSettings = { ...this.groupReasoningSettings, [groupId]: mode };
+          this.savingGroupReasoning = groupId;
+          try {
+            const res = await this.authFetch(`/dashboard/groups/${groupId}/reasoning-mode`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ reasoningMode: mode }),
+            });
+            const data = await res.json();
+            if (data.success) {
+              this.showToast('Modo de análise salvo!', 'success');
+            } else {
+              this.groupReasoningSettings = { ...this.groupReasoningSettings, [groupId]: previous };
+              this.showToast('Erro: ' + (data.error || 'Falha ao salvar'), 'error');
+            }
+          } catch {
+            this.groupReasoningSettings = { ...this.groupReasoningSettings, [groupId]: previous };
+            this.showToast('Erro ao salvar modo de análise', 'error');
+          } finally {
+            this.savingGroupReasoning = null;
+          }
         },
 
         markDelayDefaultsChanged() {

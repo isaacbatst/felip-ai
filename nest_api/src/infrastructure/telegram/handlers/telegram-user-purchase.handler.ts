@@ -11,6 +11,7 @@ import { PriceCalculatorService } from '../../../domain/services/price-calculato
 import { PrivateMessageBufferService } from '../private-message-buffer.service';
 import { BlacklistRepository } from '@/infrastructure/persistence/blacklist.repository';
 import { AppConfigService } from '@/config/app.config';
+import { GroupReasoningSettingsRepository } from '@/infrastructure/persistence/group-reasoning-settings.repository';
 
 interface CalculatedPriceResult {
   price: number;
@@ -44,6 +45,7 @@ export class TelegramPurchaseHandler {
     private readonly groupDelaySettingsRepository: GroupDelaySettingsRepository,
     private readonly blacklistRepository: BlacklistRepository,
     private readonly appConfig: AppConfigService,
+    private readonly groupReasoningSettingsRepository: GroupReasoningSettingsRepository,
   ) {}
 
   async handlePurchase(
@@ -120,8 +122,15 @@ export class TelegramPurchaseHandler {
     const allPrograms = await this.milesProgramRepository.getAllPrograms();
     const programsForParser: ProgramOption[] = allPrograms.map((p) => ({ id: p.id, name: p.name }));
 
+    // Lookup per-group reasoning mode
+    const reasoningSetting = await this.groupReasoningSettingsRepository.getGroupReasoningSetting(
+      loggedInUserId,
+      chatId,
+    );
+    const reasoningEffort = reasoningSetting?.reasoningMode === 'precise' ? 'high' as const : 'low' as const;
+
     // Passa os programas como contexto para ajudar o modelo a reconhecer melhor
-    const purchaseRequests = await this.messageParser.parse(text, programsForParser);
+    const purchaseRequests = await this.messageParser.parse(text, programsForParser, reasoningEffort);
 
     // Ignorar se não houver propostas ou se houver mais de uma
     if (!purchaseRequests || purchaseRequests.length !== 1) {

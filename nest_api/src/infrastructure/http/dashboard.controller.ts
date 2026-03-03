@@ -21,6 +21,7 @@ import { CounterOfferSettingsRepository, type CounterOfferSettingsInput } from '
 import { ActiveGroupsRepository } from '@/infrastructure/persistence/active-groups.repository';
 import { BotPreferenceRepository } from '@/infrastructure/persistence/bot-status.repository';
 import { GroupDelaySettingsRepository, type GroupDelaySettingInput } from '@/infrastructure/persistence/group-delay-settings.repository';
+import { GroupReasoningSettingsRepository, type ReasoningMode } from '@/infrastructure/persistence/group-reasoning-settings.repository';
 import { BlacklistRepository, type BlacklistScope } from '@/infrastructure/persistence/blacklist.repository';
 import { TelegramUserClientProxyService } from '@/infrastructure/tdlib/telegram-user-client-proxy.service';
 import { SubscriptionService, SubscriptionError } from '@/infrastructure/subscription/subscription.service';
@@ -192,6 +193,7 @@ interface GroupDelaySettingResponse {
   delayEnabled: boolean;
   delayMin: number | null;
   delayMax: number | null;
+  reasoningMode: ReasoningMode;
 }
 
 interface DelaySettingsResponse {
@@ -203,6 +205,10 @@ interface UpdateGroupDelayDto {
   delayEnabled: boolean;
   delayMin: number | null;
   delayMax: number | null;
+}
+
+interface UpdateGroupReasoningModeDto {
+  reasoningMode: ReasoningMode;
 }
 
 interface BlacklistEntryResponse {
@@ -268,6 +274,7 @@ export class DashboardController {
     private readonly authErrorCache: AuthErrorCacheService,
     private readonly groupDelaySettingsRepository: GroupDelaySettingsRepository,
     private readonly blacklistRepository: BlacklistRepository,
+    private readonly groupReasoningSettingsRepository: GroupReasoningSettingsRepository,
   ) {}
 
   /**
@@ -1082,21 +1089,30 @@ export class DashboardController {
   ): Promise<ApiResponse<DelaySettingsResponse>> {
     const userId = req.user.userId;
 
-    const [defaults, groupSettings] = await Promise.all([
+    const [defaults, groupSettings, groupReasoningList, activeGroupIds] = await Promise.all([
       this.botPreferenceRepository.getDelayDefaults(userId),
       this.groupDelaySettingsRepository.getAllGroupDelaySettings(userId),
+      this.groupReasoningSettingsRepository.getAllGroupReasoningSettings(userId),
+      this.activeGroupsRepository.getActiveGroups(userId),
     ]);
+
+    const delayMap = new Map(groupSettings.map(g => [g.groupId, g]));
+    const reasoningMap = new Map(groupReasoningList.map(r => [r.groupId, r.reasoningMode]));
 
     return {
       success: true,
       data: {
         defaults,
-        groups: groupSettings.map((g) => ({
-          groupId: g.groupId,
-          delayEnabled: g.delayEnabled,
-          delayMin: g.delayMin,
-          delayMax: g.delayMax,
-        })),
+        groups: (activeGroupIds ?? []).map((gid) => {
+          const delay = delayMap.get(gid);
+          return {
+            groupId: gid,
+            delayEnabled: delay?.delayEnabled ?? false,
+            delayMin: delay?.delayMin ?? null,
+            delayMax: delay?.delayMax ?? null,
+            reasoningMode: reasoningMap.get(gid) ?? 'fast',
+          };
+        }),
       },
     };
   }
@@ -1238,6 +1254,53 @@ export class DashboardController {
       delayEnabled: body.delayEnabled,
       delayMin,
       delayMax,
+    });
+
+    res.status(HttpStatus.OK).json({
+      success: true,
+    } satisfies ApiResponse);
+  }
+
+  /**
+   * PUT /dashboard/groups/:groupId/reasoning-mode - Update per-group reasoning mode
+   */
+  @Put('groups/:groupId/reasoning-mode')
+  async updateGroupReasoningMode(
+    @Req() req: AuthenticatedRequest,
+    @Param('groupId') groupId: string,
+    @Body() body: UpdateGroupReasoningModeDto,
+    @Res() res: Response,
+  ): Promise<void> {
+    const userId = req.user.userId;
+
+    const groupIdNum = parseInt(groupId, 10);
+    if (Number.isNaN(groupIdNum)) {
+      res.status(HttpStatus.BAD_REQUEST).json({
+        success: false,
+        error: 'invalid_group_id',
+      } satisfies ApiResponse);
+      return;
+    }
+
+    const activeGroups = await this.activeGroupsRepository.getActiveGroups(userId);
+    if (!activeGroups || !activeGroups.includes(groupIdNum)) {
+      res.status(HttpStatus.BAD_REQUEST).json({
+        success: false,
+        error: 'group_not_active',
+      } satisfies ApiResponse);
+      return;
+    }
+
+    if (body.reasoningMode !== 'fast' && body.reasoningMode !== 'precise') {
+      res.status(HttpStatus.BAD_REQUEST).json({
+        success: false,
+        error: 'reasoningMode must be fast or precise',
+      } satisfies ApiResponse);
+      return;
+    }
+
+    await this.groupReasoningSettingsRepository.upsertGroupReasoningSetting(userId, groupIdNum, {
+      reasoningMode: body.reasoningMode,
     });
 
     res.status(HttpStatus.OK).json({

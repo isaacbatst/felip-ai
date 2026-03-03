@@ -46,7 +46,7 @@ export class MessageParserService extends MessageParser {
     };
   }
 
-  async parse(text: string, programs?: ProgramOption[]): Promise<PurchaseProposal[] | null> {
+  async parse(text: string, programs?: ProgramOption[], reasoningEffort: 'low' | 'high' = 'low'): Promise<PurchaseProposal[] | null> {
     try {
       this.logger.log('Parsing message', { text });
 
@@ -61,7 +61,7 @@ export class MessageParserService extends MessageParser {
       this.logger.log('Provider found via keyword matching', { airlineId });
 
       // Step 2: Extract other data using AI (only if provider found)
-      const data = await this.extractDataWithAI(text);
+      const data = await this.extractDataWithAI(text, reasoningEffort);
 
       if (!data || !data.isPurchaseProposal) {
         this.logger.log('AI extraction returned non-purchase proposal');
@@ -103,7 +103,7 @@ export class MessageParserService extends MessageParser {
   /**
    * Extract data (quantity, cpfCount, acceptedPrices) using AI
    */
-  private async extractDataWithAI(text: string): Promise<RawDataExtractionOutput | null> {
+  private async extractDataWithAI(text: string, reasoningEffort: 'low' | 'high' = 'low'): Promise<RawDataExtractionOutput | null> {
     const client = this.openaiService.getClient();
 
     const promptConfig = await this.promptConfigRepository.getByKey(
@@ -122,7 +122,7 @@ export class MessageParserService extends MessageParser {
         }
       },
       reasoning: {
-        effort: 'high',
+        effort: reasoningEffort,
       },
       text: {
         verbosity: 'low',

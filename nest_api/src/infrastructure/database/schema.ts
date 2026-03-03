@@ -140,6 +140,27 @@ export const groupDelaySettings = pgTable(
   ],
 );
 
+/**
+ * Group reasoning settings table - per-group AI reasoning mode
+ * 'fast' = reasoning.effort='low' (default), 'precise' = reasoning.effort='high'
+ */
+export const groupReasoningSettings = pgTable(
+  'group_reasoning_settings',
+  {
+    id: integer('id').primaryKey().generatedAlwaysAsIdentity(),
+    userId: text('user_id').notNull(),
+    groupId: bigint('group_id', { mode: 'number' }).notNull(),
+    reasoningMode: text('reasoning_mode').notNull().default('fast'), // 'fast' | 'precise'
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => [
+    index('group_reasoning_settings_user_id_idx').on(table.userId),
+    index('group_reasoning_settings_user_id_group_id_idx').on(table.userId, table.groupId),
+    unique('group_reasoning_settings_user_id_group_id_unique').on(table.userId, table.groupId),
+  ],
+);
+
 // ============================================================================
 // User Data Management Tables (replacing Google Spreadsheet)
 // ============================================================================
