@@ -12,6 +12,7 @@ import { BotPreferenceRepository } from '@/infrastructure/persistence/bot-status
 import { GroupDelaySettingsRepository } from '@/infrastructure/persistence/group-delay-settings.repository';
 import { BlacklistRepository } from '@/infrastructure/persistence/blacklist.repository';
 import { GroupReasoningSettingsRepository } from '@/infrastructure/persistence/group-reasoning-settings.repository';
+import { AppConfigService } from '@/config/app.config';
 import type { PriceTableV2 } from '@/domain/types/price.types';
 import type { PurchaseProposal } from '@/domain/types/purchase.types';
 
@@ -226,6 +227,12 @@ describe('TelegramPurchaseHandler', () => {
             getGroupReasoningSetting: jest.fn().mockResolvedValue(null),
             getAllGroupReasoningSettings: jest.fn().mockResolvedValue([]),
             upsertGroupReasoningSetting: jest.fn(),
+          },
+        },
+        {
+          provide: AppConfigService,
+          useValue: {
+            azulViagensProgramId: 18,
           },
         },
       ],
@@ -1565,7 +1572,7 @@ describe('TelegramPurchaseHandler', () => {
         expect(sentMessage).toBeDefined();
       });
 
-      it('should reject (no response) when cpfCount=0 and program has noCpfAllowed=false', async () => {
+      it('should reject (no response) when cpfCount=0 and program has noCpfAllowed=false and is not Azul', async () => {
         mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
           quantity: 30_000,
           cpfCount: 0,
@@ -1575,6 +1582,46 @@ describe('TelegramPurchaseHandler', () => {
         await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k sem CPF');
 
         expect(mockTdlibUserClient.sendMessage).not.toHaveBeenCalled();
+      });
+
+      it('should redirect AZUL/TUDO AZUL to AZUL VIAGENS when cpfCount=0', async () => {
+        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
+          quantity: 30_000,
+          cpfCount: 0,
+          airlineId: PROGRAM_IDS['AZUL/TUDO AZUL'],
+        }));
+
+        await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'Azul 30k sem CPF');
+
+        expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledTimes(1);
+        const sentMessage = mockTdlibUserClient.sendMessage.mock.calls[0][2];
+        expect(sentMessage).toBeDefined();
+      });
+
+      it('should redirect AZUL Liminar to AZUL VIAGENS when cpfCount=0', async () => {
+        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
+          quantity: 30_000,
+          cpfCount: 0,
+          airlineId: PROGRAM_IDS['AZUL Liminar'],
+        }));
+
+        await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'Azul Liminar 30k sem CPF');
+
+        expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledTimes(1);
+        const sentMessage = mockTdlibUserClient.sendMessage.mock.calls[0][2];
+        expect(sentMessage).toBeDefined();
+      });
+
+      it('should not redirect AZUL VIAGENS (already noCpfAllowed)', async () => {
+        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
+          quantity: 30_000,
+          cpfCount: 0,
+          airlineId: PROGRAM_IDS['AZUL VIAGENS'],
+        }));
+
+        await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'Azul Viagens 30k sem CPF');
+
+        expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledTimes(1);
       });
     });
 

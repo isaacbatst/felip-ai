@@ -11,6 +11,7 @@ import { PriceCalculatorService } from '../../../domain/services/price-calculato
 import { PrivateMessageBufferService } from '../private-message-buffer.service';
 import { BlacklistRepository } from '@/infrastructure/persistence/blacklist.repository';
 import { GroupReasoningSettingsRepository } from '@/infrastructure/persistence/group-reasoning-settings.repository';
+import { AppConfigService } from '@/config/app.config';
 
 interface CalculatedPriceResult {
   price: number;
@@ -44,6 +45,7 @@ export class TelegramPurchaseHandler {
     private readonly groupDelaySettingsRepository: GroupDelaySettingsRepository,
     private readonly blacklistRepository: BlacklistRepository,
     private readonly groupReasoningSettingsRepository: GroupReasoningSettingsRepository,
+    private readonly appConfig: AppConfigService,
   ) {}
 
   async handlePurchase(
@@ -157,13 +159,30 @@ export class TelegramPurchaseHandler {
     }
 
     // Get the program from the ID returned by the parser
-    const program = allPrograms.find((p) => p.id === purchaseRequest.airlineId);
+    let program = allPrograms.find((p) => p.id === purchaseRequest.airlineId);
     if (!program) {
       this.logger.warn('Program not found for airlineId', { airlineId: purchaseRequest.airlineId });
       return;
     }
 
     this.logger.debug('Selected program', { id: program.id, name: program.name });
+
+    // cpfCount=0 + non-Viagens Azul → redirect to Azul Viagens
+    if (purchaseRequest.cpfCount === 0 && !program.noCpfAllowed) {
+      const normalizedName = program.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+      if (normalizedName.includes('azul')) {
+        const azulViagensId = this.appConfig.azulViagensProgramId;
+        const azulViagens = allPrograms.find((p) => p.id === azulViagensId);
+        if (azulViagens?.noCpfAllowed) {
+          this.logger.log('Redirecting Azul program to Azul Viagens (cpfCount=0)', {
+            originalProgramId: program.id,
+            originalProgramName: program.name,
+            azulViagensId,
+          });
+          program = azulViagens;
+        }
+      }
+    }
 
     // cpfCount=0: tratar como 1 para programas com noCpfAllowed, rejeitar para outros
     let effectiveCpfCount = purchaseRequest.cpfCount;
