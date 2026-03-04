@@ -39,6 +39,7 @@ export class MilesProgramDrizzleStore extends MilesProgramRepository {
       liminarOfId: row.liminarOfId,
       absurdPriceMin: row.absurdPriceMin,
       absurdPriceMax: row.absurdPriceMax,
+      noCpfAllowed: row.noCpfAllowed,
       createdAt: row.createdAt,
     };
   }

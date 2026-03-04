@@ -50,6 +50,13 @@
       "when": 1772501677359,
       "tag": "0006_add_group_reasoning_settings",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1772646249881,
+      "tag": "0007_add_no_cpf_allowed_to_miles_programs",
+      "breakpoints": true
     }
   ]
 }

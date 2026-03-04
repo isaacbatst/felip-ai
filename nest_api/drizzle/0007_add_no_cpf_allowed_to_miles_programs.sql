@@ -1,0 +1,1 @@
+ALTER TABLE "miles_programs" ADD COLUMN "no_cpf_allowed" boolean DEFAULT false NOT NULL;

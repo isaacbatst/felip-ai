@@ -7,6 +7,7 @@ export interface MilesProgramData {
   liminarOfId: number | null;
   absurdPriceMin: number | null;
   absurdPriceMax: number | null;
+  noCpfAllowed: boolean;
   createdAt: Date;
 }
 

@@ -183,7 +183,7 @@ export class AppConfigService {
   }
 
   /**
-   * Program ID for Azul Viagens (used for cpfCount=0 override)
+   * Program ID for Azul Viagens
    */
   get azulViagensProgramId(): number {
     return Number(this.configService.get<string>('AZUL_VIAGENS_PROGRAM_ID', '18'));

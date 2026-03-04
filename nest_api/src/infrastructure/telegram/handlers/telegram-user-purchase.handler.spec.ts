@@ -11,7 +11,6 @@ import { PrivateMessageBufferService } from '@/infrastructure/telegram/private-m
 import { BotPreferenceRepository } from '@/infrastructure/persistence/bot-status.repository';
 import { GroupDelaySettingsRepository } from '@/infrastructure/persistence/group-delay-settings.repository';
 import { BlacklistRepository } from '@/infrastructure/persistence/blacklist.repository';
-import { AppConfigService } from '@/config/app.config';
 import { GroupReasoningSettingsRepository } from '@/infrastructure/persistence/group-reasoning-settings.repository';
 import type { PriceTableV2 } from '@/domain/types/price.types';
 import type { PurchaseProposal } from '@/domain/types/purchase.types';
@@ -80,13 +79,13 @@ describe('TelegramPurchaseHandler', () => {
 
   // Test programs data
   const testPrograms = [
-    { id: 1, name: 'SMILES', liminarOfId: null, absurdPriceMin: 10, absurdPriceMax: 25, createdAt: new Date() },
-    { id: 2, name: 'SMILES Liminar', liminarOfId: 1, absurdPriceMin: null, absurdPriceMax: null, createdAt: new Date() },
-    { id: 3, name: 'LATAM', liminarOfId: null, absurdPriceMin: 12, absurdPriceMax: 25, createdAt: new Date() },
-    { id: 4, name: 'LATAM Liminar', liminarOfId: 3, absurdPriceMin: null, absurdPriceMax: null, createdAt: new Date() },
-    { id: 5, name: 'AZUL/TUDO AZUL', liminarOfId: null, absurdPriceMin: 9, absurdPriceMax: 25, createdAt: new Date() },
-    { id: 6, name: 'AZUL Liminar', liminarOfId: 5, absurdPriceMin: null, absurdPriceMax: null, createdAt: new Date() },
-    { id: 18, name: 'AZUL VIAGENS', liminarOfId: null, absurdPriceMin: 9, absurdPriceMax: 25, createdAt: new Date() },
+    { id: 1, name: 'SMILES', liminarOfId: null, absurdPriceMin: 10, absurdPriceMax: 25, noCpfAllowed: false, createdAt: new Date() },
+    { id: 2, name: 'SMILES Liminar', liminarOfId: 1, absurdPriceMin: null, absurdPriceMax: null, noCpfAllowed: false, createdAt: new Date() },
+    { id: 3, name: 'LATAM', liminarOfId: null, absurdPriceMin: 12, absurdPriceMax: 25, noCpfAllowed: false, createdAt: new Date() },
+    { id: 4, name: 'LATAM Liminar', liminarOfId: 3, absurdPriceMin: null, absurdPriceMax: null, noCpfAllowed: false, createdAt: new Date() },
+    { id: 5, name: 'AZUL/TUDO AZUL', liminarOfId: null, absurdPriceMin: 9, absurdPriceMax: 25, noCpfAllowed: false, createdAt: new Date() },
+    { id: 6, name: 'AZUL Liminar', liminarOfId: 5, absurdPriceMin: null, absurdPriceMax: null, noCpfAllowed: false, createdAt: new Date() },
+    { id: 18, name: 'AZUL VIAGENS', liminarOfId: null, absurdPriceMin: 9, absurdPriceMax: 25, noCpfAllowed: true, createdAt: new Date() },
   ];
 
   // Helper to create a mock PurchaseProposal array with single element (standard case)
@@ -219,12 +218,6 @@ describe('TelegramPurchaseHandler', () => {
             getBlacklist: jest.fn().mockResolvedValue([]),
             add: jest.fn(),
             remove: jest.fn(),
-          },
-        },
-        {
-          provide: AppConfigService,
-          useValue: {
-            azulViagensProgramId: 18,
           },
         },
         {
@@ -1557,7 +1550,7 @@ describe('TelegramPurchaseHandler', () => {
     });
 
     describe('cpfCount=0 handling', () => {
-      it('should process with cpfCount=1 when cpfCount=0 and program is Azul Viagens', async () => {
+      it('should process with cpfCount=1 when cpfCount=0 and program has noCpfAllowed=true', async () => {
         mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
           quantity: 30_000,
           cpfCount: 0,
@@ -1572,7 +1565,7 @@ describe('TelegramPurchaseHandler', () => {
         expect(sentMessage).toBeDefined();
       });
 
-      it('should reject (no response) when cpfCount=0 and program is not Azul Viagens', async () => {
+      it('should reject (no response) when cpfCount=0 and program has noCpfAllowed=false', async () => {
         mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
           quantity: 30_000,
           cpfCount: 0,

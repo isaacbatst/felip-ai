@@ -10,7 +10,6 @@ import { PriceTableProvider } from '../../../domain/interfaces/price-table-provi
 import { PriceCalculatorService } from '../../../domain/services/price-calculator.service';
 import { PrivateMessageBufferService } from '../private-message-buffer.service';
 import { BlacklistRepository } from '@/infrastructure/persistence/blacklist.repository';
-import { AppConfigService } from '@/config/app.config';
 import { GroupReasoningSettingsRepository } from '@/infrastructure/persistence/group-reasoning-settings.repository';
 
 interface CalculatedPriceResult {
@@ -44,7 +43,6 @@ export class TelegramPurchaseHandler {
     private readonly botPreferenceRepository: BotPreferenceRepository,
     private readonly groupDelaySettingsRepository: GroupDelaySettingsRepository,
     private readonly blacklistRepository: BlacklistRepository,
-    private readonly appConfig: AppConfigService,
     private readonly groupReasoningSettingsRepository: GroupReasoningSettingsRepository,
   ) {}
 
@@ -167,13 +165,12 @@ export class TelegramPurchaseHandler {
 
     this.logger.debug('Selected program', { id: program.id, name: program.name });
 
-    // cpfCount=0: tratar como 1 para Azul Viagens, rejeitar para outros
+    // cpfCount=0: tratar como 1 para programas com noCpfAllowed, rejeitar para outros
     let effectiveCpfCount = purchaseRequest.cpfCount;
     if (purchaseRequest.cpfCount === 0) {
-      const azulViagensId = this.appConfig.azulViagensProgramId;
-      if (program.id === azulViagensId) {
+      if (program.noCpfAllowed) {
         effectiveCpfCount = 1;
-        this.logger.log('cpfCount=0 overridden to 1 for Azul Viagens', { programId: program.id });
+        this.logger.log('cpfCount=0 overridden to 1 for noCpfAllowed program', { programId: program.id, programName: program.name });
       } else {
         this.logger.log('Skipping: cpfCount=0 not supported for this program', { programId: program.id });
         return;
