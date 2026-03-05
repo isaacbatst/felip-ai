@@ -99,3 +99,9 @@ jobs:
             --env-add "APP_BASE_URL=https://chatbot.lfviagens.com" \
             felip-ai_nest_api
           ENDSSH
+
+      - name: Prune unused Docker images
+        run: |
+          ssh -i ~/.ssh/deploy_key felip-ai@congressosimulator.com.br << ENDSSH
+          docker image prune -af --filter "until=24h"
+          ENDSSH
