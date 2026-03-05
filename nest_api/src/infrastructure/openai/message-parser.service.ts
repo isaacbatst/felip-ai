@@ -181,6 +181,8 @@ Uma ARMADILHA/ISCA é projetada para enganar bots a responder. Detecte estes pad
     try {
       const client = this.openaiService.getClient();
 
+      const start = Date.now();
+
       const response = await client.responses.parse({
         model: 'o4-mini',
         instructions: MessageParserService.TRAP_DETECTION_PROMPT,
@@ -192,6 +194,11 @@ Uma ARMADILHA/ISCA é projetada para enganar bots a responder. Detecte estes pad
           format: zodTextFormat(MessageParserService.TrapDetectionSchema, 'trapDetection'),
         },
       });
+
+      const end = Date.now();
+      const duration = end - start;
+      
+      this.logger.log('Trap detection duration in milliseconds', { duration });
 
       const parsed = response.output_parsed;
 
