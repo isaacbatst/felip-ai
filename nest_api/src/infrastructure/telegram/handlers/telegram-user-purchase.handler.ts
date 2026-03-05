@@ -112,7 +112,13 @@ export class TelegramPurchaseHandler {
       'em relacao', 'voltando ao assunto', 'disse que', 'afirmou que',
       'informou que', 'se confirmar', 'se estiver',
     ];
-    const trapPattern = new RegExp(trapWords.map(w => `\\b${w}\\b`).join('|'));
+    const trapPattern = new RegExp(trapWords.map(w => {
+      // Add optional plural 's' to single-word entries (skip 2-letter words to avoid false positives)
+      if (!w.includes(' ') && w.length > 2) {
+        return `\\b${w}s?\\b`;
+      }
+      return `\\b${w}\\b`;
+    }).join('|'));
     if (trapPattern.test(normalizedForTrapCheck)) {
       this.logger.log('Skipping: message contains trap word', { text: trimmedText });
       return;

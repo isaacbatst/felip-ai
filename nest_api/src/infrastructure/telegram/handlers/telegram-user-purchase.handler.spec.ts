@@ -1385,6 +1385,16 @@ describe('TelegramPurchaseHandler', () => {
         ['informou que', 'O vendedor informou que tem 100k SMILES 16 CPF'],
         ['se confirmar', 'Se confirmar disponibilidade SMILES 100k 16 CPF Compro'],
         ['se estiver', 'Se estiver alinhado SMILES 100k 16 CPF Compro'],
+        // Plurals (s? suffix on single-word trap entries)
+        ['bots (plural)', 'compra de bots SMILES 30k'],
+        ['robos (plural)', 'SMILES 30k 1CPF robos'],
+        ['testes (plural)', 'SMILES 30k 1CPF testes'],
+        ['armadilhas (plural)', 'SMILES 30k armadilhas'],
+        ['pegadinhas (plural)', 'SMILES 30k pegadinhas'],
+        ['brincadeiras (plural)', 'SMILES 30k brincadeiras'],
+        ['jokes (plural)', 'SMILES 30k 1CPF jokes'],
+        ['banimentos (plural)', 'SMILES 30k banimentos'],
+        ['interesses (plural)', 'SMILES 30k interesses'],
       ])('should skip message containing "%s"', async (_label, text) => {
         await handler.handlePurchase(
           loggedInUserId,
@@ -1403,7 +1413,6 @@ describe('TelegramPurchaseHandler', () => {
         ['purchase with price', 'SMILES 30k 1CPF 15,50'],
         ['Botafogo (contains "bot" as substring)', 'SMILES 30k 1CPF Botafogo'],
         ['robotics (contains "robot" as substring)', 'SMILES 30k 1CPF robotics'],
-        ['bots (plural, not exact word "bot")', 'compra de bots SMILES 30k'],
       ])('should NOT skip message with "%s"', async (_label, text) => {
         mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray());
 

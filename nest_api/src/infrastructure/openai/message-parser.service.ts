@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { zodTextFormat } from 'openai/helpers/zod';
+import { z } from 'zod';
 import { MessageParser, type ProgramOption } from '../../domain/interfaces/message-parser.interface';
 import {
   type PurchaseProposal,
@@ -36,6 +37,27 @@ export class MessageParserService extends MessageParser {
   private static readonly DEFAULT_PROMPT_ID = 'pmpt_6973c179c1848197bdaec0682b4096c00a35b58437df78f2';
   private static readonly DEFAULT_VERSION = '32';
 
+  private static readonly TrapDetectionSchema = z.object({
+    isTrap: z.boolean().describe('true se a mensagem é armadilha/isca, false se é demanda legítima'),
+  });
+
+  private static readonly TRAP_DETECTION_PROMPT = `Você analisa mensagens de grupos de compra de milhas no Telegram para detectar armadilhas e iscas projetadas para enganar compradores automatizados.
+
+Uma DEMANDA REAL é curta e telegráfica, seguindo o padrão: [programa] [quantidade] [contagem de CPF] [opcional: preço aceito]
+Exemplos: "SMILES 30k 1CPF", "Latam 100k 2CPF 18,50", "Azul 50k 1CPF"
+
+Uma ARMADILHA/ISCA é projetada para enganar bots a responder. Detecte estes padrões:
+- Menções a bots, automação, IA, testes ou truques
+- Referências a conversas ou negociações anteriores
+- Ofertas para VENDER ao invés de comprar
+- Condições ou preços irrealistas
+- Demandas aparentemente válidas embutidas em contexto conversacional
+- Perguntas ou compartilhamento de informação disfarçado de demanda
+- Linguagem condicional ("se tiver", "caso tenha", "se confirmar")
+- Linguagem de operações internas ou coordenação
+- Provocações ou desafios dirigidos a sistemas automatizados
+- Qualquer mensagem que não pareça uma solicitação de compra genuína e direta`;
+
   constructor(
     private readonly openaiService: OpenAIService,
     private readonly promptConfigRepository: PromptConfigRepository,
@@ -60,7 +82,16 @@ export class MessageParserService extends MessageParser {
 
       this.logger.log('Provider found via keyword matching', { airlineId });
 
-      // Step 2: Extract other data using AI (only if provider found)
+      // Step 2 (precise mode only): AI trap detection before expensive extraction
+      if (reasoningEffort === 'high') {
+        const isTrap = await this.detectTrap(text);
+        if (isTrap) {
+          this.logger.warn('AI trap detection flagged message as trap', { text });
+          return null;
+        }
+      }
+
+      // Step 3: Extract other data using AI (only if provider found)
       const data = await this.extractDataWithAI(text, reasoningEffort);
 
       if (!data || !data.isPurchaseProposal) {
@@ -139,5 +170,44 @@ export class MessageParserService extends MessageParser {
     }
 
     return parsed.output;
+  }
+
+  /**
+   * AI-based trap detection (precise mode only).
+   * Returns true if the message is likely a trap/bait, false if legitimate.
+   * Fail-closed: returns true (blocks message) on any error.
+   */
+  private async detectTrap(text: string): Promise<boolean> {
+    try {
+      const client = this.openaiService.getClient();
+
+      const response = await client.responses.parse({
+        model: 'o4-mini',
+        instructions: MessageParserService.TRAP_DETECTION_PROMPT,
+        input: text,
+        reasoning: {
+          effort: 'high',
+        },
+        text: {
+          format: zodTextFormat(MessageParserService.TrapDetectionSchema, 'trapDetection'),
+        },
+      });
+
+      const parsed = response.output_parsed;
+
+      // log tokens for cost analysis
+      this.logger.log('Trap detection tokens', JSON.stringify(response.usage, null, 2));
+
+      if (!parsed) {
+        this.logger.warn('Trap detection returned no parsed output, fail-closed');
+        return true;
+      }
+
+      this.logger.log('Trap detection result', { isTrap: parsed.isTrap, text });
+      return parsed.isTrap;
+    } catch (error) {
+      this.logger.error('Trap detection failed, fail-closed', { error, text });
+      return true;
+    }
   }
 }
