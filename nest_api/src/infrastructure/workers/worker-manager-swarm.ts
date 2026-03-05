@@ -627,7 +627,7 @@ export class WorkerManagerSwarm extends WorkerManager implements OnModuleDestroy
    * Cron job that runs every hour to check for new image versions
    * Format: CronExpression.EVERY_HOUR = '0 * * * *'
    */
-  @Cron(CronExpression.EVERY_MINUTE)
+  @Cron(CronExpression.EVERY_HOUR)
   async checkAndUpdateImage(): Promise<void> {
     this.logger.log('Starting image update check...');
     try {
