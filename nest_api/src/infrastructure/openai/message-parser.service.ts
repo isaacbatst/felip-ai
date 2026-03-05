@@ -182,7 +182,9 @@ export class MessageParserService extends MessageParser {
           id: promptId,
           version,
         },
-        input: text,
+        variables: {
+          input: text,
+        },
         reasoning: {
           effort: 'high',
         },
