@@ -95,6 +95,7 @@ jobs:
             --env-add "CIELO_MERCHANT_ID=${{ secrets.CIELO_MERCHANT_ID }}" \
             --env-add "CIELO_MERCHANT_KEY=${{ secrets.CIELO_MERCHANT_KEY }}" \
             --env-add "CIELO_WEBHOOK_SECRET=${{ secrets.CIELO_WEBHOOK_SECRET }}" \
+            --env-add "NODE_ENV=production" \
             --env-add "APP_BASE_URL=https://chatbot.lfviagens.com" \
             felip-ai_nest_api
           ENDSSH
