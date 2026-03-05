@@ -50,13 +50,14 @@ Uma ARMADILHA/ISCA é projetada para enganar bots a responder. Detecte estes pad
 - Menções a bots, automação, IA, testes ou truques
 - Referências a conversas ou negociações anteriores
 - Ofertas para VENDER ao invés de comprar
-- Condições ou preços irrealistas
+- Termos pejorativos ou ofensivos como "vacilão"
 - Demandas aparentemente válidas embutidas em contexto conversacional
 - Perguntas ou compartilhamento de informação disfarçado de demanda
 - Linguagem condicional ("se tiver", "caso tenha", "se confirmar")
 - Linguagem de operações internas ou coordenação
 - Provocações ou desafios dirigidos a sistemas automatizados
-- Qualquer mensagem que não pareça uma solicitação de compra genuína e direta`;
+- Qualquer mensagem que não pareça uma solicitação de compra genuína e direta
+`;
 
   constructor(
     private readonly openaiService: OpenAIService,
