@@ -12,6 +12,7 @@ import { BotPreferenceRepository } from '@/infrastructure/persistence/bot-status
 import { GroupDelaySettingsRepository } from '@/infrastructure/persistence/group-delay-settings.repository';
 import { BlacklistRepository } from '@/infrastructure/persistence/blacklist.repository';
 import { GroupReasoningSettingsRepository } from '@/infrastructure/persistence/group-reasoning-settings.repository';
+import { GroupCounterOfferSettingsRepository } from '@/infrastructure/persistence/group-counter-offer-settings.repository';
 import { AppConfigService } from '@/config/app.config';
 import type { PriceTableV2 } from '@/domain/types/price.types';
 import type { PurchaseProposal } from '@/domain/types/purchase.types';
@@ -24,6 +25,7 @@ describe('TelegramPurchaseHandler', () => {
   let mockCounterOfferSettingsRepository: jest.Mocked<CounterOfferSettingsRepository>;
   let mockMilesProgramRepository: jest.Mocked<MilesProgramRepository>;
   let mockGroupReasoningSettingsRepository: jest.Mocked<GroupReasoningSettingsRepository>;
+  let mockGroupCounterOfferSettingsRepository: jest.Mocked<GroupCounterOfferSettingsRepository>;
 
   // Test constants
   const loggedInUserId = 'test-logged-in-user-123';
@@ -136,6 +138,7 @@ describe('TelegramPurchaseHandler', () => {
         return Promise.resolve(miles !== null && miles !== undefined && miles >= quantity);
       }),
       getMinQuantityForProgram: jest.fn().mockResolvedValue(null),
+      getCounterOfferThresholdForProgram: jest.fn().mockResolvedValue(null),
     } as unknown as jest.Mocked<PriceTableProvider>;
 
     mockTdlibUserClient = {
@@ -230,6 +233,14 @@ describe('TelegramPurchaseHandler', () => {
           },
         },
         {
+          provide: GroupCounterOfferSettingsRepository,
+          useValue: {
+            getGroupSetting: jest.fn().mockResolvedValue(null),
+            getAllGroupSettings: jest.fn().mockResolvedValue([]),
+            upsertGroupSetting: jest.fn(),
+          },
+        },
+        {
           provide: AppConfigService,
           useValue: {
             azulViagensProgramId: 18,
@@ -240,6 +251,7 @@ describe('TelegramPurchaseHandler', () => {
 
     handler = module.get<TelegramPurchaseHandler>(TelegramPurchaseHandler);
     mockGroupReasoningSettingsRepository = module.get(GroupReasoningSettingsRepository);
+    mockGroupCounterOfferSettingsRepository = module.get(GroupCounterOfferSettingsRepository);
   });
 
   afterEach(() => {
@@ -1697,6 +1709,189 @@ describe('TelegramPurchaseHandler', () => {
           expect.any(Array),
           'high',
         );
+      });
+    });
+
+    describe('Per-group counter offer override', () => {
+      const senderId = 999;
+
+      it('should use per-group isEnabled=false to skip counter offer even when global is enabled', async () => {
+        // Global: enabled with threshold
+        mockCounterOfferSettingsRepository.getSettings.mockResolvedValue({
+          userId: loggedInUserId,
+          isEnabled: true,
+          priceThreshold: 2,
+          messageTemplateId: 1,
+          callToActionTemplateId: 1,
+          dedupEnabled: false,
+          dedupWindowMinutes: 1,
+          groupDedupEnabled: false,
+          groupDedupWindowMinutes: 1,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+
+        // Per-group: disabled
+        mockGroupCounterOfferSettingsRepository.getGroupSetting.mockResolvedValue({
+          userId: loggedInUserId,
+          groupId: chatId,
+          isEnabled: false,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+
+        // Buyer offers 19, our price is 20 (diff=1, within threshold=2)
+        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
+          quantity: 30_000,
+          cpfCount: 1,
+          airlineId: PROGRAM_IDS.SMILES,
+          acceptedPrices: [19],
+        }));
+
+        await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF R$19', senderId);
+
+        // Should send group message but NOT a private counter offer
+        expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledTimes(1);
+        expect(mockTdlibUserClient.sendMessageToUser).not.toHaveBeenCalled();
+      });
+
+      it('should use per-group isEnabled=true to send counter offer even when global is disabled', async () => {
+        // Global: disabled
+        mockCounterOfferSettingsRepository.getSettings.mockResolvedValue({
+          userId: loggedInUserId,
+          isEnabled: false,
+          priceThreshold: 2,
+          messageTemplateId: 1,
+          callToActionTemplateId: 1,
+          dedupEnabled: false,
+          dedupWindowMinutes: 1,
+          groupDedupEnabled: false,
+          groupDedupWindowMinutes: 1,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+
+        // Per-group: enabled
+        mockGroupCounterOfferSettingsRepository.getGroupSetting.mockResolvedValue({
+          userId: loggedInUserId,
+          groupId: chatId,
+          isEnabled: true,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+
+        // Buyer offers 19, our price is 20 (diff=1, within threshold=2)
+        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
+          quantity: 30_000,
+          cpfCount: 1,
+          airlineId: PROGRAM_IDS.SMILES,
+          acceptedPrices: [19],
+        }));
+
+        await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF R$19', senderId);
+
+        // Should send group message AND a private counter offer
+        expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledTimes(1);
+        expect(mockTdlibUserClient.sendMessageToUser).toHaveBeenCalledTimes(1);
+      });
+
+      it('should use per-program priceThreshold override', async () => {
+        // Global: enabled, threshold=0.5 (tight)
+        mockCounterOfferSettingsRepository.getSettings.mockResolvedValue({
+          userId: loggedInUserId,
+          isEnabled: true,
+          priceThreshold: 0.5,
+          messageTemplateId: 1,
+          callToActionTemplateId: 1,
+          dedupEnabled: false,
+          dedupWindowMinutes: 1,
+          groupDedupEnabled: false,
+          groupDedupWindowMinutes: 1,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+
+        // Per-program threshold=3 (wide) for SMILES
+        mockPriceTableProvider.getCounterOfferThresholdForProgram.mockResolvedValue(3);
+
+        // Buyer offers 18, our price is 20 (diff=2, within per-program threshold=3 but NOT within global threshold=0.5)
+        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
+          quantity: 30_000,
+          cpfCount: 1,
+          airlineId: PROGRAM_IDS.SMILES,
+          acceptedPrices: [18],
+        }));
+
+        await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF R$18', senderId);
+
+        // Should send private counter offer because per-program threshold is wider
+        expect(mockTdlibUserClient.sendMessageToUser).toHaveBeenCalledTimes(1);
+      });
+
+      it('should fall back to global threshold when no per-program threshold exists', async () => {
+        // Global: enabled, threshold=2
+        mockCounterOfferSettingsRepository.getSettings.mockResolvedValue({
+          userId: loggedInUserId,
+          isEnabled: true,
+          priceThreshold: 2,
+          messageTemplateId: 1,
+          callToActionTemplateId: 1,
+          dedupEnabled: false,
+          dedupWindowMinutes: 1,
+          groupDedupEnabled: false,
+          groupDedupWindowMinutes: 1,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+
+        // No per-program threshold (null — the default mock)
+        mockPriceTableProvider.getCounterOfferThresholdForProgram.mockResolvedValue(null);
+
+        // Buyer offers 19, our price is 20 (diff=1, within global threshold=2)
+        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
+          quantity: 30_000,
+          cpfCount: 1,
+          airlineId: PROGRAM_IDS.SMILES,
+          acceptedPrices: [19],
+        }));
+
+        await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF R$19', senderId);
+
+        // Should use global threshold and send counter offer
+        expect(mockTdlibUserClient.sendMessageToUser).toHaveBeenCalledTimes(1);
+      });
+
+      it('should fall back to global settings when no per-group override exists', async () => {
+        // Global: enabled, threshold=2
+        mockCounterOfferSettingsRepository.getSettings.mockResolvedValue({
+          userId: loggedInUserId,
+          isEnabled: true,
+          priceThreshold: 2,
+          messageTemplateId: 1,
+          callToActionTemplateId: 1,
+          dedupEnabled: false,
+          dedupWindowMinutes: 1,
+          groupDedupEnabled: false,
+          groupDedupWindowMinutes: 1,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+
+        // No per-group override (returns null — the default mock)
+        mockGroupCounterOfferSettingsRepository.getGroupSetting.mockResolvedValue(null);
+
+        // Buyer offers 19, our price is 20 (diff=1, within global threshold=2)
+        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
+          quantity: 30_000,
+          cpfCount: 1,
+          airlineId: PROGRAM_IDS.SMILES,
+          acceptedPrices: [19],
+        }));
+
+        await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF R$19', senderId);
+
+        // Should use global settings and send counter offer
+        expect(mockTdlibUserClient.sendMessageToUser).toHaveBeenCalledTimes(1);
       });
     });
   });

@@ -22,6 +22,7 @@ export interface UserMaxPriceData {
   programId: number;
   maxPrice: number;
   minQuantity: number;
+  counterOfferPriceThreshold: number | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -54,6 +55,7 @@ export interface MaxPriceInput {
   programId: number;
   maxPrice: number;
   minQuantity?: number;
+  counterOfferPriceThreshold?: number | null;
 }
 
 /**

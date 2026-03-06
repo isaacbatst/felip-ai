@@ -58,6 +58,14 @@ export abstract class PriceTableProvider {
   abstract getMinQuantityForProgram(userId: string, programId: number): Promise<number | null>;
 
   /**
+   * Get the counter-offer price threshold for a specific program
+   * @param userId - User ID
+   * @param programId - Program ID
+   * @returns Threshold or null if not configured (use global default)
+   */
+  abstract getCounterOfferThresholdForProgram(userId: string, programId: number): Promise<number | null>;
+
+  /**
    * Get all price table data for a user
    * @deprecated Use granular methods instead (getPriceTableForProgram, getMaxPriceForProgram, etc.)
    */

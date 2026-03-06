@@ -261,6 +261,16 @@
                 class="w-full p-3 border border-gray-200 rounded-lg text-base text-center transition-all">
             </div>
 
+            <!-- Counter Offer Price Threshold per program -->
+            <div class="mt-3 p-4 bg-white border border-gray-200 rounded-xl">
+              <label class="block text-xs text-gray-500 mb-1.5 font-medium">Diferença Aceitável - Contra proposta (R$)</label>
+              <input type="text" inputmode="decimal"
+                :value="getMaxPrice(prog.id)?.counterOfferPriceThreshold || ''"
+                @input="formatInput($event, true); updateCounterOfferThreshold(prog.id, $event.target.value)"
+                placeholder="Usar padrão global"
+                class="w-full p-3 border border-gray-200 rounded-lg text-base text-center transition-all">
+            </div>
+
             <button class="save-program-btn w-full p-4 border-2 border-emerald-500 rounded-xl bg-emerald-50 text-emerald-600 text-base font-semibold cursor-pointer flex items-center justify-center gap-2 mt-3 transition-all hover:bg-emerald-100 disabled:opacity-50 disabled:cursor-not-allowed"
               @click="saveProgramPrices(prog.id)"
               :disabled="savingProgramId === prog.id || !hasValidPricesForProgram(prog.id)">
@@ -596,6 +606,35 @@
                         </button>
                       </div>
                     </div>
+                  </div>
+                  <!-- Per-group counter offer settings -->
+                  <div class="mt-3 pt-3 border-t border-gray-100">
+                    <div class="flex items-center justify-between">
+                      <div class="flex items-center gap-2">
+                        <i class="fa-solid fa-message text-gray-400 text-xs"></i>
+                        <span class="text-xs font-medium text-gray-600">Contra proposta</span>
+                        <template x-if="!isGroupCounterOfferCustom(group.id)">
+                          <span class="text-xs text-gray-400">(padrao global)</span>
+                        </template>
+                      </div>
+                      <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" class="sr-only peer"
+                          :checked="getGroupCounterOffer(group.id).isEnabled"
+                          @change="toggleGroupCounterOffer(group.id)"
+                          :disabled="savingGroupCounterOffer === group.id">
+                        <div class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
+                      </label>
+                    </div>
+                    <template x-if="isGroupCounterOfferCustom(group.id)">
+                      <div class="mt-2 flex items-center gap-2">
+                        <button type="button"
+                          class="px-2 py-1 text-xs font-medium rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 transition-all disabled:opacity-50"
+                          :disabled="savingGroupCounterOffer === group.id"
+                          @click="resetGroupCounterOffer(group.id)">
+                          <i class="fa-solid fa-rotate-left mr-0.5"></i> Usar padrao
+                        </button>
+                      </div>
+                    </template>
                   </div>
                 </div>
               </template>
@@ -1286,10 +1325,12 @@
         delayDefaults: { delayMin: 0, delayMax: 0 },
         groupDelaySettings: {},  // Map of groupId -> { delayEnabled, delayMin, delayMax }
         groupReasoningSettings: {},  // Map of groupId -> 'fast' | 'precise'
+        groupCounterOfferSettings: {},  // Map of groupId -> { isEnabled, priceThreshold } | null
         savingDelayDefaults: false,
         delayDefaultsChanged: false,
         savingGroupDelay: null,   // groupId being saved
         savingGroupReasoning: null,  // groupId being saved
+        savingGroupCounterOffer: null,  // groupId being saved
 
         // Bot status state (preference)
         botStatus: { isEnabled: false },
@@ -1572,6 +1613,7 @@
               this.delayDefaults = data.data.defaults;
               const map = {};
               const reasoningMap = {};
+              const counterOfferMap = {};
               for (const g of data.data.groups) {
                 map[g.groupId] = {
                   delayEnabled: g.delayEnabled,
@@ -1579,9 +1621,13 @@
                   delayMax: g.delayMax,
                 };
                 reasoningMap[g.groupId] = g.reasoningMode || 'fast';
+                counterOfferMap[g.groupId] = g.counterOfferEnabled !== null
+                  ? { isEnabled: g.counterOfferEnabled }
+                  : null;
               }
               this.groupDelaySettings = map;
               this.groupReasoningSettings = reasoningMap;
+              this.groupCounterOfferSettings = counterOfferMap;
             } else {
               console.warn('Failed to fetch delay settings:', data.error);
             }
@@ -1596,6 +1642,78 @@
 
         getGroupReasoning(groupId) {
           return this.groupReasoningSettings[groupId] || 'fast';
+        },
+
+        getGroupCounterOffer(groupId) {
+          const setting = this.groupCounterOfferSettings[groupId];
+          if (setting) return setting;
+          return { isEnabled: this.counterOfferSettings.isEnabled };
+        },
+
+        isGroupCounterOfferCustom(groupId) {
+          return this.groupCounterOfferSettings[groupId] !== null && this.groupCounterOfferSettings[groupId] !== undefined;
+        },
+
+        async toggleGroupCounterOffer(groupId) {
+          const isCustom = this.isGroupCounterOfferCustom(groupId);
+          const current = this.getGroupCounterOffer(groupId);
+          const newEnabled = !current.isEnabled;
+          const newSettings = { isEnabled: newEnabled };
+          this.groupCounterOfferSettings = { ...this.groupCounterOfferSettings, [groupId]: newSettings };
+          const ok = await this.saveGroupCounterOffer(groupId, newSettings);
+          if (!ok) {
+            this.groupCounterOfferSettings = { ...this.groupCounterOfferSettings, [groupId]: isCustom ? current : null };
+          }
+        },
+
+
+        async resetGroupCounterOffer(groupId) {
+          const previous = this.groupCounterOfferSettings[groupId];
+          this.groupCounterOfferSettings = { ...this.groupCounterOfferSettings, [groupId]: null };
+          this.savingGroupCounterOffer = groupId;
+          try {
+            const res = await this.authFetch(`/dashboard/groups/${groupId}/counter-offer`, {
+              method: 'DELETE',
+            });
+            const data = await res.json();
+            if (data.success) {
+              this.groupCounterOfferSettings = { ...this.groupCounterOfferSettings, [groupId]: null };
+              this.showToast('Contra proposta resetada para o padrao global!', 'success');
+            } else {
+              this.groupCounterOfferSettings = { ...this.groupCounterOfferSettings, [groupId]: previous };
+              this.showToast('Erro: ' + (data.error || 'Falha ao resetar'), 'error');
+            }
+          } catch {
+            this.groupCounterOfferSettings = { ...this.groupCounterOfferSettings, [groupId]: previous };
+            this.showToast('Erro ao resetar contra proposta', 'error');
+          } finally {
+            this.savingGroupCounterOffer = null;
+          }
+        },
+
+        async saveGroupCounterOffer(groupId, settings) {
+          this.savingGroupCounterOffer = groupId;
+          try {
+            const res = await this.authFetch(`/dashboard/groups/${groupId}/counter-offer`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(settings),
+            });
+            const data = await res.json();
+            if (data.success) {
+              this.groupCounterOfferSettings = { ...this.groupCounterOfferSettings, [groupId]: { ...settings } };
+              this.showToast('Contra proposta do grupo salva!', 'success');
+              return true;
+            } else {
+              this.showToast('Erro: ' + (data.error || 'Falha ao salvar'), 'error');
+              return false;
+            }
+          } catch (error) {
+            this.showToast('Erro ao salvar contra proposta do grupo', 'error');
+            return false;
+          } finally {
+            this.savingGroupCounterOffer = null;
+          }
         },
 
         async saveGroupReasoning(groupId, mode) {
@@ -2584,8 +2702,8 @@
 
         collectMaxPrices() {
           return this.userData.maxPrices
-            .filter(mp => mp.maxPrice > 0 || mp.minQuantity > 0)
-            .map(mp => ({ programId: mp.programId, maxPrice: mp.maxPrice, minQuantity: mp.minQuantity || 0 }));
+            .filter(mp => mp.maxPrice > 0 || mp.minQuantity > 0 || (mp.counterOfferPriceThreshold != null && mp.counterOfferPriceThreshold > 0))
+            .map(mp => ({ programId: mp.programId, maxPrice: mp.maxPrice, minQuantity: mp.minQuantity || 0, counterOfferPriceThreshold: mp.counterOfferPriceThreshold || null }));
         },
 
         collectMiles() {
@@ -2770,6 +2888,7 @@
               programName: this.programs.find(p => p.id === programId)?.name ?? '',
               maxPrice: 0,
               minQuantity: 0,
+              counterOfferPriceThreshold: null,
             };
             this.userData.maxPrices.push(entry);
           }
@@ -2779,6 +2898,13 @@
         updateMaxPrice(programId, value) {
           const entry = this.ensureMaxPriceEntry(programId);
           entry.maxPrice = this.parseNumber(value, true) || 0;
+          this.hasUnsavedChanges = true;
+        },
+
+        updateCounterOfferThreshold(programId, value) {
+          const entry = this.ensureMaxPriceEntry(programId);
+          const parsed = this.parseNumber(value, true);
+          entry.counterOfferPriceThreshold = parsed > 0 ? parsed : null;
           this.hasUnsavedChanges = true;
         },
 

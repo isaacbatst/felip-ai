@@ -75,6 +75,14 @@ export class DatabasePriceTableProvider extends PriceTableProvider {
   }
 
   /**
+   * Get the counter-offer price threshold for a specific program
+   */
+  async getCounterOfferThresholdForProgram(userId: string, programId: number): Promise<number | null> {
+    const data = await this.userDataRepository.getMaxPriceForProgram(userId, programId);
+    return data?.counterOfferPriceThreshold ?? null;
+  }
+
+  /**
    * Busca a tabela de preços do usuário diretamente do banco de dados
    * @deprecated Use granular methods instead
    * @param userId ID do usuário para buscar os dados

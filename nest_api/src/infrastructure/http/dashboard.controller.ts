@@ -23,6 +23,7 @@ import { BotPreferenceRepository } from '@/infrastructure/persistence/bot-status
 import { GroupDelaySettingsRepository, type GroupDelaySettingInput } from '@/infrastructure/persistence/group-delay-settings.repository';
 import { GroupReasoningSettingsRepository, type ReasoningMode } from '@/infrastructure/persistence/group-reasoning-settings.repository';
 import { BlacklistRepository, type BlacklistScope } from '@/infrastructure/persistence/blacklist.repository';
+import { GroupCounterOfferSettingsRepository, type GroupCounterOfferSettingInput } from '@/infrastructure/persistence/group-counter-offer-settings.repository';
 import { TelegramUserClientProxyService } from '@/infrastructure/tdlib/telegram-user-client-proxy.service';
 import { SubscriptionService, SubscriptionError } from '@/infrastructure/subscription/subscription.service';
 import type { CheckoutRequestDto } from '@/infrastructure/cielo/cielo.types';
@@ -69,6 +70,7 @@ interface UserDataResponse {
     programName: string;
     maxPrice: number;
     minQuantity: number;
+    counterOfferPriceThreshold: number | null;
   }>;
   availableMiles: Array<{
     programId: number;
@@ -194,6 +196,11 @@ interface GroupDelaySettingResponse {
   delayMin: number | null;
   delayMax: number | null;
   reasoningMode: ReasoningMode;
+  counterOfferEnabled: boolean | null;
+}
+
+interface UpdateGroupCounterOfferDto {
+  isEnabled: boolean;
 }
 
 interface DelaySettingsResponse {
@@ -275,6 +282,7 @@ export class DashboardController {
     private readonly groupDelaySettingsRepository: GroupDelaySettingsRepository,
     private readonly blacklistRepository: BlacklistRepository,
     private readonly groupReasoningSettingsRepository: GroupReasoningSettingsRepository,
+    private readonly groupCounterOfferSettingsRepository: GroupCounterOfferSettingsRepository,
   ) {}
 
   /**
@@ -351,6 +359,7 @@ export class DashboardController {
           programName: programMap.get(mp.programId) ?? 'Unknown',
           maxPrice: mp.maxPrice,
           minQuantity: mp.minQuantity,
+          counterOfferPriceThreshold: mp.counterOfferPriceThreshold,
         })),
         availableMiles: availableMiles.map((am) => ({
           programId: am.programId,
@@ -1089,15 +1098,17 @@ export class DashboardController {
   ): Promise<ApiResponse<DelaySettingsResponse>> {
     const userId = req.user.userId;
 
-    const [defaults, groupSettings, groupReasoningList, activeGroupIds] = await Promise.all([
+    const [defaults, groupSettings, groupReasoningList, activeGroupIds, groupCounterOfferList] = await Promise.all([
       this.botPreferenceRepository.getDelayDefaults(userId),
       this.groupDelaySettingsRepository.getAllGroupDelaySettings(userId),
       this.groupReasoningSettingsRepository.getAllGroupReasoningSettings(userId),
       this.activeGroupsRepository.getActiveGroups(userId),
+      this.groupCounterOfferSettingsRepository.getAllGroupSettings(userId),
     ]);
 
     const delayMap = new Map(groupSettings.map(g => [g.groupId, g]));
     const reasoningMap = new Map(groupReasoningList.map(r => [r.groupId, r.reasoningMode]));
+    const counterOfferMap = new Map(groupCounterOfferList.map(c => [c.groupId, c]));
 
     return {
       success: true,
@@ -1105,12 +1116,14 @@ export class DashboardController {
         defaults,
         groups: (activeGroupIds ?? []).map((gid) => {
           const delay = delayMap.get(gid);
+          const counterOffer = counterOfferMap.get(gid);
           return {
             groupId: gid,
             delayEnabled: delay?.delayEnabled ?? false,
             delayMin: delay?.delayMin ?? null,
             delayMax: delay?.delayMax ?? null,
             reasoningMode: reasoningMap.get(gid) ?? 'fast',
+            counterOfferEnabled: counterOffer?.isEnabled ?? null,
           };
         }),
       },
@@ -1302,6 +1315,80 @@ export class DashboardController {
     await this.groupReasoningSettingsRepository.upsertGroupReasoningSetting(userId, groupIdNum, {
       reasoningMode: body.reasoningMode,
     });
+
+    res.status(HttpStatus.OK).json({
+      success: true,
+    } satisfies ApiResponse);
+  }
+
+  /**
+   * PUT /dashboard/groups/:groupId/counter-offer - Update per-group counter offer settings
+   */
+  @Put('groups/:groupId/counter-offer')
+  async updateGroupCounterOffer(
+    @Req() req: AuthenticatedRequest,
+    @Param('groupId') groupId: string,
+    @Body() body: UpdateGroupCounterOfferDto,
+    @Res() res: Response,
+  ): Promise<void> {
+    const userId = req.user.userId;
+
+    const groupIdNum = parseInt(groupId, 10);
+    if (Number.isNaN(groupIdNum)) {
+      res.status(HttpStatus.BAD_REQUEST).json({
+        success: false,
+        error: 'invalid_group_id',
+      } satisfies ApiResponse);
+      return;
+    }
+
+    const activeGroups = await this.activeGroupsRepository.getActiveGroups(userId);
+    if (!activeGroups || !activeGroups.includes(groupIdNum)) {
+      res.status(HttpStatus.BAD_REQUEST).json({
+        success: false,
+        error: 'group_not_active',
+      } satisfies ApiResponse);
+      return;
+    }
+
+    if (typeof body.isEnabled !== 'boolean') {
+      res.status(HttpStatus.BAD_REQUEST).json({
+        success: false,
+        error: 'isEnabled must be a boolean',
+      } satisfies ApiResponse);
+      return;
+    }
+
+    await this.groupCounterOfferSettingsRepository.upsertGroupSetting(userId, groupIdNum, {
+      isEnabled: body.isEnabled,
+    });
+
+    res.status(HttpStatus.OK).json({
+      success: true,
+    } satisfies ApiResponse);
+  }
+
+  /**
+   * DELETE /dashboard/groups/:groupId/counter-offer - Reset per-group counter offer to global defaults
+   */
+  @Delete('groups/:groupId/counter-offer')
+  async deleteGroupCounterOffer(
+    @Req() req: AuthenticatedRequest,
+    @Param('groupId') groupId: string,
+    @Res() res: Response,
+  ): Promise<void> {
+    const userId = req.user.userId;
+
+    const groupIdNum = parseInt(groupId, 10);
+    if (Number.isNaN(groupIdNum)) {
+      res.status(HttpStatus.BAD_REQUEST).json({
+        success: false,
+        error: 'invalid_group_id',
+      } satisfies ApiResponse);
+      return;
+    }
+
+    await this.groupCounterOfferSettingsRepository.deleteGroupSetting(userId, groupIdNum);
 
     res.status(HttpStatus.OK).json({
       success: true,

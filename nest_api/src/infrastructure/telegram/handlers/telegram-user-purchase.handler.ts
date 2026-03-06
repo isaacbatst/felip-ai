@@ -11,6 +11,7 @@ import { PriceCalculatorService } from '../../../domain/services/price-calculato
 import { PrivateMessageBufferService } from '../private-message-buffer.service';
 import { BlacklistRepository } from '@/infrastructure/persistence/blacklist.repository';
 import { GroupReasoningSettingsRepository } from '@/infrastructure/persistence/group-reasoning-settings.repository';
+import { GroupCounterOfferSettingsRepository } from '@/infrastructure/persistence/group-counter-offer-settings.repository';
 import { AppConfigService } from '@/config/app.config';
 
 interface CalculatedPriceResult {
@@ -45,6 +46,7 @@ export class TelegramPurchaseHandler {
     private readonly groupDelaySettingsRepository: GroupDelaySettingsRepository,
     private readonly blacklistRepository: BlacklistRepository,
     private readonly groupReasoningSettingsRepository: GroupReasoningSettingsRepository,
+    private readonly groupCounterOfferSettingsRepository: GroupCounterOfferSettingsRepository,
     private readonly appConfig: AppConfigService,
   ) {}
 
@@ -279,6 +281,14 @@ export class TelegramPurchaseHandler {
     // Fetch settings once — used for group dedup, PM dedup, and counter-offer logic below
     const counterOfferSettings = await this.counterOfferSettingsRepository.getSettings(loggedInUserId);
 
+    // Per-group override for isEnabled only (priceThreshold is now per-program)
+    const groupCounterOfferSetting = await this.groupCounterOfferSettingsRepository.getGroupSetting(loggedInUserId, chatId);
+    const effectiveCounterOfferEnabled = groupCounterOfferSetting?.isEnabled ?? counterOfferSettings?.isEnabled ?? false;
+
+    // Per-program threshold → global threshold → 0
+    const programThreshold = await this.priceTableProvider.getCounterOfferThresholdForProgram(loggedInUserId, program.id);
+    const effectivePriceThreshold = programThreshold ?? counterOfferSettings?.priceThreshold ?? 0;
+
     // Group message dedup check (after parse, before any response)
     if (counterOfferSettings?.groupDedupEnabled && senderId) {
       const groupKey = `grp:${loggedInUserId}:${senderId}:${chatId}:${purchaseRequest.airlineId}:${purchaseRequest.quantity}:${effectiveCpfCount}`;
@@ -325,7 +335,7 @@ export class TelegramPurchaseHandler {
         this.logger.warn('No senderId, ignoring call to action');
         return;
       }
-      if(!counterOfferSettings?.isEnabled) {
+      if(!effectiveCounterOfferEnabled) {
         this.logger.warn('Counter offer is disabled, ignoring call to action');
         return;
       }
@@ -347,7 +357,7 @@ export class TelegramPurchaseHandler {
         this.formatPrivatePrice(pricesForCTA),
       );
 
-      if (counterOfferSettings.dedupEnabled) {
+      if (counterOfferSettings?.dedupEnabled) {
         const key = `${loggedInUserId}:${senderId}:cta`;
         const ttlMs = counterOfferSettings.dedupWindowMinutes * 60 * 1000;
         if (this.privateMessageBuffer.shouldSkip(key, ttlMs)) {
@@ -374,17 +384,17 @@ export class TelegramPurchaseHandler {
     }
 
     // Counter offer desabilitado -> envia resposta no grupo mas não envia contra-oferta privada
-    if (!counterOfferSettings?.isEnabled) {
+    if (!effectiveCounterOfferEnabled) {
       await this.sendGroupAnswer(telegramUserId, chatId, calculatedPrices, messageId);
       return;
     }
 
     const priceDiff = lowestPrice - maxAcceptedPrice;
     // Diferença acima do threshold -> envia mensagem padrão no grupo mesmo assim
-    if (priceDiff > counterOfferSettings.priceThreshold) {
+    if (priceDiff > effectivePriceThreshold) {
       this.logger.log('Price difference is greater than threshold, sending default message only', {
         priceDiff,
-        priceThreshold: counterOfferSettings.priceThreshold,
+        priceThreshold: effectivePriceThreshold,
         lowestPrice,
         maxAcceptedPrice,
       });
@@ -403,14 +413,14 @@ export class TelegramPurchaseHandler {
 
     // Envia counter offer no privado
     const message = buildCounterOfferMessage(
-      counterOfferSettings.messageTemplateId,
+      counterOfferSettings?.messageTemplateId ?? 1,
       programaForMessage,
       purchaseRequest.quantity,
       effectiveCpfCount,
       this.formatPrivatePrice(calculatedPrices),
     );
 
-    if (counterOfferSettings.dedupEnabled) {
+    if (counterOfferSettings?.dedupEnabled) {
       const key = `${loggedInUserId}:${senderId}:counterOffer`;
       const ttlMs = counterOfferSettings.dedupWindowMinutes * 60 * 1000;
       if (this.privateMessageBuffer.shouldSkip(key, ttlMs)) {
@@ -428,8 +438,8 @@ export class TelegramPurchaseHandler {
     this.logger.log('Sending counter offer to buyer', {
       senderId,
       priceDiff,
-      threshold: counterOfferSettings.priceThreshold,
-      templateId: counterOfferSettings.messageTemplateId,
+      threshold: effectivePriceThreshold,
+      templateId: counterOfferSettings?.messageTemplateId ?? 1,
     });
 
     await this.tdlibUserClient.sendMessageToUser(telegramUserId, senderId, message);

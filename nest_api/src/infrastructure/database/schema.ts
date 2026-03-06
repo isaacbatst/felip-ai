@@ -220,6 +220,7 @@ export const userMaxPrices = pgTable(
     programId: integer('program_id').notNull(), // References miles_programs.id
     maxPrice: real('max_price').notNull(), // Maximum price limit
     minQuantity: integer('min_quantity').default(0).notNull(), // Minimum quantity in thousands (e.g., 50 = 50k miles)
+    counterOfferPriceThreshold: real('counter_offer_price_threshold'), // Per-program counter-offer threshold (null = use global)
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
@@ -270,6 +271,28 @@ export const userCounterOfferSettings = pgTable(
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
+);
+
+/**
+ * Group counter offer settings table - per-group override for counter offer isEnabled
+ * When isEnabled is set, it overrides the global user_counter_offer_settings
+ * If no record exists for a group, the global settings are used as fallback
+ */
+export const groupCounterOfferSettings = pgTable(
+  'group_counter_offer_settings',
+  {
+    id: integer('id').primaryKey().generatedAlwaysAsIdentity(),
+    userId: text('user_id').notNull(),
+    groupId: bigint('group_id', { mode: 'number' }).notNull(),
+    isEnabled: boolean('is_enabled').notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => [
+    index('group_counter_offer_settings_user_id_idx').on(table.userId),
+    index('group_counter_offer_settings_user_id_group_id_idx').on(table.userId, table.groupId),
+    unique('group_counter_offer_settings_user_id_group_id_unique').on(table.userId, table.groupId),
+  ],
 );
 
 /**

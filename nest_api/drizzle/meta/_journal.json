@@ -57,6 +57,20 @@
       "when": 1772646249881,
       "tag": "0007_add_no_cpf_allowed_to_miles_programs",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1772826468828,
+      "tag": "0008_tan_the_hand",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1772829855548,
+      "tag": "0009_fantastic_unus",
+      "breakpoints": true
     }
   ]
 }
