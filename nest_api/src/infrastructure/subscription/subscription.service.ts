@@ -5,7 +5,6 @@ import type { CheckoutRequestDto, CieloWebhookPayload } from '@/infrastructure/c
 import { CieloTransactionStatus } from '@/infrastructure/cielo/cielo.types';
 import { ActiveGroupsRepository } from '@/infrastructure/persistence/active-groups.repository';
 import { CouponData, CouponRepository } from '@/infrastructure/persistence/coupon.repository';
-import { MilesProgramRepository } from '@/infrastructure/persistence/miles-program.repository';
 import {
   SubscriptionData,
   SubscriptionRepository,
@@ -65,7 +64,6 @@ export class SubscriptionService implements OnModuleInit {
     private readonly activeGroupsRepository: ActiveGroupsRepository,
     private readonly couponRepository: CouponRepository,
     private readonly couponService: CouponService,
-    private readonly milesProgramRepository: MilesProgramRepository,
     private readonly appConfig: AppConfigService,
     private readonly cieloService: CieloService,
   ) {}
@@ -74,7 +72,8 @@ export class SubscriptionService implements OnModuleInit {
     const isProduction = this.appConfig.isProduction();
     if (!isProduction) {
       await this.seedPlans();
-      await this.milesProgramRepository.seedDefaultPrograms();
+      // disable seeding of miles programs for now
+      // await this.milesProgramRepository.seedDefaultPrograms();
     }
   }
 

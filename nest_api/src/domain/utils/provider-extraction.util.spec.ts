@@ -351,6 +351,43 @@ describe('ProviderExtractionUtil', () => {
       });
     });
 
+    describe('AVIOS disambiguation', () => {
+      const aviosPrograms: ProgramOption[] = [
+        ...samplePrograms,
+        { id: 30, name: 'AVIOS / IBÉRIA / IBERIA' },
+        { id: 31, name: 'BRITISH / AVIOS BRITISH' },
+        { id: 32, name: 'AVIOS QATAR / QATAR' },
+      ];
+
+      it('should match "avios" to AVIOS/IBÉRIA/IBERIA (plain avios defaults to first)', () => {
+        expect(ProviderExtractionUtil.extractProvider('vendo avios', aviosPrograms)).toBe(30);
+      });
+
+      it('should match "avios iberia" to AVIOS/IBÉRIA/IBERIA', () => {
+        expect(ProviderExtractionUtil.extractProvider('vendo avios iberia', aviosPrograms)).toBe(30);
+      });
+
+      it('should match "iberia" to AVIOS/IBÉRIA/IBERIA', () => {
+        expect(ProviderExtractionUtil.extractProvider('vendo iberia', aviosPrograms)).toBe(30);
+      });
+
+      it('should match "avios british" to BRITISH/AVIOS BRITISH', () => {
+        expect(ProviderExtractionUtil.extractProvider('vendo avios british', aviosPrograms)).toBe(31);
+      });
+
+      it('should match "british" to BRITISH/AVIOS BRITISH', () => {
+        expect(ProviderExtractionUtil.extractProvider('vendo british', aviosPrograms)).toBe(31);
+      });
+
+      it('should match "avios qatar" to AVIOS QATAR/QATAR', () => {
+        expect(ProviderExtractionUtil.extractProvider('vendo avios qatar', aviosPrograms)).toBe(32);
+      });
+
+      it('should match "qatar" to AVIOS QATAR/QATAR', () => {
+        expect(ProviderExtractionUtil.extractProvider('vendo qatar', aviosPrograms)).toBe(32);
+      });
+    });
+
     describe('real-world message patterns', () => {
       it('should match from purchase proposal message', () => {
         const message = 'Vendo 100k smiles, aceito R$ 20 o milheiro';
