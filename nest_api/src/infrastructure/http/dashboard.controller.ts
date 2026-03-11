@@ -24,6 +24,7 @@ import { GroupDelaySettingsRepository, type GroupDelaySettingInput } from '@/inf
 import { GroupReasoningSettingsRepository, type ReasoningMode } from '@/infrastructure/persistence/group-reasoning-settings.repository';
 import { BlacklistRepository, type BlacklistScope } from '@/infrastructure/persistence/blacklist.repository';
 import { GroupCounterOfferSettingsRepository, type GroupCounterOfferSettingInput } from '@/infrastructure/persistence/group-counter-offer-settings.repository';
+import { MessageTemplateRepository, type MessageTemplateType } from '@/infrastructure/persistence/message-template.repository';
 import { TelegramUserClientProxyService } from '@/infrastructure/tdlib/telegram-user-client-proxy.service';
 import { SubscriptionService, SubscriptionError } from '@/infrastructure/subscription/subscription.service';
 import type { CheckoutRequestDto } from '@/infrastructure/cielo/cielo.types';
@@ -287,6 +288,7 @@ export class DashboardController {
     private readonly blacklistRepository: BlacklistRepository,
     private readonly groupReasoningSettingsRepository: GroupReasoningSettingsRepository,
     private readonly groupCounterOfferSettingsRepository: GroupCounterOfferSettingsRepository,
+    private readonly messageTemplateRepository: MessageTemplateRepository,
   ) {}
 
   /**
@@ -798,6 +800,215 @@ export class DashboardController {
     res.status(HttpStatus.OK).json({
       success: true,
     } satisfies ApiResponse);
+  }
+
+  // ============================================================================
+  // Custom Message Templates
+  // ============================================================================
+
+  @Get('message-templates')
+  async getMessageTemplates(
+    @Req() req: AuthenticatedRequest,
+    @Query('type') type: string,
+    @Res() res: Response,
+  ): Promise<void> {
+    const userId = req.user.userId;
+
+    if (type !== 'counter_offer' && type !== 'cta') {
+      res.status(HttpStatus.BAD_REQUEST).json({
+        success: false,
+        error: 'type must be "counter_offer" or "cta"',
+      } satisfies ApiResponse);
+      return;
+    }
+
+    const templates = await this.messageTemplateRepository.findByUserAndType(userId, type);
+
+    res.json({
+      success: true,
+      data: {
+        templates: templates.map((t) => ({
+          id: t.id,
+          type: t.type,
+          body: t.body,
+          isActive: t.isActive,
+          createdAt: t.createdAt,
+        })),
+      },
+    } satisfies ApiResponse);
+  }
+
+  @Post('message-templates')
+  async createMessageTemplate(
+    @Req() req: AuthenticatedRequest,
+    @Body() body: { type: string; body: string },
+    @Res() res: Response,
+  ): Promise<void> {
+    const userId = req.user.userId;
+
+    if (body.type !== 'counter_offer' && body.type !== 'cta') {
+      res.status(HttpStatus.BAD_REQUEST).json({
+        success: false,
+        error: 'type must be "counter_offer" or "cta"',
+      } satisfies ApiResponse);
+      return;
+    }
+
+    if (!body.body || typeof body.body !== 'string' || body.body.trim().length === 0) {
+      res.status(HttpStatus.BAD_REQUEST).json({
+        success: false,
+        error: 'body is required and must be a non-empty string',
+      } satisfies ApiResponse);
+      return;
+    }
+
+    if (body.body.length > 1000) {
+      res.status(HttpStatus.BAD_REQUEST).json({
+        success: false,
+        error: 'body must be at most 1000 characters',
+      } satisfies ApiResponse);
+      return;
+    }
+
+    const currentCount = await this.messageTemplateRepository.countByUserAndType(userId, body.type as MessageTemplateType);
+    if (currentCount >= 5) {
+      res.status(HttpStatus.BAD_REQUEST).json({
+        success: false,
+        error: 'Maximum of 5 templates per type reached',
+      } satisfies ApiResponse);
+      return;
+    }
+
+    const template = await this.messageTemplateRepository.create(userId, {
+      type: body.type as MessageTemplateType,
+      body: body.body.trim(),
+    });
+
+    res.status(HttpStatus.CREATED).json({
+      success: true,
+      data: {
+        template: {
+          id: template.id,
+          type: template.type,
+          body: template.body,
+          isActive: template.isActive,
+          createdAt: template.createdAt,
+        },
+      },
+    } satisfies ApiResponse);
+  }
+
+  @Put('message-templates/:id')
+  async updateMessageTemplate(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') id: string,
+    @Body() body: { body?: string; isActive?: boolean },
+    @Res() res: Response,
+  ): Promise<void> {
+    const userId = req.user.userId;
+    const templateId = parseInt(id, 10);
+
+    if (Number.isNaN(templateId)) {
+      res.status(HttpStatus.BAD_REQUEST).json({
+        success: false,
+        error: 'Invalid template ID',
+      } satisfies ApiResponse);
+      return;
+    }
+
+    const existing = await this.messageTemplateRepository.findById(templateId);
+    if (!existing || existing.userId !== userId) {
+      res.status(HttpStatus.NOT_FOUND).json({
+        success: false,
+        error: 'Template not found',
+      } satisfies ApiResponse);
+      return;
+    }
+
+    if (body.body !== undefined) {
+      if (typeof body.body !== 'string' || body.body.trim().length === 0) {
+        res.status(HttpStatus.BAD_REQUEST).json({
+          success: false,
+          error: 'body must be a non-empty string',
+        } satisfies ApiResponse);
+        return;
+      }
+      if (body.body.length > 1000) {
+        res.status(HttpStatus.BAD_REQUEST).json({
+          success: false,
+          error: 'body must be at most 1000 characters',
+        } satisfies ApiResponse);
+        return;
+      }
+    }
+
+    const updated = await this.messageTemplateRepository.update(templateId, {
+      ...(body.body !== undefined && { body: body.body.trim() }),
+      ...(body.isActive !== undefined && { isActive: body.isActive }),
+    });
+
+    res.json({
+      success: true,
+      data: {
+        template: {
+          id: updated.id,
+          type: updated.type,
+          body: updated.body,
+          isActive: updated.isActive,
+          createdAt: updated.createdAt,
+        },
+      },
+    } satisfies ApiResponse);
+  }
+
+  @Delete('message-templates')
+  async deleteAllMessageTemplates(
+    @Req() req: AuthenticatedRequest,
+    @Query('type') type: string,
+    @Res() res: Response,
+  ): Promise<void> {
+    const userId = req.user.userId;
+
+    if (type !== 'counter_offer' && type !== 'cta') {
+      res.status(HttpStatus.BAD_REQUEST).json({
+        success: false,
+        error: 'type must be "counter_offer" or "cta"',
+      } satisfies ApiResponse);
+      return;
+    }
+
+    await this.messageTemplateRepository.deleteAllByUserAndType(userId, type as MessageTemplateType);
+    res.json({ success: true } satisfies ApiResponse);
+  }
+
+  @Delete('message-templates/:id')
+  async deleteMessageTemplate(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') id: string,
+    @Res() res: Response,
+  ): Promise<void> {
+    const userId = req.user.userId;
+    const templateId = parseInt(id, 10);
+
+    if (Number.isNaN(templateId)) {
+      res.status(HttpStatus.BAD_REQUEST).json({
+        success: false,
+        error: 'Invalid template ID',
+      } satisfies ApiResponse);
+      return;
+    }
+
+    const existing = await this.messageTemplateRepository.findById(templateId);
+    if (!existing || existing.userId !== userId) {
+      res.status(HttpStatus.NOT_FOUND).json({
+        success: false,
+        error: 'Template not found',
+      } satisfies ApiResponse);
+      return;
+    }
+
+    await this.messageTemplateRepository.deleteById(templateId);
+    res.json({ success: true } satisfies ApiResponse);
   }
 
   // ============================================================================
