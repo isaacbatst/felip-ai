@@ -13,6 +13,7 @@ import { GroupDelaySettingsRepository } from '@/infrastructure/persistence/group
 import { BlacklistRepository } from '@/infrastructure/persistence/blacklist.repository';
 import { GroupReasoningSettingsRepository } from '@/infrastructure/persistence/group-reasoning-settings.repository';
 import { GroupCounterOfferSettingsRepository } from '@/infrastructure/persistence/group-counter-offer-settings.repository';
+import { MessageTemplateRepository } from '@/infrastructure/persistence/message-template.repository';
 import type { PriceTableV2 } from '@/domain/types/price.types';
 import type { PurchaseProposal } from '@/domain/types/purchase.types';
 
@@ -25,6 +26,7 @@ describe('TelegramPurchaseHandler', () => {
   let mockMilesProgramRepository: jest.Mocked<MilesProgramRepository>;
   let mockGroupReasoningSettingsRepository: jest.Mocked<GroupReasoningSettingsRepository>;
   let mockGroupCounterOfferSettingsRepository: jest.Mocked<GroupCounterOfferSettingsRepository>;
+  let mockMessageTemplateRepository: jest.Mocked<MessageTemplateRepository>;
 
   // Test constants
   const loggedInUserId = 'test-logged-in-user-123';
@@ -171,6 +173,17 @@ describe('TelegramPurchaseHandler', () => {
       seedDefaultPrograms: jest.fn(),
     } as unknown as jest.Mocked<MilesProgramRepository>;
 
+    mockMessageTemplateRepository = {
+      findActiveByUserAndType: jest.fn().mockResolvedValue([]),
+      findByUserAndType: jest.fn().mockResolvedValue([]),
+      findById: jest.fn().mockResolvedValue(null),
+      countByUserAndType: jest.fn().mockResolvedValue(0),
+      create: jest.fn(),
+      update: jest.fn(),
+      deleteById: jest.fn(),
+      deleteAllByUserAndType: jest.fn(),
+    } as unknown as jest.Mocked<MessageTemplateRepository>;
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         TelegramPurchaseHandler,
@@ -238,6 +251,10 @@ describe('TelegramPurchaseHandler', () => {
             getAllGroupSettings: jest.fn().mockResolvedValue([]),
             upsertGroupSetting: jest.fn(),
           },
+        },
+        {
+          provide: MessageTemplateRepository,
+          useValue: mockMessageTemplateRepository,
         },
       ],
     }).compile();
@@ -2134,6 +2151,73 @@ describe('TelegramPurchaseHandler', () => {
         // Both messages sent without delay
         expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledTimes(1);
         expect(mockTdlibUserClient.sendMessageToUser).toHaveBeenCalledTimes(1);
+      });
+    });
+
+    describe('custom message templates', () => {
+      it('should use custom template when active templates exist for counter offer', async () => {
+        mockMessageTemplateRepository.findActiveByUserAndType.mockResolvedValue([
+          { id: 1, userId: loggedInUserId, type: 'counter_offer', body: 'Custom: {PROGRAMA} {QUANTIDADE}k R$ {PRECO}', isActive: true, createdAt: new Date(), updatedAt: new Date() },
+        ]);
+        mockCounterOfferSettingsRepository.getSettings.mockResolvedValue({
+          userId: loggedInUserId, isEnabled: true, priceThreshold: 5,
+          messageTemplateId: 1, callToActionTemplateId: 1,
+          dedupEnabled: false, dedupWindowMinutes: 1,
+          groupDedupEnabled: false, groupDedupWindowMinutes: 1,
+          createdAt: new Date(), updatedAt: new Date(),
+        });
+        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
+          quantity: 30_000, cpfCount: 1, acceptedPrices: [15],
+        }));
+
+        await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'smiles 30k 1cpf aceito 15', 456);
+
+        expect(mockTdlibUserClient.sendMessageToUser).toHaveBeenCalledWith(
+          telegramUserId, 456, expect.stringContaining('Custom:'),
+        );
+      });
+
+      it('should fall back to pre-defined template when no custom templates exist', async () => {
+        mockMessageTemplateRepository.findActiveByUserAndType.mockResolvedValue([]);
+        mockCounterOfferSettingsRepository.getSettings.mockResolvedValue({
+          userId: loggedInUserId, isEnabled: true, priceThreshold: 5,
+          messageTemplateId: 1, callToActionTemplateId: 1,
+          dedupEnabled: false, dedupWindowMinutes: 1,
+          groupDedupEnabled: false, groupDedupWindowMinutes: 1,
+          createdAt: new Date(), updatedAt: new Date(),
+        });
+        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
+          quantity: 30_000, cpfCount: 1, acceptedPrices: [15],
+        }));
+
+        await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'smiles 30k 1cpf aceito 15', 456);
+
+        expect(mockTdlibUserClient.sendMessageToUser).toHaveBeenCalled();
+        const sentMessage = mockTdlibUserClient.sendMessageToUser.mock.calls[0][2];
+        expect(sentMessage).not.toContain('Custom:');
+      });
+
+      it('should include original message when {MENSAGEM_ORIGINAL} placeholder is used', async () => {
+        const originalMessage = 'Preciso de 30k smiles 1cpf aceito 15';
+        mockMessageTemplateRepository.findActiveByUserAndType.mockResolvedValue([
+          { id: 1, userId: loggedInUserId, type: 'counter_offer', body: 'Sobre: {MENSAGEM_ORIGINAL}\nOferta: R$ {PRECO}', isActive: true, createdAt: new Date(), updatedAt: new Date() },
+        ]);
+        mockCounterOfferSettingsRepository.getSettings.mockResolvedValue({
+          userId: loggedInUserId, isEnabled: true, priceThreshold: 5,
+          messageTemplateId: 1, callToActionTemplateId: 1,
+          dedupEnabled: false, dedupWindowMinutes: 1,
+          groupDedupEnabled: false, groupDedupWindowMinutes: 1,
+          createdAt: new Date(), updatedAt: new Date(),
+        });
+        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
+          quantity: 30_000, cpfCount: 1, acceptedPrices: [15],
+        }));
+
+        await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, originalMessage, 456);
+
+        expect(mockTdlibUserClient.sendMessageToUser).toHaveBeenCalledWith(
+          telegramUserId, 456, expect.stringContaining(originalMessage),
+        );
       });
     });
   });
