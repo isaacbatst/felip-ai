@@ -42,6 +42,8 @@ import { GroupReasoningSettingsRepository } from "@/infrastructure/persistence/g
 import { GroupReasoningSettingsDrizzleStore } from "@/infrastructure/persistence/drizzle/group-reasoning-settings-drizzle-store";
 import { GroupCounterOfferSettingsRepository } from "@/infrastructure/persistence/group-counter-offer-settings.repository";
 import { GroupCounterOfferSettingsDrizzleStore } from "@/infrastructure/persistence/drizzle/group-counter-offer-settings-drizzle-store";
+import { MessageTemplateRepository } from "@/infrastructure/persistence/message-template.repository";
+import { MessageTemplateDrizzleStore } from "@/infrastructure/persistence/drizzle/message-template-drizzle-store";
 
 @Module({
   imports: [DatabaseModule],
@@ -130,6 +132,10 @@ import { GroupCounterOfferSettingsDrizzleStore } from "@/infrastructure/persiste
       provide: GroupCounterOfferSettingsRepository,
       useClass: GroupCounterOfferSettingsDrizzleStore,
     },
+    {
+      provide: MessageTemplateRepository,
+      useClass: MessageTemplateDrizzleStore,
+    },
   ],
   exports: [
     ActiveGroupsRepository,
@@ -153,6 +159,7 @@ import { GroupCounterOfferSettingsDrizzleStore } from "@/infrastructure/persiste
     BlacklistRepository,
     GroupReasoningSettingsRepository,
     GroupCounterOfferSettingsRepository,
+    MessageTemplateRepository,
   ],
 })
 export class PersistenceModule {}
