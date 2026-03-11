@@ -635,6 +635,26 @@
                         </button>
                       </div>
                     </template>
+                    <!-- Per-group private delay -->
+                    <div class="mt-2 pt-2 border-t border-gray-50">
+                        <div class="flex items-center gap-2 flex-wrap">
+                          <i class="fa-solid fa-clock text-gray-400 text-xs"></i>
+                          <span class="text-xs text-gray-500">Delay privado:</span>
+                          <input type="number" min="0" max="300"
+                            :value="getGroupCounterOffer(group.id).privateDelayMin ?? ''"
+                            @change="updateGroupPrivateDelay(group.id, 'min', $event.target.value)"
+                            placeholder="min"
+                            class="w-14 p-1 border border-gray-200 rounded text-xs text-center">
+                          <span class="text-xs text-gray-400">-</span>
+                          <input type="number" min="0" max="300"
+                            :value="getGroupCounterOffer(group.id).privateDelayMax ?? ''"
+                            @change="updateGroupPrivateDelay(group.id, 'max', $event.target.value)"
+                            placeholder="max"
+                            class="w-14 p-1 border border-gray-200 rounded text-xs text-center">
+                          <span class="text-xs text-gray-400">seg</span>
+                        </div>
+                        <p class="text-xs text-gray-400 mt-1">Ambos = delay aleatório entre min e max. Só um = delay fixo. Vazio = sem delay.</p>
+                      </div>
                   </div>
                 </div>
               </template>
@@ -810,13 +830,13 @@
         </div>
       </div>
 
-      <!-- Save Dedup Settings -->
+      <!-- Save Settings -->
       <div class="btn-group flex gap-2.5 justify-end mb-6 max-md:justify-center">
         <button type="button" class="bg-linear-135 from-primary to-secondary px-6 py-3 text-sm font-semibold border-none rounded-lg cursor-pointer transition-all text-white disabled:opacity-60 disabled:cursor-not-allowed hover:not-disabled:-translate-y-0.5 hover:not-disabled:shadow-lg"
           @click="saveCounterOfferSettings()"
           :disabled="savingCounterOffer || !counterOfferChanged">
           <span x-show="savingCounterOffer" class="spinner mr-2"></span>
-          Salvar Deduplicação
+          Salvar Configurações
         </button>
       </div>
 
@@ -1622,7 +1642,7 @@
                 };
                 reasoningMap[g.groupId] = g.reasoningMode || 'fast';
                 counterOfferMap[g.groupId] = g.counterOfferEnabled !== null
-                  ? { isEnabled: g.counterOfferEnabled }
+                  ? { isEnabled: g.counterOfferEnabled, privateDelayMin: g.privateDelayMin, privateDelayMax: g.privateDelayMax }
                   : null;
               }
               this.groupDelaySettings = map;
@@ -1647,7 +1667,7 @@
         getGroupCounterOffer(groupId) {
           const setting = this.groupCounterOfferSettings[groupId];
           if (setting) return setting;
-          return { isEnabled: this.counterOfferSettings.isEnabled };
+          return { isEnabled: this.counterOfferSettings.isEnabled, privateDelayMin: null, privateDelayMax: null };
         },
 
         isGroupCounterOfferCustom(groupId) {
@@ -1658,7 +1678,7 @@
           const isCustom = this.isGroupCounterOfferCustom(groupId);
           const current = this.getGroupCounterOffer(groupId);
           const newEnabled = !current.isEnabled;
-          const newSettings = { isEnabled: newEnabled };
+          const newSettings = { isEnabled: newEnabled, privateDelayMin: current.privateDelayMin ?? null, privateDelayMax: current.privateDelayMax ?? null };
           this.groupCounterOfferSettings = { ...this.groupCounterOfferSettings, [groupId]: newSettings };
           const ok = await this.saveGroupCounterOffer(groupId, newSettings);
           if (!ok) {
@@ -1689,6 +1709,18 @@
           } finally {
             this.savingGroupCounterOffer = null;
           }
+        },
+
+        async updateGroupPrivateDelay(groupId, field, value) {
+          const current = this.getGroupCounterOffer(groupId);
+          const numValue = value === '' ? null : parseInt(value, 10);
+          const updated = {
+            isEnabled: current.isEnabled,
+            privateDelayMin: field === 'min' ? numValue : (current.privateDelayMin ?? null),
+            privateDelayMax: field === 'max' ? numValue : (current.privateDelayMax ?? null),
+          };
+          this.groupCounterOfferSettings = { ...this.groupCounterOfferSettings, [groupId]: updated };
+          await this.saveGroupCounterOffer(groupId, updated);
         },
 
         async saveGroupCounterOffer(groupId, settings) {

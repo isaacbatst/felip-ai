@@ -285,6 +285,8 @@ export const groupCounterOfferSettings = pgTable(
     userId: text('user_id').notNull(),
     groupId: bigint('group_id', { mode: 'number' }).notNull(),
     isEnabled: boolean('is_enabled').notNull(),
+    privateDelayMin: integer('private_delay_min'), // Per-group override, null = use global
+    privateDelayMax: integer('private_delay_max'), // Per-group override, null = use global
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },

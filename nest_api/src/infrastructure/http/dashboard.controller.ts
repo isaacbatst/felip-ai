@@ -197,10 +197,14 @@ interface GroupDelaySettingResponse {
   delayMax: number | null;
   reasoningMode: ReasoningMode;
   counterOfferEnabled: boolean | null;
+  privateDelayMin: number | null;
+  privateDelayMax: number | null;
 }
 
 interface UpdateGroupCounterOfferDto {
   isEnabled: boolean;
+  privateDelayMin: number | null;
+  privateDelayMax: number | null;
 }
 
 interface DelaySettingsResponse {
@@ -1124,6 +1128,8 @@ export class DashboardController {
             delayMax: delay?.delayMax ?? null,
             reasoningMode: reasoningMap.get(gid) ?? 'fast',
             counterOfferEnabled: counterOffer?.isEnabled ?? null,
+            privateDelayMin: counterOffer?.privateDelayMin ?? null,
+            privateDelayMax: counterOffer?.privateDelayMax ?? null,
           };
         }),
       },
@@ -1359,8 +1365,54 @@ export class DashboardController {
       return;
     }
 
+    // Validate private delay: each field independently (single value = fixed delay, both = random range)
+    const hasPrivateDelayMin = body.privateDelayMin !== null && body.privateDelayMin !== undefined;
+    const hasPrivateDelayMax = body.privateDelayMax !== null && body.privateDelayMax !== undefined;
+
+    if (hasPrivateDelayMin) {
+      if (typeof body.privateDelayMin !== 'number' || body.privateDelayMin < 0 || !Number.isInteger(body.privateDelayMin)) {
+        res.status(HttpStatus.BAD_REQUEST).json({
+          success: false,
+          error: 'privateDelayMin must be a non-negative integer',
+        } satisfies ApiResponse);
+        return;
+      }
+      if (body.privateDelayMin > 300) {
+        res.status(HttpStatus.BAD_REQUEST).json({
+          success: false,
+          error: 'privateDelayMin must be <= 300 seconds',
+        } satisfies ApiResponse);
+        return;
+      }
+    }
+    if (hasPrivateDelayMax) {
+      if (typeof body.privateDelayMax !== 'number' || body.privateDelayMax < 0 || !Number.isInteger(body.privateDelayMax)) {
+        res.status(HttpStatus.BAD_REQUEST).json({
+          success: false,
+          error: 'privateDelayMax must be a non-negative integer',
+        } satisfies ApiResponse);
+        return;
+      }
+      if (body.privateDelayMax > 300) {
+        res.status(HttpStatus.BAD_REQUEST).json({
+          success: false,
+          error: 'privateDelayMax must be <= 300 seconds',
+        } satisfies ApiResponse);
+        return;
+      }
+    }
+    if (hasPrivateDelayMin && hasPrivateDelayMax && body.privateDelayMax! < body.privateDelayMin!) {
+      res.status(HttpStatus.BAD_REQUEST).json({
+        success: false,
+        error: 'privateDelayMax must be >= privateDelayMin',
+      } satisfies ApiResponse);
+      return;
+    }
+
     await this.groupCounterOfferSettingsRepository.upsertGroupSetting(userId, groupIdNum, {
       isEnabled: body.isEnabled,
+      privateDelayMin: body.privateDelayMin ?? null,
+      privateDelayMax: body.privateDelayMax ?? null,
     });
 
     res.status(HttpStatus.OK).json({

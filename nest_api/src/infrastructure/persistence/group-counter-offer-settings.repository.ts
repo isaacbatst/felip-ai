@@ -2,12 +2,16 @@ export interface GroupCounterOfferSetting {
   userId: string;
   groupId: number;
   isEnabled: boolean;
+  privateDelayMin: number | null;
+  privateDelayMax: number | null;
   createdAt: Date;
   updatedAt: Date;
 }
 
 export interface GroupCounterOfferSettingInput {
   isEnabled: boolean;
+  privateDelayMin: number | null;
+  privateDelayMax: number | null;
 }
 
 export abstract class GroupCounterOfferSettingsRepository {

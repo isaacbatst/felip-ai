@@ -1690,6 +1690,8 @@ describe('TelegramPurchaseHandler', () => {
           userId: loggedInUserId,
           groupId: chatId,
           isEnabled: false,
+          privateDelayMin: null,
+          privateDelayMax: null,
           createdAt: new Date(),
           updatedAt: new Date(),
         });
@@ -1730,6 +1732,8 @@ describe('TelegramPurchaseHandler', () => {
           userId: loggedInUserId,
           groupId: chatId,
           isEnabled: true,
+          privateDelayMin: null,
+          privateDelayMax: null,
           createdAt: new Date(),
           updatedAt: new Date(),
         });
@@ -1845,6 +1849,290 @@ describe('TelegramPurchaseHandler', () => {
         await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF R$19', senderId);
 
         // Should use global settings and send counter offer
+        expect(mockTdlibUserClient.sendMessageToUser).toHaveBeenCalledTimes(1);
+      });
+    });
+
+    describe('Private message delay', () => {
+      const senderId = 999;
+
+      beforeEach(() => {
+        jest.useFakeTimers();
+        // Single price scenario for simplicity
+        availableMiles[2] = 10000; // SMILES LIMINAR - not enough
+      });
+
+      afterEach(() => {
+        jest.useRealTimers();
+      });
+
+      it('should apply private delay before sending counter offer when group has delay configured', async () => {
+        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
+          quantity: 30_000,
+          cpfCount: 1,
+          airlineId: PROGRAM_IDS.SMILES,
+          acceptedPrices: [19], // Within threshold (diff = 1)
+        }));
+
+        mockCounterOfferSettingsRepository.getSettings.mockResolvedValueOnce({
+          userId: loggedInUserId,
+          isEnabled: true,
+          priceThreshold: 5,
+          messageTemplateId: 1,
+          callToActionTemplateId: 1,
+          dedupEnabled: false,
+          dedupWindowMinutes: 1,
+          groupDedupEnabled: false,
+          groupDedupWindowMinutes: 1,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+
+        mockGroupCounterOfferSettingsRepository.getGroupSetting.mockResolvedValueOnce({
+          userId: loggedInUserId,
+          groupId: chatId,
+          isEnabled: true,
+          privateDelayMin: 3,
+          privateDelayMax: 5,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+
+        const handlePromise = handler.handlePurchase(
+          loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF aceito 19', senderId,
+        );
+
+        // Group message sent immediately (no group delay configured)
+        await jest.advanceTimersByTimeAsync(0);
+        expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledTimes(1);
+
+        // Private message NOT sent yet (waiting for private delay)
+        expect(mockTdlibUserClient.sendMessageToUser).not.toHaveBeenCalled();
+
+        // Advance past max delay
+        await jest.advanceTimersByTimeAsync(5000);
+
+        await handlePromise;
+
+        // Now private message should have been sent
+        expect(mockTdlibUserClient.sendMessageToUser).toHaveBeenCalledTimes(1);
+      });
+
+      it('should apply private delay before sending CTA when group has delay configured', async () => {
+        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
+          quantity: 30_000,
+          cpfCount: 1,
+          airlineId: PROGRAM_IDS.SMILES,
+          acceptedPrices: [25], // Higher than calculated price
+        }));
+
+        mockCounterOfferSettingsRepository.getSettings.mockResolvedValueOnce({
+          userId: loggedInUserId,
+          isEnabled: true,
+          priceThreshold: 5,
+          messageTemplateId: 1,
+          callToActionTemplateId: 1,
+          dedupEnabled: false,
+          dedupWindowMinutes: 1,
+          groupDedupEnabled: false,
+          groupDedupWindowMinutes: 1,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+
+        mockGroupCounterOfferSettingsRepository.getGroupSetting.mockResolvedValueOnce({
+          userId: loggedInUserId,
+          groupId: chatId,
+          isEnabled: true,
+          privateDelayMin: 2,
+          privateDelayMax: 4,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+
+        const handlePromise = handler.handlePurchase(
+          loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF aceito 25', senderId,
+        );
+
+        // Group message sent immediately
+        await jest.advanceTimersByTimeAsync(0);
+        expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledTimes(1);
+
+        // Private message NOT sent yet
+        expect(mockTdlibUserClient.sendMessageToUser).not.toHaveBeenCalled();
+
+        // Advance past max delay
+        await jest.advanceTimersByTimeAsync(4000);
+
+        await handlePromise;
+
+        expect(mockTdlibUserClient.sendMessageToUser).toHaveBeenCalledTimes(1);
+      });
+
+      it('should not apply private delay when group has no override', async () => {
+        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
+          quantity: 30_000,
+          cpfCount: 1,
+          airlineId: PROGRAM_IDS.SMILES,
+          acceptedPrices: [25],
+        }));
+
+        mockCounterOfferSettingsRepository.getSettings.mockResolvedValueOnce({
+          userId: loggedInUserId,
+          isEnabled: true,
+          priceThreshold: 5,
+          messageTemplateId: 1,
+          callToActionTemplateId: 1,
+          dedupEnabled: false,
+          dedupWindowMinutes: 1,
+          groupDedupEnabled: false,
+          groupDedupWindowMinutes: 1,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+
+        // No group override (returns null — default mock)
+
+        await handler.handlePurchase(
+          loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF aceito 25', senderId,
+        );
+
+        // Both group and private messages sent without waiting
+        expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledTimes(1);
+        expect(mockTdlibUserClient.sendMessageToUser).toHaveBeenCalledTimes(1);
+      });
+
+      it('should apply fixed delay when only privateDelayMin is provided', async () => {
+        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
+          quantity: 30_000,
+          cpfCount: 1,
+          airlineId: PROGRAM_IDS.SMILES,
+          acceptedPrices: [25],
+        }));
+
+        mockCounterOfferSettingsRepository.getSettings.mockResolvedValueOnce({
+          userId: loggedInUserId,
+          isEnabled: true,
+          priceThreshold: 5,
+          messageTemplateId: 1,
+          callToActionTemplateId: 1,
+          dedupEnabled: false,
+          dedupWindowMinutes: 1,
+          groupDedupEnabled: false,
+          groupDedupWindowMinutes: 1,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+
+        mockGroupCounterOfferSettingsRepository.getGroupSetting.mockResolvedValueOnce({
+          userId: loggedInUserId,
+          groupId: chatId,
+          isEnabled: true,
+          privateDelayMin: 5,
+          privateDelayMax: null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+
+        const handlePromise = handler.handlePurchase(
+          loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF aceito 25', senderId,
+        );
+
+        await jest.advanceTimersByTimeAsync(0);
+        expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledTimes(1);
+        expect(mockTdlibUserClient.sendMessageToUser).not.toHaveBeenCalled();
+
+        await jest.advanceTimersByTimeAsync(5000);
+        await handlePromise;
+
+        expect(mockTdlibUserClient.sendMessageToUser).toHaveBeenCalledTimes(1);
+      });
+
+      it('should apply fixed delay when only privateDelayMax is provided', async () => {
+        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
+          quantity: 30_000,
+          cpfCount: 1,
+          airlineId: PROGRAM_IDS.SMILES,
+          acceptedPrices: [25],
+        }));
+
+        mockCounterOfferSettingsRepository.getSettings.mockResolvedValueOnce({
+          userId: loggedInUserId,
+          isEnabled: true,
+          priceThreshold: 5,
+          messageTemplateId: 1,
+          callToActionTemplateId: 1,
+          dedupEnabled: false,
+          dedupWindowMinutes: 1,
+          groupDedupEnabled: false,
+          groupDedupWindowMinutes: 1,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+
+        mockGroupCounterOfferSettingsRepository.getGroupSetting.mockResolvedValueOnce({
+          userId: loggedInUserId,
+          groupId: chatId,
+          isEnabled: true,
+          privateDelayMin: null,
+          privateDelayMax: 3,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+
+        const handlePromise = handler.handlePurchase(
+          loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF aceito 25', senderId,
+        );
+
+        await jest.advanceTimersByTimeAsync(0);
+        expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledTimes(1);
+        expect(mockTdlibUserClient.sendMessageToUser).not.toHaveBeenCalled();
+
+        await jest.advanceTimersByTimeAsync(3000);
+        await handlePromise;
+
+        expect(mockTdlibUserClient.sendMessageToUser).toHaveBeenCalledTimes(1);
+      });
+
+      it('should not apply private delay when group delay values are null', async () => {
+        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
+          quantity: 30_000,
+          cpfCount: 1,
+          airlineId: PROGRAM_IDS.SMILES,
+          acceptedPrices: [25],
+        }));
+
+        mockCounterOfferSettingsRepository.getSettings.mockResolvedValueOnce({
+          userId: loggedInUserId,
+          isEnabled: true,
+          priceThreshold: 5,
+          messageTemplateId: 1,
+          callToActionTemplateId: 1,
+          dedupEnabled: false,
+          dedupWindowMinutes: 1,
+          groupDedupEnabled: false,
+          groupDedupWindowMinutes: 1,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+
+        // Group has counter-offer enabled but no private delay configured
+        mockGroupCounterOfferSettingsRepository.getGroupSetting.mockResolvedValueOnce({
+          userId: loggedInUserId,
+          groupId: chatId,
+          isEnabled: true,
+          privateDelayMin: null,
+          privateDelayMax: null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+
+        await handler.handlePurchase(
+          loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF aceito 25', senderId,
+        );
+
+        // Both messages sent without delay
+        expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledTimes(1);
         expect(mockTdlibUserClient.sendMessageToUser).toHaveBeenCalledTimes(1);
       });
     });

@@ -11,7 +11,7 @@ import { PriceCalculatorService } from '../../../domain/services/price-calculato
 import { PrivateMessageBufferService } from '../private-message-buffer.service';
 import { BlacklistRepository } from '@/infrastructure/persistence/blacklist.repository';
 import { GroupReasoningSettingsRepository } from '@/infrastructure/persistence/group-reasoning-settings.repository';
-import { GroupCounterOfferSettingsRepository } from '@/infrastructure/persistence/group-counter-offer-settings.repository';
+import { GroupCounterOfferSettingsRepository, type GroupCounterOfferSetting } from '@/infrastructure/persistence/group-counter-offer-settings.repository';
 
 interface CalculatedPriceResult {
   price: number;
@@ -359,6 +359,7 @@ export class TelegramPurchaseHandler {
         lowestPrice,
       });
 
+      await this.applyPrivateDelay(groupCounterOfferSetting);
       await this.tdlibUserClient.sendMessageToUser(telegramUserId, senderId, message);
 
       return;
@@ -423,6 +424,7 @@ export class TelegramPurchaseHandler {
       templateId: counterOfferSettings?.messageTemplateId ?? 1,
     });
 
+    await this.applyPrivateDelay(groupCounterOfferSetting);
     await this.tdlibUserClient.sendMessageToUser(telegramUserId, senderId, message);
   }
 
@@ -458,6 +460,38 @@ export class TelegramPurchaseHandler {
     const delayMs = Math.round(delaySeconds * 1000);
 
     this.logger.log('Applying anti-bot delay', { chatId, delaySeconds: delaySeconds.toFixed(1), min, max });
+
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+  }
+
+  /**
+   * Applies delay before sending private messages (CTA/counter-offer).
+   * Configured per-group only. No delay if group has no setting or values are null/0.
+   */
+  private async applyPrivateDelay(
+    groupCounterOfferSetting: GroupCounterOfferSetting | null,
+  ): Promise<void> {
+    const min = groupCounterOfferSetting?.privateDelayMin;
+    const max = groupCounterOfferSetting?.privateDelayMax;
+
+    if (min == null && max == null) {
+      return;
+    }
+
+    let delaySeconds: number;
+    if (min != null && max != null) {
+      delaySeconds = min + Math.random() * (max - min);
+    } else {
+      delaySeconds = min ?? max!;
+    }
+
+    if (delaySeconds === 0) {
+      return;
+    }
+
+    const delayMs = Math.round(delaySeconds * 1000);
+
+    this.logger.log('Applying private message delay', { delaySeconds: delaySeconds.toFixed(1), min, max });
 
     await new Promise((resolve) => setTimeout(resolve, delayMs));
   }

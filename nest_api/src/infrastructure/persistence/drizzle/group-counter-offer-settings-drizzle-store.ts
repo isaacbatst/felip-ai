@@ -57,6 +57,8 @@ export class GroupCounterOfferSettingsDrizzleStore extends GroupCounterOfferSett
         userId,
         groupId,
         isEnabled: input.isEnabled,
+        privateDelayMin: input.privateDelayMin,
+        privateDelayMax: input.privateDelayMax,
         createdAt: now,
         updatedAt: now,
       })
@@ -64,6 +66,8 @@ export class GroupCounterOfferSettingsDrizzleStore extends GroupCounterOfferSett
         target: [groupCounterOfferSettings.userId, groupCounterOfferSettings.groupId],
         set: {
           isEnabled: input.isEnabled,
+          privateDelayMin: input.privateDelayMin,
+          privateDelayMax: input.privateDelayMax,
           updatedAt: now,
         },
       })
