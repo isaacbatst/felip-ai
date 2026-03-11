@@ -573,7 +573,7 @@
                             class="px-2 py-1 text-xs font-medium rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 transition-all disabled:opacity-50"
                             :disabled="savingGroupDelay === group.id"
                             @click="resetGroupDelayToDefault(group.id)">
-                            <i class="fa-solid fa-rotate-left mr-0.5"></i> Usar padrão
+                            <i class="fa-solid fa-rotate-left mr-0.5"></i> Restaurar padrão
                           </button>
                         </template>
                         <span class="text-xs text-gray-400" x-show="getGroupDelay(group.id).delayMin === null && getGroupDelay(group.id).delayMax === null">
@@ -614,46 +614,63 @@
                         <i class="fa-solid fa-message text-gray-400 text-xs"></i>
                         <span class="text-xs font-medium text-gray-600">Contra proposta</span>
                         <template x-if="!isGroupCounterOfferCustom(group.id)">
-                          <span class="text-xs text-gray-400">(padrao global)</span>
+                          <span class="text-xs text-gray-400">(padrão global)</span>
                         </template>
                       </div>
-                      <label class="relative inline-flex items-center cursor-pointer">
-                        <input type="checkbox" class="sr-only peer"
-                          :checked="getGroupCounterOffer(group.id).isEnabled"
-                          @change="toggleGroupCounterOffer(group.id)"
-                          :disabled="savingGroupCounterOffer === group.id">
-                        <div class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
-                      </label>
-                    </div>
-                    <template x-if="isGroupCounterOfferCustom(group.id)">
-                      <div class="mt-2 flex items-center gap-2">
-                        <button type="button"
-                          class="px-2 py-1 text-xs font-medium rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 transition-all disabled:opacity-50"
-                          :disabled="savingGroupCounterOffer === group.id"
-                          @click="resetGroupCounterOffer(group.id)">
-                          <i class="fa-solid fa-rotate-left mr-0.5"></i> Usar padrao
-                        </button>
+                      <div class="flex items-center gap-2">
+                        <template x-if="isGroupCounterOfferCustom(group.id)">
+                          <button type="button"
+                            class="px-2 py-1 text-xs font-medium rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 transition-all disabled:opacity-50"
+                            :disabled="savingGroupCounterOffer === group.id"
+                            @click="resetGroupCounterOffer(group.id)">
+                            <i class="fa-solid fa-rotate-left mr-0.5"></i> Restaurar padrão
+                          </button>
+                        </template>
+                        <label class="relative inline-flex items-center cursor-pointer">
+                          <input type="checkbox" class="sr-only peer"
+                            :checked="getGroupCounterOffer(group.id).isEnabled"
+                            @change="toggleGroupCounterOffer(group.id)"
+                            :disabled="savingGroupCounterOffer === group.id">
+                          <div class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
+                        </label>
                       </div>
-                    </template>
+                    </div>
                     <!-- Per-group private delay -->
-                    <div class="mt-2 pt-2 border-t border-gray-50">
+                    <div class="mt-2 pt-2 border-t border-gray-50"
+                      x-data="{
+                        editMin: getGroupCounterOffer(group.id).privateDelayMin ?? '',
+                        editMax: getGroupCounterOffer(group.id).privateDelayMax ?? '',
+                        get dirty() {
+                          const current = getGroupCounterOffer(group.id);
+                          const curMin = current.privateDelayMin ?? '';
+                          const curMax = current.privateDelayMax ?? '';
+                          return String(this.editMin) !== String(curMin) || String(this.editMax) !== String(curMax);
+                        }
+                      }">
                         <div class="flex items-center gap-2 flex-wrap">
                           <i class="fa-solid fa-clock text-gray-400 text-xs"></i>
                           <span class="text-xs text-gray-500">Delay privado:</span>
                           <input type="number" min="0" max="300"
-                            :value="getGroupCounterOffer(group.id).privateDelayMin ?? ''"
-                            @change="updateGroupPrivateDelay(group.id, 'min', $event.target.value)"
+                            x-model="editMin"
                             placeholder="min"
                             class="w-14 p-1 border border-gray-200 rounded text-xs text-center">
                           <span class="text-xs text-gray-400">-</span>
                           <input type="number" min="0" max="300"
-                            :value="getGroupCounterOffer(group.id).privateDelayMax ?? ''"
-                            @change="updateGroupPrivateDelay(group.id, 'max', $event.target.value)"
+                            x-model="editMax"
                             placeholder="max"
                             class="w-14 p-1 border border-gray-200 rounded text-xs text-center">
                           <span class="text-xs text-gray-400">seg</span>
+                          <button type="button"
+                            x-show="dirty"
+                            x-transition
+                            class="px-2 py-1 text-xs font-medium rounded-lg bg-primary text-white hover:opacity-90 transition-all disabled:opacity-50"
+                            :disabled="savingGroupCounterOffer === group.id"
+                            @click="await saveGroupPrivateDelay(group.id, editMin, editMax)">
+                            <span x-show="savingGroupCounterOffer === group.id" class="spinner mr-1"></span>
+                            Salvar
+                          </button>
                         </div>
-                        <p class="text-xs text-gray-400 mt-1">Ambos = delay aleatório entre min e max. Só um = delay fixo. Vazio = sem delay.</p>
+                        <p class="text-xs text-gray-400 mt-1">Preencha min e max para delay aleatório, ou apenas um para delay fixo.</p>
                       </div>
                   </div>
                 </div>
@@ -1698,7 +1715,7 @@
             const data = await res.json();
             if (data.success) {
               this.groupCounterOfferSettings = { ...this.groupCounterOfferSettings, [groupId]: null };
-              this.showToast('Contra proposta resetada para o padrao global!', 'success');
+              this.showToast('Contra proposta resetada para o padrão global!', 'success');
             } else {
               this.groupCounterOfferSettings = { ...this.groupCounterOfferSettings, [groupId]: previous };
               this.showToast('Erro: ' + (data.error || 'Falha ao resetar'), 'error');
@@ -1711,19 +1728,18 @@
           }
         },
 
-        async updateGroupPrivateDelay(groupId, field, value) {
+        async saveGroupPrivateDelay(groupId, minVal, maxVal) {
           const current = this.getGroupCounterOffer(groupId);
-          const numValue = value === '' ? null : parseInt(value, 10);
           const updated = {
             isEnabled: current.isEnabled,
-            privateDelayMin: field === 'min' ? numValue : (current.privateDelayMin ?? null),
-            privateDelayMax: field === 'max' ? numValue : (current.privateDelayMax ?? null),
+            privateDelayMin: minVal === '' ? null : parseInt(minVal, 10),
+            privateDelayMax: maxVal === '' ? null : parseInt(maxVal, 10),
           };
           this.groupCounterOfferSettings = { ...this.groupCounterOfferSettings, [groupId]: updated };
-          await this.saveGroupCounterOffer(groupId, updated);
+          await this.saveGroupCounterOffer(groupId, updated, 'Delay salvo!');
         },
 
-        async saveGroupCounterOffer(groupId, settings) {
+        async saveGroupCounterOffer(groupId, settings, successMessage) {
           this.savingGroupCounterOffer = groupId;
           try {
             const res = await this.authFetch(`/dashboard/groups/${groupId}/counter-offer`, {
@@ -1734,7 +1750,7 @@
             const data = await res.json();
             if (data.success) {
               this.groupCounterOfferSettings = { ...this.groupCounterOfferSettings, [groupId]: { ...settings } };
-              this.showToast('Contra proposta do grupo salva!', 'success');
+              this.showToast(successMessage || 'Contra proposta do grupo salva!', 'success');
               return true;
             } else {
               this.showToast('Erro: ' + (data.error || 'Falha ao salvar'), 'error');
