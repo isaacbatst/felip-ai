@@ -39,7 +39,7 @@ All in Alpine.js data/methods within `dashboard.html`:
 
 1. **New state**: `showTemplateChooser: false`, `templateChooserType: null`
 2. **"+ Adicionar template" button**: calls `openTemplateChooser(type)` instead of `startNewTemplate(type)`
-3. **New method `openTemplateChooser(type)`**: sets `showTemplateChooser = true` and `templateChooserType = type`
+3. **New method `openTemplateChooser(type)`**: cancels any open editor first (`cancelEditTemplate()`), then sets `showTemplateChooser = true` and `templateChooserType = type`
 4. **New method `startFromDefault(type, defaultTemplate)`**: calls `startNewTemplate(type)`, then sets `editingTemplate.body = defaultTemplate.preview`, then calls `updateTemplatePreview()`, then closes chooser
 5. **New method `startBlankTemplate(type)`**: calls `startNewTemplate(type)`, then closes chooser
 6. **New inline HTML block**: between custom templates list and editor, conditionally shown when `showTemplateChooser && templateChooserType === '<type>'`
@@ -52,3 +52,9 @@ All in Alpine.js data/methods within `dashboard.html`:
 - "Em branco" option: dashed border card, same style as current "+ Adicionar" button
 - Default template cards: compact, showing preview text, with subtle hover effect
 - "Cancelar" link to close without choosing
+
+### Edge cases
+
+- **Removing "Voltar aos padrões"**: users can still delete custom templates one by one. When all are deleted, the UI naturally returns to radio button mode (`getCustomTemplates(...).length === 0`).
+- **Chooser vs editor conflict**: `openTemplateChooser` always cancels the editor first. Choosing an option closes the chooser before opening the editor. Only one of chooser/editor is visible at a time.
+- **Max templates (5)**: the "+ Adicionar template" button is already disabled when limit is reached, so the chooser won't open in that case.
