@@ -553,9 +553,6 @@
   .max-h-\[90vh\] {
     max-height: 90vh;
   }
-  .min-h-\[120px\] {
-    min-height: 120px;
-  }
   .min-h-\[200px\] {
     min-height: 200px;
   }
@@ -896,12 +893,6 @@
     border-color: color-mix(in srgb, #667eea 20%, transparent);
     @supports (color: color-mix(in lab, red, red)) {
       border-color: color-mix(in oklab, var(--color-primary) 20%, transparent);
-    }
-  }
-  .border-primary\/30 {
-    border-color: color-mix(in srgb, #667eea 30%, transparent);
-    @supports (color: color-mix(in lab, red, red)) {
-      border-color: color-mix(in oklab, var(--color-primary) 30%, transparent);
     }
   }
   .border-red-100 {

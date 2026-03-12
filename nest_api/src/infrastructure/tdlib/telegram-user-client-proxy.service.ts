@@ -114,12 +114,23 @@ export class TelegramUserClientProxyService implements OnModuleDestroy {
   }
 
   /**
+   * Converts Telegram-client markdown syntax to TDLib v1 markdown syntax.
+   * **bold** → *bold*, __italic__ → _italic_
+   */
+  private convertToTdlibMarkdown(text: string): string {
+    let result = text;
+    result = result.replace(/\*\*([^*]+)\*\*/g, '*$1*');
+    result = result.replace(/__([^_]+)__/g, '_$1_');
+    return result;
+  }
+
+  /**
    * Sends a sendMessage command via HTTP (synchronous)
    */
   async sendMessage(userId: string, chatId: number, text: string, replyToMessageId?: number): Promise<unknown> {
     return this.sendHttpCommand(userId, {
       type: 'sendMessage',
-      payload: { chatId, text, replyToMessageId },
+      payload: { chatId, text: this.convertToTdlibMarkdown(text), replyToMessageId },
     });
   }
 
@@ -130,7 +141,7 @@ export class TelegramUserClientProxyService implements OnModuleDestroy {
   async sendMessageToUser(workerUserId: string, userId: number, text: string, replyToMessageId?: number): Promise<unknown> {
     return this.sendHttpCommand(workerUserId, {
       type: 'sendMessageToUser',
-      payload: { userId, text, replyToMessageId },
+      payload: { userId, text: this.convertToTdlibMarkdown(text), replyToMessageId },
     });
   }
 
