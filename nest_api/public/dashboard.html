@@ -570,6 +570,15 @@
               <h4 class="font-semibold text-sm text-gray-800">Modelo de Mensagem</h4>
               <p class="text-xs text-gray-500 mt-1">Escolha o estilo da mensagem de fechamento</p>
             </div>
+
+            <template x-if="!editingTemplate">
+              <button type="button"
+                class="w-full mb-4 py-3 px-4 border-2 border-dashed border-gray-300 rounded-lg text-sm text-gray-500 hover:border-primary hover:text-primary transition-all cursor-pointer bg-transparent"
+                @click="startNewTemplate('cta')">
+                Criar meus proprios templates
+              </button>
+            </template>
+
             <div class="flex flex-col gap-3">
               <template x-for="template in callToActionTemplates" :key="template.id">
                 <label class="flex items-start gap-3 p-3 border rounded-lg cursor-pointer transition-all"
@@ -593,17 +602,6 @@
         <!-- Custom Templates Section (CTA) -->
         <div class="data-card bg-white border border-gray-200 rounded-xl p-4 mb-4"
           :class="{ 'opacity-50 pointer-events-none': !counterOfferSettings.isEnabled }">
-
-          <!-- If no custom templates: show button to start -->
-          <template x-if="getCustomTemplates('cta').length === 0 && !editingTemplate">
-            <div>
-              <button type="button"
-                class="w-full py-3 px-4 border-2 border-dashed border-gray-300 rounded-lg text-sm text-gray-500 hover:border-primary hover:text-primary transition-all cursor-pointer bg-transparent"
-                @click="startNewTemplate('cta')">
-                Criar meus proprios templates
-              </button>
-            </div>
-          </template>
 
           <!-- If has custom templates: show list -->
           <template x-if="getCustomTemplates('cta').length > 0">
