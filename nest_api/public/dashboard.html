@@ -2214,7 +2214,9 @@
         },
 
         isGroupCounterOfferCustom(groupId) {
-          return this.groupCounterOfferSettings[groupId] !== null && this.groupCounterOfferSettings[groupId] !== undefined;
+          const setting = this.groupCounterOfferSettings[groupId];
+          if (!setting) return false;
+          return setting.isEnabled !== this.counterOfferSettings.isEnabled;
         },
 
         async toggleGroupCounterOffer(groupId) {
