@@ -448,7 +448,7 @@
                 <h4 class="font-semibold text-sm text-gray-800">Meus Templates</h4>
                 <button type="button" class="text-xs text-gray-400 hover:text-red-500 transition-colors cursor-pointer bg-transparent border-none"
                   @click="resetToDefaults('counter_offer')">
-                  Voltar aos padroes
+                  Voltar aos padrões
                 </button>
               </div>
 
@@ -585,7 +585,7 @@
                 <h4 class="font-semibold text-sm text-gray-800">Meus Templates</h4>
                 <button type="button" class="text-xs text-gray-400 hover:text-red-500 transition-colors cursor-pointer bg-transparent border-none"
                   @click="resetToDefaults('cta')">
-                  Voltar aos padroes
+                  Voltar aos padrões
                 </button>
               </div>
 
@@ -1567,6 +1567,8 @@
         templatePreview: '',
         loadingTemplates: false,
         savingTemplate: false,
+        showTemplateChooser: false,
+        templateChooserType: null,
         savingCounterOffer: false,
         counterOfferChanged: false,
         proposalSubTab: 'counterOffer', // 'counterOffer' | 'callToAction'
@@ -1898,13 +1900,6 @@
           return await res.json();
         },
 
-        async deleteAllTemplates(type) {
-          const res = await this.authFetch(`/dashboard/message-templates?type=${type}`, {
-            method: 'DELETE',
-          });
-          return await res.json();
-        },
-
         startNewTemplate(type) {
           this.editingTemplate = { type, body: '', isNew: true };
           this.templatePreview = '';
@@ -1918,6 +1913,29 @@
         cancelEditTemplate() {
           this.editingTemplate = null;
           this.templatePreview = '';
+        },
+
+        openTemplateChooser(type) {
+          this.cancelEditTemplate();
+          this.showTemplateChooser = true;
+          this.templateChooserType = type;
+        },
+
+        closeTemplateChooser() {
+          this.showTemplateChooser = false;
+          this.templateChooserType = null;
+        },
+
+        startBlankTemplate(type) {
+          this.closeTemplateChooser();
+          this.startNewTemplate(type);
+        },
+
+        startFromDefault(type, defaultTemplate) {
+          this.closeTemplateChooser();
+          this.startNewTemplate(type);
+          this.editingTemplate.body = defaultTemplate.preview;
+          this.updateTemplatePreview();
         },
 
         updateTemplatePreview() {
@@ -1987,19 +2005,6 @@
           if (result.success) {
             await this.fetchCustomTemplates(template.type);
             this.showToast('Template excluido!', 'success');
-          }
-        },
-
-        async resetToDefaults(type) {
-          if (!confirm('Isso excluira todos os seus templates customizados deste tipo. Deseja continuar?')) return;
-          const result = await this.deleteAllTemplates(type);
-          if (result.success) {
-            if (type === 'counter_offer') {
-              this.customCounterOfferTemplates = [];
-            } else {
-              this.customCtaTemplates = [];
-            }
-            this.showToast('Templates customizados removidos!', 'success');
           }
         },
 
