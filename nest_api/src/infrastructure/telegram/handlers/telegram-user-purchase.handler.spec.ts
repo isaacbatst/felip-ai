@@ -2220,6 +2220,66 @@ describe('TelegramPurchaseHandler', () => {
         );
       });
     });
+
+    describe('Closing message templates', () => {
+      it('should use custom closing template when available', async () => {
+        mockMessageTemplateRepository.findActiveByUserAndType.mockImplementation(
+          (_userId: string, type: string) => {
+            if (type === 'closing') {
+              return Promise.resolve([
+                {
+                  id: 10,
+                  userId: loggedInUserId,
+                  type: 'closing' as const,
+                  body: 'Fechou! **{PROGRAMA}** {QUANTIDADE}k',
+                  isActive: true,
+                  createdAt: new Date(),
+                  updatedAt: new Date(),
+                },
+              ]);
+            }
+            return Promise.resolve([]);
+          },
+        );
+
+        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
+          quantity: 30_000,
+          cpfCount: 1,
+          airlineId: PROGRAM_IDS.SMILES,
+          acceptedPrices: [25], // Higher than calculated (20)
+        }));
+
+        await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF aceito 25');
+
+        expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledTimes(1);
+        expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledWith(
+          telegramUserId,
+          chatId,
+          'Fechou! **SMILES** 30000k',
+          messageId,
+        );
+      });
+
+      it('should fall back to Vamos! when no closing templates configured', async () => {
+        // Default mock already returns [] for all types
+        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
+          quantity: 30_000,
+          cpfCount: 1,
+          airlineId: PROGRAM_IDS.SMILES,
+          acceptedPrices: [25], // Higher than calculated (20)
+        }));
+
+        await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF aceito 25');
+
+        expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledTimes(1);
+        expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledWith(
+          telegramUserId,
+          chatId,
+          'Vamos!',
+          messageId,
+        );
+      });
+    });
   });
 
 });

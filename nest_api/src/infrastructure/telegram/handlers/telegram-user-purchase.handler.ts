@@ -312,7 +312,18 @@ export class TelegramPurchaseHandler {
         maxAcceptedPrice,
         lowestPrice,
       });
-      await this.tdlibUserClient.sendMessage(telegramUserId, chatId, 'Vamos!', messageId);
+      const closingMessage = await this.buildClosingMessage(
+        loggedInUserId,
+        programaForMessage,
+        purchaseRequest.quantity,
+        effectiveCpfCount,
+        this.formatPrivatePrice(calculatedPrices.map((p) => ({
+          ...p,
+          price: Math.max(p.price, maxAcceptedPrice),
+        }))),
+        trimmedText,
+      );
+      await this.tdlibUserClient.sendMessage(telegramUserId, chatId, closingMessage, messageId);
 
       if (!senderId) {
         this.logger.warn('No senderId, ignoring call to action');
@@ -535,6 +546,34 @@ export class TelegramPurchaseHandler {
       return buildCallToActionMessage(fallbackTemplateId, programa, quantidade, cpfCount, preco);
     }
     return buildCounterOfferMessage(fallbackTemplateId, programa, quantidade, cpfCount, preco);
+  }
+
+  /**
+   * Builds the closing message for when the accepted price >= our calculated price.
+   * Uses a custom closing template if one is configured, otherwise falls back to "Vamos!".
+   */
+  private async buildClosingMessage(
+    userId: string,
+    programa: string,
+    quantidade: number,
+    cpfCount: number,
+    preco: number | string,
+    mensagemOriginal: string,
+  ): Promise<string> {
+    const customTemplates = await this.messageTemplateRepository.findActiveByUserAndType(userId, 'closing');
+
+    if (customTemplates.length > 0) {
+      const selected = customTemplates[Math.floor(Math.random() * customTemplates.length)];
+      return applyTemplatePlaceholders(selected.body, {
+        programa,
+        quantidade,
+        cpfCount,
+        preco,
+        mensagemOriginal,
+      });
+    }
+
+    return 'Vamos!';
   }
 
   /**
