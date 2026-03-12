@@ -69,21 +69,21 @@ export class MessageParserService extends MessageParser {
 
       this.logger.log('Provider found via keyword matching', { airlineId });
 
-      // Step 2 (precise mode only): AI trap detection before expensive extraction
+      // Step 2: Extract other data using AI (only if provider found)
+      const data = await this.extractDataWithAI(text, reasoningEffort);
+
+      if (!data || !data.isPurchaseProposal) {
+        this.logger.log('AI extraction returned non-purchase proposal');
+        return null;
+      }
+
+      // Step 3 (precise mode only): AI trap detection after cheap extraction
       if (reasoningEffort === 'high') {
         const isTrap = await this.detectTrap(text);
         if (isTrap) {
           this.logger.warn('AI trap detection flagged message as trap', { text });
           return null;
         }
-      }
-
-      // Step 3: Extract other data using AI (only if provider found)
-      const data = await this.extractDataWithAI(text, reasoningEffort);
-
-      if (!data || !data.isPurchaseProposal) {
-        this.logger.log('AI extraction returned non-purchase proposal');
-        return null;
       }
 
       const proposals: PurchaseProposal[] = [];
