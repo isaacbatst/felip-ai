@@ -362,7 +362,7 @@
         </div>
       </div>
 
-      <!-- Sub-abas: Contra-proposta | Fechamento -->
+      <!-- Sub-abas: Contra-proposta | Fechamento | Aceitação -->
       <div class="flex gap-0 mb-4 bg-gray-100 rounded-lg p-1" :class="{ 'opacity-50': !counterOfferSettings.isEnabled }">
         <button class="flex-1 px-4 py-2.5 border-none rounded-md text-sm font-medium cursor-pointer transition-all hover:text-primary"
           :class="proposalSubTab === 'counterOffer' ? 'bg-white text-primary shadow-sm' : 'bg-transparent text-gray-500'"
@@ -2311,10 +2311,10 @@
         async fetchClosingTemplates() {
           const res = await this.authFetch('/dashboard/closing/templates');
           const data = await res.json();
-          if (data.templates) {
-            this.closingTemplates = data.templates;
+          if (data.success) {
+            this.closingTemplates = data.data.templates;
           } else {
-            console.warn('Failed to fetch closing templates:', data);
+            console.warn('Failed to fetch closing templates:', data.error);
           }
         },
 

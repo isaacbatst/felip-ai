@@ -668,17 +668,20 @@ export class DashboardController {
 
   @Get('closing/templates')
   @UseGuards(SessionGuard)
-  async getClosingTemplates(@Res() res: Response) {
+  async getClosingTemplates(): Promise<ApiResponse<{ templates: Array<{ id: number; description: string; preview: string }> }>> {
     const { CLOSING_TEMPLATES } = await import(
       '../../domain/constants/counter-offer-templates.js'
     );
-    return res.json({
-      templates: CLOSING_TEMPLATES.map((t) => ({
-        id: t.id,
-        description: t.description,
-        preview: t.preview,
-      })),
-    });
+    return {
+      success: true,
+      data: {
+        templates: CLOSING_TEMPLATES.map((t) => ({
+          id: t.id,
+          description: t.description,
+          preview: t.preview,
+        })),
+      },
+    };
   }
 
   /**
