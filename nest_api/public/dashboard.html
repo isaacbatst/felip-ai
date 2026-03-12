@@ -560,10 +560,11 @@
 
           <!-- Template Editor (inline) for Counter Offer (when has custom templates) -->
           <template x-if="editingTemplate && editingTemplate.type === 'counter_offer' && getCustomTemplates('counter_offer').length > 0">
-            <div class="mt-3 p-4 border border-primary/30 rounded-lg bg-primary/5">
+            <div class="mt-3 p-4 border border-gray-200 rounded-lg bg-white">
               <h5 class="font-semibold text-sm text-gray-800 mb-2" x-text="editingTemplate.isNew ? 'Novo Template' : 'Editar Template'"></h5>
 
               <textarea x-ref="templateTextarea"
+                x-init="$nextTick(() => $refs.templateTextarea?.focus())"
                 x-model="editingTemplate.body"
                 @input="updateTemplatePreview()"
                 class="w-full p-3 border border-gray-200 rounded-lg text-sm font-mono resize-y min-h-[120px] focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
@@ -767,10 +768,11 @@
 
           <!-- Template Editor (inline) for CTA (when has custom templates) -->
           <template x-if="editingTemplate && editingTemplate.type === 'cta' && getCustomTemplates('cta').length > 0">
-            <div class="mt-3 p-4 border border-primary/30 rounded-lg bg-primary/5">
+            <div class="mt-3 p-4 border border-gray-200 rounded-lg bg-white">
               <h5 class="font-semibold text-sm text-gray-800 mb-2" x-text="editingTemplate.isNew ? 'Novo Template' : 'Editar Template'"></h5>
 
               <textarea x-ref="ctaTemplateTextarea"
+                x-init="$nextTick(() => $refs.ctaTemplateTextarea?.focus())"
                 x-model="editingTemplate.body"
                 @input="updateTemplatePreview()"
                 class="w-full p-3 border border-gray-200 rounded-lg text-sm font-mono resize-y min-h-[120px] focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
