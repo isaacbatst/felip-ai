@@ -411,7 +411,7 @@
               <button type="button"
                 class="w-full mb-4 py-3 px-4 border-2 border-dashed border-gray-300 rounded-lg text-sm text-gray-500 hover:border-primary hover:text-primary transition-all cursor-pointer bg-transparent"
                 @click="openTemplateChooser('counter_offer')">
-                Criar meus proprios templates
+                Criar meus próprios templates
               </button>
             </template>
 
@@ -455,7 +455,7 @@
                   x-init="$nextTick(() => $refs.templateTextarea?.focus())"
                   x-model="editingTemplate.body"
                   @input="updateTemplatePreview()"
-                  class="w-full p-3 border border-gray-200 rounded-lg text-sm font-mono resize-y min-h-[120px] focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                  class="w-full p-3 border border-gray-200 rounded-lg text-sm font-mono resize-y min-h-[200px] focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
                   placeholder="Digite seu template aqui..."></textarea>
 
                 <div class="flex flex-wrap gap-2 mt-2">
@@ -559,7 +559,7 @@
           </template>
 
           <!-- Template Chooser (Counter Offer) -->
-          <template x-if="showTemplateChooser && templateChooserType === 'counter_offer'">
+          <template x-if="showTemplateChooser && templateChooserType === 'counter_offer' && getCustomTemplates('counter_offer').length > 0">
             <div class="mt-3 p-4 border border-gray-200 rounded-xl bg-gray-50/50">
               <div class="flex items-center justify-between mb-3">
                 <h5 class="font-semibold text-sm text-gray-800">Escolha uma base</h5>
@@ -600,7 +600,7 @@
                 x-init="$nextTick(() => $refs.templateTextarea?.focus())"
                 x-model="editingTemplate.body"
                 @input="updateTemplatePreview()"
-                class="w-full p-3 border border-gray-200 rounded-lg text-sm font-mono resize-y min-h-[120px] focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                class="w-full p-3 border border-gray-200 rounded-lg text-sm font-mono resize-y min-h-[200px] focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
                 placeholder="Digite seu template aqui..."></textarea>
 
               <div class="flex flex-wrap gap-2 mt-2">
@@ -652,7 +652,7 @@
               <button type="button"
                 class="w-full mb-4 py-3 px-4 border-2 border-dashed border-gray-300 rounded-lg text-sm text-gray-500 hover:border-primary hover:text-primary transition-all cursor-pointer bg-transparent"
                 @click="openTemplateChooser('cta')">
-                Criar meus proprios templates
+                Criar meus próprios templates
               </button>
             </template>
 
@@ -696,7 +696,7 @@
                   x-init="$nextTick(() => $refs.ctaTemplateTextarea?.focus())"
                   x-model="editingTemplate.body"
                   @input="updateTemplatePreview()"
-                  class="w-full p-3 border border-gray-200 rounded-lg text-sm font-mono resize-y min-h-[120px] focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                  class="w-full p-3 border border-gray-200 rounded-lg text-sm font-mono resize-y min-h-[200px] focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
                   placeholder="Digite seu template aqui..."></textarea>
 
                 <div class="flex flex-wrap gap-2 mt-2">
@@ -800,7 +800,7 @@
           </template>
 
           <!-- Template Chooser (CTA) -->
-          <template x-if="showTemplateChooser && templateChooserType === 'cta'">
+          <template x-if="showTemplateChooser && templateChooserType === 'cta' && getCustomTemplates('cta').length > 0">
             <div class="mt-3 p-4 border border-gray-200 rounded-xl bg-gray-50/50">
               <div class="flex items-center justify-between mb-3">
                 <h5 class="font-semibold text-sm text-gray-800">Escolha uma base</h5>
@@ -841,7 +841,7 @@
                 x-init="$nextTick(() => $refs.ctaTemplateTextarea?.focus())"
                 x-model="editingTemplate.body"
                 @input="updateTemplatePreview()"
-                class="w-full p-3 border border-gray-200 rounded-lg text-sm font-mono resize-y min-h-[120px] focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                class="w-full p-3 border border-gray-200 rounded-lg text-sm font-mono resize-y min-h-[200px] focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
                 placeholder="Digite seu template aqui..."></textarea>
 
               <div class="flex flex-wrap gap-2 mt-2">
