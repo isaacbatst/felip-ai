@@ -2,9 +2,10 @@ import { CounterOfferSettingsRepository } from '@/infrastructure/persistence/cou
 import { MilesProgramRepository } from '@/infrastructure/persistence/miles-program.repository';
 import { BotPreferenceRepository } from '@/infrastructure/persistence/bot-status.repository';
 import { GroupDelaySettingsRepository } from '@/infrastructure/persistence/group-delay-settings.repository';
+import { MessageTemplateRepository } from '@/infrastructure/persistence/message-template.repository';
 import { TelegramUserClientProxyService } from '@/infrastructure/tdlib/telegram-user-client-proxy.service';
 import { Injectable, Logger } from '@nestjs/common';
-import { buildCallToActionMessage, buildCounterOfferMessage } from '../../../domain/constants/counter-offer-templates';
+import { buildCallToActionMessage, buildCounterOfferMessage, applyTemplatePlaceholders } from '../../../domain/constants/counter-offer-templates';
 import { MessageParser, type ProgramOption } from '../../../domain/interfaces/message-parser.interface';
 import { PriceTableProvider } from '../../../domain/interfaces/price-table-provider.interface';
 import { PriceCalculatorService } from '../../../domain/services/price-calculator.service';
@@ -46,6 +47,7 @@ export class TelegramPurchaseHandler {
     private readonly blacklistRepository: BlacklistRepository,
     private readonly groupReasoningSettingsRepository: GroupReasoningSettingsRepository,
     private readonly groupCounterOfferSettingsRepository: GroupCounterOfferSettingsRepository,
+    private readonly messageTemplateRepository: MessageTemplateRepository,
   ) {}
 
   async handlePurchase(
@@ -330,12 +332,15 @@ export class TelegramPurchaseHandler {
         price: Math.max(p.price, maxAcceptedPrice),
       }));
 
-      const message = buildCallToActionMessage(
+      const message = await this.buildPrivateMessage(
+        loggedInUserId,
+        'cta',
         templateId,
         programaForMessage,
         purchaseRequest.quantity,
         effectiveCpfCount,
         this.formatPrivatePrice(pricesForCTA),
+        trimmedText,
       );
 
       if (counterOfferSettings?.dedupEnabled) {
@@ -394,12 +399,15 @@ export class TelegramPurchaseHandler {
     await this.sendGroupAnswer(telegramUserId, chatId, calculatedPrices, messageId);
 
     // Envia counter offer no privado
-    const message = buildCounterOfferMessage(
+    const message = await this.buildPrivateMessage(
+      loggedInUserId,
+      'counter_offer',
       counterOfferSettings?.messageTemplateId ?? 1,
       programaForMessage,
       purchaseRequest.quantity,
       effectiveCpfCount,
       this.formatPrivatePrice(calculatedPrices),
+      trimmedText,
     );
 
     if (counterOfferSettings?.dedupEnabled) {
@@ -494,6 +502,39 @@ export class TelegramPurchaseHandler {
     this.logger.log('Applying private message delay', { delaySeconds: delaySeconds.toFixed(1), min, max });
 
     await new Promise((resolve) => setTimeout(resolve, delayMs));
+  }
+
+  /**
+   * Selects a custom template if the user has active ones, otherwise falls back to pre-defined templates.
+   */
+  private async buildPrivateMessage(
+    userId: string,
+    type: 'counter_offer' | 'cta',
+    fallbackTemplateId: number,
+    programa: string,
+    quantidade: number,
+    cpfCount: number,
+    preco: number | string,
+    mensagemOriginal: string,
+  ): Promise<string> {
+    const customTemplates = await this.messageTemplateRepository.findActiveByUserAndType(userId, type);
+
+    if (customTemplates.length > 0) {
+      const selected = customTemplates[Math.floor(Math.random() * customTemplates.length)];
+      return applyTemplatePlaceholders(selected.body, {
+        programa,
+        quantidade,
+        cpfCount,
+        preco,
+        mensagemOriginal,
+      });
+    }
+
+    // Fallback to pre-defined templates
+    if (type === 'cta') {
+      return buildCallToActionMessage(fallbackTemplateId, programa, quantidade, cpfCount, preco);
+    }
+    return buildCounterOfferMessage(fallbackTemplateId, programa, quantidade, cpfCount, preco);
   }
 
   /**

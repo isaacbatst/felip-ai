@@ -399,57 +399,483 @@
           <p class="text-xs text-gray-400 mt-2">Ex: se seu preço é R$ 16,50 e o range é R$ 0,50, propostas serão enviadas para pedidos de R$ 16,00 ou mais</p>
         </div>
 
-        <!-- Counter Offer Message Template -->
-        <div class="data-card bg-white border border-gray-200 rounded-xl p-4 mb-4" :class="{ 'opacity-50': !counterOfferSettings.isEnabled }">
-          <div class="data-card-header mb-3">
-            <h4 class="font-semibold text-sm text-gray-800">Modelo de Mensagem</h4>
-            <p class="text-xs text-gray-500 mt-1">Escolha o estilo da mensagem de contra-proposta</p>
-          </div>
-          <div class="flex flex-col gap-3">
-            <template x-for="template in counterOfferTemplates" :key="template.id">
-              <label class="flex items-start gap-3 p-3 border rounded-lg cursor-pointer transition-all" 
-                :class="counterOfferSettings.messageTemplateId === template.id ? 'border-primary bg-primary/5' : 'border-gray-200 hover:border-gray-300'"
-                @click="counterOfferSettings.messageTemplateId = template.id; markCounterOfferChanged()">
-                <input type="radio" name="messageTemplate" 
-                  :value="template.id" 
-                  :checked="counterOfferSettings.messageTemplateId === template.id"
-                  :disabled="!counterOfferSettings.isEnabled"
-                  class="mt-1">
-                <div class="flex-1">
-                  <div class="font-medium text-sm text-gray-800" x-text="template.description"></div>
-                  <pre class="text-xs text-gray-500 mt-2 whitespace-pre-wrap bg-gray-50 p-2 rounded" x-text="template.preview"></pre>
-                </div>
-              </label>
+        <!-- Counter Offer Message Template (pre-defined, hidden when custom templates exist) -->
+        <template x-if="getCustomTemplates('counter_offer').length === 0">
+          <div class="data-card bg-white border border-gray-200 rounded-xl p-4 mb-4" :class="{ 'opacity-50': !counterOfferSettings.isEnabled }">
+            <div class="data-card-header mb-3">
+              <h4 class="font-semibold text-sm text-gray-800">Modelo de Mensagem</h4>
+              <p class="text-xs text-gray-500 mt-1">Escolha o estilo da mensagem de contra-proposta</p>
+            </div>
+
+            <template x-if="!editingTemplate && !(showTemplateChooser && templateChooserType === 'counter_offer')">
+              <button type="button"
+                class="w-full mb-4 py-3 px-4 border-2 border-dashed border-gray-300 rounded-lg text-sm text-gray-500 hover:border-primary hover:text-primary transition-all cursor-pointer bg-transparent"
+                @click="openTemplateChooser('counter_offer')">
+                Criar meus próprios templates
+              </button>
             </template>
+
+            <!-- Template Chooser (inline, when no custom templates yet) -->
+            <template x-if="showTemplateChooser && templateChooserType === 'counter_offer'">
+              <div class="mb-4 p-4 border border-gray-200 rounded-xl bg-gray-50/50">
+                <div class="flex items-center justify-between mb-3">
+                  <h5 class="font-semibold text-sm text-gray-800">Escolha uma base</h5>
+                  <button type="button" class="text-xs text-gray-400 hover:text-gray-600 cursor-pointer bg-transparent border-none"
+                    @click="closeTemplateChooser()">Cancelar</button>
+                </div>
+
+                <div class="flex flex-col gap-2">
+                  <button type="button"
+                    class="w-full text-left py-3 px-4 border-2 border-dashed border-gray-300 rounded-lg text-sm text-gray-500 hover:border-primary hover:text-primary transition-all cursor-pointer bg-white"
+                    @click="startBlankTemplate('counter_offer')">
+                    <i class="fa-solid fa-file-circle-plus mr-2 opacity-60"></i>Em branco
+                  </button>
+
+                  <template x-for="tpl in counterOfferTemplates" :key="tpl.id">
+                    <button type="button"
+                      class="w-full text-left p-3 border border-gray-200 rounded-lg bg-white hover:border-primary/50 hover:bg-primary/5 transition-all cursor-pointer group"
+                      @click="startFromDefault('counter_offer', tpl)">
+                      <div class="flex items-start gap-2">
+                        <i class="fa-solid fa-copy text-gray-300 group-hover:text-primary/60 mt-0.5 text-xs transition-colors"></i>
+                        <div class="flex-1 min-w-0">
+                          <div class="font-medium text-xs text-gray-600 group-hover:text-gray-800 mb-1 transition-colors" x-text="tpl.description"></div>
+                          <pre class="text-xs text-gray-400 whitespace-pre-wrap m-0 line-clamp-3" x-text="tpl.preview"></pre>
+                        </div>
+                      </div>
+                    </button>
+                  </template>
+                </div>
+              </div>
+            </template>
+
+            <!-- Template Editor (inline, when no custom templates yet) -->
+            <template x-if="editingTemplate && editingTemplate.type === 'counter_offer'">
+              <div class="mt-4 mb-4">
+                <textarea x-ref="templateTextarea"
+                  x-init="$nextTick(() => $refs.templateTextarea?.focus())"
+                  x-model="editingTemplate.body"
+                  @input="updateTemplatePreview()"
+                  class="w-full p-3 border border-gray-200 rounded-lg text-sm font-mono resize-y min-h-[200px] focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                  placeholder="Digite seu template aqui..."></textarea>
+
+                <div class="flex flex-wrap gap-2 mt-2">
+                  <span class="text-xs text-gray-500">Placeholders:</span>
+                  <button type="button" class="px-2 py-1 text-xs bg-gray-100 hover:bg-primary/10 text-gray-600 rounded cursor-pointer border-none transition-colors"
+                    @click="insertPlaceholder('{PROGRAMA}')" title="Programa de milhas (ex: SMILES)">{PROGRAMA}</button>
+                  <button type="button" class="px-2 py-1 text-xs bg-gray-100 hover:bg-primary/10 text-gray-600 rounded cursor-pointer border-none transition-colors"
+                    @click="insertPlaceholder('{QUANTIDADE}')" title="Quantidade em milhares (ex: 50)">{QUANTIDADE}</button>
+                  <button type="button" class="px-2 py-1 text-xs bg-gray-100 hover:bg-primary/10 text-gray-600 rounded cursor-pointer border-none transition-colors"
+                    @click="insertPlaceholder('{CPF_COUNT}')" title="Numero de CPFs">{CPF_COUNT}</button>
+                  <button type="button" class="px-2 py-1 text-xs bg-gray-100 hover:bg-primary/10 text-gray-600 rounded cursor-pointer border-none transition-colors"
+                    @click="insertPlaceholder('{PRECO}')" title="Preco por milheiro (ex: 18,50)">{PRECO}</button>
+                  <button type="button" class="px-2 py-1 text-xs bg-gray-100 hover:bg-primary/10 text-gray-600 rounded cursor-pointer border-none transition-colors"
+                    @click="insertPlaceholder('{MENSAGEM_ORIGINAL}')" title="Texto original da mensagem do grupo">{MENSAGEM_ORIGINAL}</button>
+                </div>
+
+                <div x-show="editingTemplate.body.length > 0" class="mt-3">
+                  <h6 class="text-xs text-gray-500 mb-1">Preview:</h6>
+                  <pre class="text-xs text-gray-600 whitespace-pre-wrap bg-white p-3 rounded border border-gray-100 m-0" x-text="templatePreview"></pre>
+                </div>
+
+                <div class="flex gap-2 justify-end mt-3">
+                  <button type="button" class="px-4 py-2 text-sm text-gray-500 bg-transparent border border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors"
+                    @click="cancelEditTemplate()">Cancelar</button>
+                  <button type="button"
+                    class="px-4 py-2 text-sm text-white bg-linear-135 from-primary to-secondary border-none rounded-lg cursor-pointer transition-all disabled:opacity-60"
+                    :disabled="!editingTemplate.body.trim() || savingTemplate"
+                    @click="saveTemplate()">
+                    <span x-show="savingTemplate" class="spinner mr-1" style="width: 12px; height: 12px; border-width: 2px;"></span>
+                    Salvar
+                  </button>
+                </div>
+              </div>
+            </template>
+
+            <div class="flex flex-col gap-3" x-show="!editingTemplate && !(showTemplateChooser && templateChooserType === 'counter_offer')">
+              <template x-for="template in counterOfferTemplates" :key="template.id">
+                <label class="flex items-start gap-3 p-3 border rounded-lg cursor-pointer transition-all"
+                  :class="counterOfferSettings.messageTemplateId === template.id ? 'border-primary bg-primary/5' : 'border-gray-200 hover:border-gray-300'"
+                  @click="counterOfferSettings.messageTemplateId = template.id; markCounterOfferChanged()">
+                  <input type="radio" name="messageTemplate"
+                    :value="template.id"
+                    :checked="counterOfferSettings.messageTemplateId === template.id"
+                    :disabled="!counterOfferSettings.isEnabled"
+                    class="mt-1">
+                  <div class="flex-1">
+                    <div class="font-medium text-sm text-gray-800" x-text="template.description"></div>
+                    <pre class="text-xs text-gray-500 mt-2 whitespace-pre-wrap bg-gray-50 p-2 rounded" x-text="template.preview"></pre>
+                  </div>
+                </label>
+              </template>
+            </div>
           </div>
+        </template>
+
+        <!-- Custom Templates Section (Counter Offer) -->
+        <div class="data-card bg-white border border-gray-200 rounded-xl p-4 mb-4"
+          :class="{ 'opacity-50 pointer-events-none': !counterOfferSettings.isEnabled }">
+
+          <!-- If has custom templates: show list -->
+          <template x-if="getCustomTemplates('counter_offer').length > 0">
+            <div>
+              <div class="flex items-center justify-between mb-3">
+                <h4 class="font-semibold text-sm text-gray-800">Meus Templates</h4>
+              </div>
+
+              <p x-show="getActiveTemplateCount('counter_offer') > 1" class="text-xs text-gray-400 mb-3">
+                O bot escolhera aleatoriamente entre os <span x-text="getActiveTemplateCount('counter_offer')"></span> templates ativos
+              </p>
+
+              <div class="flex flex-col gap-3">
+                <template x-for="template in customCounterOfferTemplates" :key="template.id">
+                  <div class="p-3 border rounded-lg transition-all"
+                    :class="template.isActive ? 'border-primary bg-primary/5' : 'border-gray-200 opacity-60'">
+                    <div class="flex items-start justify-between gap-2">
+                      <pre class="text-xs text-gray-600 whitespace-pre-wrap bg-gray-50 p-2 rounded flex-1 m-0" x-text="template.body"></pre>
+                      <div class="flex items-center gap-2 shrink-0">
+                        <label class="relative inline-flex items-center cursor-pointer">
+                          <input type="checkbox" class="sr-only peer" :checked="template.isActive"
+                            @change="toggleTemplateActive(template)">
+                          <div class="w-9 h-5 bg-gray-200 peer-checked:bg-primary rounded-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-full"></div>
+                        </label>
+                        <button type="button" class="text-gray-400 hover:text-primary text-xs cursor-pointer bg-transparent border-none"
+                          @click="startEditTemplate(template)">Editar</button>
+                        <button type="button" class="text-gray-400 hover:text-red-500 text-xs cursor-pointer bg-transparent border-none"
+                          @click="removeTemplate(template)">Excluir</button>
+                      </div>
+                    </div>
+                  </div>
+                </template>
+              </div>
+
+              <button type="button"
+                class="w-full mt-3 py-2 px-4 border-2 border-dashed border-gray-300 rounded-lg text-sm text-gray-500 hover:border-primary hover:text-primary transition-all cursor-pointer bg-transparent disabled:opacity-40 disabled:cursor-not-allowed"
+                :disabled="customCounterOfferTemplates.length >= 5"
+                @click="openTemplateChooser('counter_offer')">
+                + Adicionar template
+                <span x-show="customCounterOfferTemplates.length >= 5" class="text-xs">(maximo atingido)</span>
+              </button>
+            </div>
+          </template>
+
+          <!-- Template Chooser (Counter Offer) -->
+          <template x-if="showTemplateChooser && templateChooserType === 'counter_offer' && getCustomTemplates('counter_offer').length > 0">
+            <div class="mt-3 p-4 border border-gray-200 rounded-xl bg-gray-50/50">
+              <div class="flex items-center justify-between mb-3">
+                <h5 class="font-semibold text-sm text-gray-800">Escolha uma base</h5>
+                <button type="button" class="text-xs text-gray-400 hover:text-gray-600 cursor-pointer bg-transparent border-none"
+                  @click="closeTemplateChooser()">Cancelar</button>
+              </div>
+
+              <div class="flex flex-col gap-2">
+                <button type="button"
+                  class="w-full text-left py-3 px-4 border-2 border-dashed border-gray-300 rounded-lg text-sm text-gray-500 hover:border-primary hover:text-primary transition-all cursor-pointer bg-white"
+                  @click="startBlankTemplate('counter_offer')">
+                  <i class="fa-solid fa-file-circle-plus mr-2 opacity-60"></i>Em branco
+                </button>
+
+                <template x-for="tpl in counterOfferTemplates" :key="tpl.id">
+                  <button type="button"
+                    class="w-full text-left p-3 border border-gray-200 rounded-lg bg-white hover:border-primary/50 hover:bg-primary/5 transition-all cursor-pointer group"
+                    @click="startFromDefault('counter_offer', tpl)">
+                    <div class="flex items-start gap-2">
+                      <i class="fa-solid fa-copy text-gray-300 group-hover:text-primary/60 mt-0.5 text-xs transition-colors"></i>
+                      <div class="flex-1 min-w-0">
+                        <div class="font-medium text-xs text-gray-600 group-hover:text-gray-800 mb-1 transition-colors" x-text="tpl.description"></div>
+                        <pre class="text-xs text-gray-400 whitespace-pre-wrap m-0 line-clamp-3" x-text="tpl.preview"></pre>
+                      </div>
+                    </div>
+                  </button>
+                </template>
+              </div>
+            </div>
+          </template>
+
+          <!-- Template Editor (inline) for Counter Offer (when has custom templates) -->
+          <template x-if="editingTemplate && editingTemplate.type === 'counter_offer' && getCustomTemplates('counter_offer').length > 0">
+            <div class="mt-3 p-4 border border-gray-200 rounded-lg bg-white">
+              <h5 class="font-semibold text-sm text-gray-800 mb-2" x-text="editingTemplate.isNew ? 'Novo Template' : 'Editar Template'"></h5>
+
+              <textarea x-ref="templateTextarea"
+                x-init="$nextTick(() => $refs.templateTextarea?.focus())"
+                x-model="editingTemplate.body"
+                @input="updateTemplatePreview()"
+                class="w-full p-3 border border-gray-200 rounded-lg text-sm font-mono resize-y min-h-[200px] focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                placeholder="Digite seu template aqui..."></textarea>
+
+              <div class="flex flex-wrap gap-2 mt-2">
+                <span class="text-xs text-gray-500">Placeholders:</span>
+                <button type="button" class="px-2 py-1 text-xs bg-gray-100 hover:bg-primary/10 text-gray-600 rounded cursor-pointer border-none transition-colors"
+                  @click="insertPlaceholder('{PROGRAMA}')" title="Programa de milhas (ex: SMILES)">{PROGRAMA}</button>
+                <button type="button" class="px-2 py-1 text-xs bg-gray-100 hover:bg-primary/10 text-gray-600 rounded cursor-pointer border-none transition-colors"
+                  @click="insertPlaceholder('{QUANTIDADE}')" title="Quantidade em milhares (ex: 50)">{QUANTIDADE}</button>
+                <button type="button" class="px-2 py-1 text-xs bg-gray-100 hover:bg-primary/10 text-gray-600 rounded cursor-pointer border-none transition-colors"
+                  @click="insertPlaceholder('{CPF_COUNT}')" title="Numero de CPFs">{CPF_COUNT}</button>
+                <button type="button" class="px-2 py-1 text-xs bg-gray-100 hover:bg-primary/10 text-gray-600 rounded cursor-pointer border-none transition-colors"
+                  @click="insertPlaceholder('{PRECO}')" title="Preco por milheiro (ex: 18,50)">{PRECO}</button>
+                <button type="button" class="px-2 py-1 text-xs bg-gray-100 hover:bg-primary/10 text-gray-600 rounded cursor-pointer border-none transition-colors"
+                  @click="insertPlaceholder('{MENSAGEM_ORIGINAL}')" title="Texto original da mensagem do grupo">{MENSAGEM_ORIGINAL}</button>
+              </div>
+
+              <div x-show="editingTemplate.body.length > 0" class="mt-3">
+                <h6 class="text-xs text-gray-500 mb-1">Preview:</h6>
+                <pre class="text-xs text-gray-600 whitespace-pre-wrap bg-white p-3 rounded border border-gray-100 m-0" x-text="templatePreview"></pre>
+              </div>
+
+              <div class="flex gap-2 justify-end mt-3">
+                <button type="button" class="px-4 py-2 text-sm text-gray-500 bg-transparent border border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors"
+                  @click="cancelEditTemplate()">Cancelar</button>
+                <button type="button"
+                  class="px-4 py-2 text-sm text-white bg-linear-135 from-primary to-secondary border-none rounded-lg cursor-pointer transition-all disabled:opacity-60"
+                  :disabled="!editingTemplate.body.trim() || savingTemplate"
+                  @click="saveTemplate()">
+                  <span x-show="savingTemplate" class="spinner mr-1" style="width: 12px; height: 12px; border-width: 2px;"></span>
+                  Salvar
+                </button>
+              </div>
+            </div>
+          </template>
         </div>
       </div>
 
-      <!-- Conteúdo da sub-aba Fechamento -->
+      <!-- Conteudo da sub-aba Fechamento -->
       <div x-show="proposalSubTab === 'callToAction'">
-        <!-- Call to Action Message Template -->
-        <div class="data-card bg-white border border-gray-200 rounded-xl p-4 mb-4" :class="{ 'opacity-50': !counterOfferSettings.isEnabled }">
-          <div class="data-card-header mb-3">
-            <h4 class="font-semibold text-sm text-gray-800">Modelo de Mensagem</h4>
-            <p class="text-xs text-gray-500 mt-1">Escolha o estilo da mensagem de fechamento</p>
-          </div>
-          <div class="flex flex-col gap-3">
-            <template x-for="template in callToActionTemplates" :key="template.id">
-              <label class="flex items-start gap-3 p-3 border rounded-lg cursor-pointer transition-all" 
-                :class="counterOfferSettings.callToActionTemplateId === template.id ? 'border-primary bg-primary/5' : 'border-gray-200 hover:border-gray-300'"
-                @click="counterOfferSettings.callToActionTemplateId = template.id; markCounterOfferChanged()">
-                <input type="radio" name="callToActionTemplate" 
-                  :value="template.id" 
-                  :checked="counterOfferSettings.callToActionTemplateId === template.id"
-                  :disabled="!counterOfferSettings.isEnabled"
-                  class="mt-1">
-                <div class="flex-1">
-                  <div class="font-medium text-sm text-gray-800" x-text="template.description"></div>
-                  <pre class="text-xs text-gray-500 mt-2 whitespace-pre-wrap bg-gray-50 p-2 rounded" x-text="template.preview"></pre>
-                </div>
-              </label>
+        <!-- Call to Action Message Template (pre-defined, hidden when custom templates exist) -->
+        <template x-if="getCustomTemplates('cta').length === 0">
+          <div class="data-card bg-white border border-gray-200 rounded-xl p-4 mb-4" :class="{ 'opacity-50': !counterOfferSettings.isEnabled }">
+            <div class="data-card-header mb-3">
+              <h4 class="font-semibold text-sm text-gray-800">Modelo de Mensagem</h4>
+              <p class="text-xs text-gray-500 mt-1">Escolha o estilo da mensagem de fechamento</p>
+            </div>
+
+            <template x-if="!editingTemplate && !(showTemplateChooser && templateChooserType === 'cta')">
+              <button type="button"
+                class="w-full mb-4 py-3 px-4 border-2 border-dashed border-gray-300 rounded-lg text-sm text-gray-500 hover:border-primary hover:text-primary transition-all cursor-pointer bg-transparent"
+                @click="openTemplateChooser('cta')">
+                Criar meus próprios templates
+              </button>
             </template>
+
+            <!-- Template Chooser (inline, when no custom CTA templates yet) -->
+            <template x-if="showTemplateChooser && templateChooserType === 'cta'">
+              <div class="mb-4 p-4 border border-gray-200 rounded-xl bg-gray-50/50">
+                <div class="flex items-center justify-between mb-3">
+                  <h5 class="font-semibold text-sm text-gray-800">Escolha uma base</h5>
+                  <button type="button" class="text-xs text-gray-400 hover:text-gray-600 cursor-pointer bg-transparent border-none"
+                    @click="closeTemplateChooser()">Cancelar</button>
+                </div>
+
+                <div class="flex flex-col gap-2">
+                  <button type="button"
+                    class="w-full text-left py-3 px-4 border-2 border-dashed border-gray-300 rounded-lg text-sm text-gray-500 hover:border-primary hover:text-primary transition-all cursor-pointer bg-white"
+                    @click="startBlankTemplate('cta')">
+                    <i class="fa-solid fa-file-circle-plus mr-2 opacity-60"></i>Em branco
+                  </button>
+
+                  <template x-for="tpl in callToActionTemplates" :key="tpl.id">
+                    <button type="button"
+                      class="w-full text-left p-3 border border-gray-200 rounded-lg bg-white hover:border-primary/50 hover:bg-primary/5 transition-all cursor-pointer group"
+                      @click="startFromDefault('cta', tpl)">
+                      <div class="flex items-start gap-2">
+                        <i class="fa-solid fa-copy text-gray-300 group-hover:text-primary/60 mt-0.5 text-xs transition-colors"></i>
+                        <div class="flex-1 min-w-0">
+                          <div class="font-medium text-xs text-gray-600 group-hover:text-gray-800 mb-1 transition-colors" x-text="tpl.description"></div>
+                          <pre class="text-xs text-gray-400 whitespace-pre-wrap m-0 line-clamp-3" x-text="tpl.preview"></pre>
+                        </div>
+                      </div>
+                    </button>
+                  </template>
+                </div>
+              </div>
+            </template>
+
+            <!-- Template Editor (inline, when no custom CTA templates yet) -->
+            <template x-if="editingTemplate && editingTemplate.type === 'cta'">
+              <div class="mt-4 mb-4">
+                <textarea x-ref="ctaTemplateTextarea"
+                  x-init="$nextTick(() => $refs.ctaTemplateTextarea?.focus())"
+                  x-model="editingTemplate.body"
+                  @input="updateTemplatePreview()"
+                  class="w-full p-3 border border-gray-200 rounded-lg text-sm font-mono resize-y min-h-[200px] focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                  placeholder="Digite seu template aqui..."></textarea>
+
+                <div class="flex flex-wrap gap-2 mt-2">
+                  <span class="text-xs text-gray-500">Placeholders:</span>
+                  <button type="button" class="px-2 py-1 text-xs bg-gray-100 hover:bg-primary/10 text-gray-600 rounded cursor-pointer border-none transition-colors"
+                    @click="insertPlaceholder('{PROGRAMA}')" title="Programa de milhas (ex: SMILES)">{PROGRAMA}</button>
+                  <button type="button" class="px-2 py-1 text-xs bg-gray-100 hover:bg-primary/10 text-gray-600 rounded cursor-pointer border-none transition-colors"
+                    @click="insertPlaceholder('{QUANTIDADE}')" title="Quantidade em milhares (ex: 50)">{QUANTIDADE}</button>
+                  <button type="button" class="px-2 py-1 text-xs bg-gray-100 hover:bg-primary/10 text-gray-600 rounded cursor-pointer border-none transition-colors"
+                    @click="insertPlaceholder('{CPF_COUNT}')" title="Numero de CPFs">{CPF_COUNT}</button>
+                  <button type="button" class="px-2 py-1 text-xs bg-gray-100 hover:bg-primary/10 text-gray-600 rounded cursor-pointer border-none transition-colors"
+                    @click="insertPlaceholder('{PRECO}')" title="Preco por milheiro (ex: 18,50)">{PRECO}</button>
+                  <button type="button" class="px-2 py-1 text-xs bg-gray-100 hover:bg-primary/10 text-gray-600 rounded cursor-pointer border-none transition-colors"
+                    @click="insertPlaceholder('{MENSAGEM_ORIGINAL}')" title="Texto original da mensagem do grupo">{MENSAGEM_ORIGINAL}</button>
+                </div>
+
+                <div x-show="editingTemplate.body.length > 0" class="mt-3">
+                  <h6 class="text-xs text-gray-500 mb-1">Preview:</h6>
+                  <pre class="text-xs text-gray-600 whitespace-pre-wrap bg-white p-3 rounded border border-gray-100 m-0" x-text="templatePreview"></pre>
+                </div>
+
+                <div class="flex gap-2 justify-end mt-3">
+                  <button type="button" class="px-4 py-2 text-sm text-gray-500 bg-transparent border border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors"
+                    @click="cancelEditTemplate()">Cancelar</button>
+                  <button type="button"
+                    class="px-4 py-2 text-sm text-white bg-linear-135 from-primary to-secondary border-none rounded-lg cursor-pointer transition-all disabled:opacity-60"
+                    :disabled="!editingTemplate.body.trim() || savingTemplate"
+                    @click="saveTemplate()">
+                    <span x-show="savingTemplate" class="spinner mr-1" style="width: 12px; height: 12px; border-width: 2px;"></span>
+                    Salvar
+                  </button>
+                </div>
+              </div>
+            </template>
+
+            <div class="flex flex-col gap-3" x-show="!editingTemplate && !(showTemplateChooser && templateChooserType === 'cta')">
+              <template x-for="template in callToActionTemplates" :key="template.id">
+                <label class="flex items-start gap-3 p-3 border rounded-lg cursor-pointer transition-all"
+                  :class="counterOfferSettings.callToActionTemplateId === template.id ? 'border-primary bg-primary/5' : 'border-gray-200 hover:border-gray-300'"
+                  @click="counterOfferSettings.callToActionTemplateId = template.id; markCounterOfferChanged()">
+                  <input type="radio" name="callToActionTemplate"
+                    :value="template.id"
+                    :checked="counterOfferSettings.callToActionTemplateId === template.id"
+                    :disabled="!counterOfferSettings.isEnabled"
+                    class="mt-1">
+                  <div class="flex-1">
+                    <div class="font-medium text-sm text-gray-800" x-text="template.description"></div>
+                    <pre class="text-xs text-gray-500 mt-2 whitespace-pre-wrap bg-gray-50 p-2 rounded" x-text="template.preview"></pre>
+                  </div>
+                </label>
+              </template>
+            </div>
           </div>
+        </template>
+
+        <!-- Custom Templates Section (CTA) -->
+        <div class="data-card bg-white border border-gray-200 rounded-xl p-4 mb-4"
+          :class="{ 'opacity-50 pointer-events-none': !counterOfferSettings.isEnabled }">
+
+          <!-- If has custom templates: show list -->
+          <template x-if="getCustomTemplates('cta').length > 0">
+            <div>
+              <div class="flex items-center justify-between mb-3">
+                <h4 class="font-semibold text-sm text-gray-800">Meus Templates</h4>
+              </div>
+
+              <p x-show="getActiveTemplateCount('cta') > 1" class="text-xs text-gray-400 mb-3">
+                O bot escolhera aleatoriamente entre os <span x-text="getActiveTemplateCount('cta')"></span> templates ativos
+              </p>
+
+              <div class="flex flex-col gap-3">
+                <template x-for="template in customCtaTemplates" :key="template.id">
+                  <div class="p-3 border rounded-lg transition-all"
+                    :class="template.isActive ? 'border-primary bg-primary/5' : 'border-gray-200 opacity-60'">
+                    <div class="flex items-start justify-between gap-2">
+                      <pre class="text-xs text-gray-600 whitespace-pre-wrap bg-gray-50 p-2 rounded flex-1 m-0" x-text="template.body"></pre>
+                      <div class="flex items-center gap-2 shrink-0">
+                        <label class="relative inline-flex items-center cursor-pointer">
+                          <input type="checkbox" class="sr-only peer" :checked="template.isActive"
+                            @change="toggleTemplateActive(template)">
+                          <div class="w-9 h-5 bg-gray-200 peer-checked:bg-primary rounded-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-full"></div>
+                        </label>
+                        <button type="button" class="text-gray-400 hover:text-primary text-xs cursor-pointer bg-transparent border-none"
+                          @click="startEditTemplate(template)">Editar</button>
+                        <button type="button" class="text-gray-400 hover:text-red-500 text-xs cursor-pointer bg-transparent border-none"
+                          @click="removeTemplate(template)">Excluir</button>
+                      </div>
+                    </div>
+                  </div>
+                </template>
+              </div>
+
+              <button type="button"
+                class="w-full mt-3 py-2 px-4 border-2 border-dashed border-gray-300 rounded-lg text-sm text-gray-500 hover:border-primary hover:text-primary transition-all cursor-pointer bg-transparent disabled:opacity-40 disabled:cursor-not-allowed"
+                :disabled="customCtaTemplates.length >= 5"
+                @click="openTemplateChooser('cta')">
+                + Adicionar template
+                <span x-show="customCtaTemplates.length >= 5" class="text-xs">(maximo atingido)</span>
+              </button>
+            </div>
+          </template>
+
+          <!-- Template Chooser (CTA) -->
+          <template x-if="showTemplateChooser && templateChooserType === 'cta' && getCustomTemplates('cta').length > 0">
+            <div class="mt-3 p-4 border border-gray-200 rounded-xl bg-gray-50/50">
+              <div class="flex items-center justify-between mb-3">
+                <h5 class="font-semibold text-sm text-gray-800">Escolha uma base</h5>
+                <button type="button" class="text-xs text-gray-400 hover:text-gray-600 cursor-pointer bg-transparent border-none"
+                  @click="closeTemplateChooser()">Cancelar</button>
+              </div>
+
+              <div class="flex flex-col gap-2">
+                <button type="button"
+                  class="w-full text-left py-3 px-4 border-2 border-dashed border-gray-300 rounded-lg text-sm text-gray-500 hover:border-primary hover:text-primary transition-all cursor-pointer bg-white"
+                  @click="startBlankTemplate('cta')">
+                  <i class="fa-solid fa-file-circle-plus mr-2 opacity-60"></i>Em branco
+                </button>
+
+                <template x-for="tpl in callToActionTemplates" :key="tpl.id">
+                  <button type="button"
+                    class="w-full text-left p-3 border border-gray-200 rounded-lg bg-white hover:border-primary/50 hover:bg-primary/5 transition-all cursor-pointer group"
+                    @click="startFromDefault('cta', tpl)">
+                    <div class="flex items-start gap-2">
+                      <i class="fa-solid fa-copy text-gray-300 group-hover:text-primary/60 mt-0.5 text-xs transition-colors"></i>
+                      <div class="flex-1 min-w-0">
+                        <div class="font-medium text-xs text-gray-600 group-hover:text-gray-800 mb-1 transition-colors" x-text="tpl.description"></div>
+                        <pre class="text-xs text-gray-400 whitespace-pre-wrap m-0 line-clamp-3" x-text="tpl.preview"></pre>
+                      </div>
+                    </div>
+                  </button>
+                </template>
+              </div>
+            </div>
+          </template>
+
+          <!-- Template Editor (inline) for CTA (when has custom templates) -->
+          <template x-if="editingTemplate && editingTemplate.type === 'cta' && getCustomTemplates('cta').length > 0">
+            <div class="mt-3 p-4 border border-gray-200 rounded-lg bg-white">
+              <h5 class="font-semibold text-sm text-gray-800 mb-2" x-text="editingTemplate.isNew ? 'Novo Template' : 'Editar Template'"></h5>
+
+              <textarea x-ref="ctaTemplateTextarea"
+                x-init="$nextTick(() => $refs.ctaTemplateTextarea?.focus())"
+                x-model="editingTemplate.body"
+                @input="updateTemplatePreview()"
+                class="w-full p-3 border border-gray-200 rounded-lg text-sm font-mono resize-y min-h-[200px] focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                placeholder="Digite seu template aqui..."></textarea>
+
+              <div class="flex flex-wrap gap-2 mt-2">
+                <span class="text-xs text-gray-500">Placeholders:</span>
+                <button type="button" class="px-2 py-1 text-xs bg-gray-100 hover:bg-primary/10 text-gray-600 rounded cursor-pointer border-none transition-colors"
+                  @click="insertPlaceholder('{PROGRAMA}')" title="Programa de milhas (ex: SMILES)">{PROGRAMA}</button>
+                <button type="button" class="px-2 py-1 text-xs bg-gray-100 hover:bg-primary/10 text-gray-600 rounded cursor-pointer border-none transition-colors"
+                  @click="insertPlaceholder('{QUANTIDADE}')" title="Quantidade em milhares (ex: 50)">{QUANTIDADE}</button>
+                <button type="button" class="px-2 py-1 text-xs bg-gray-100 hover:bg-primary/10 text-gray-600 rounded cursor-pointer border-none transition-colors"
+                  @click="insertPlaceholder('{CPF_COUNT}')" title="Numero de CPFs">{CPF_COUNT}</button>
+                <button type="button" class="px-2 py-1 text-xs bg-gray-100 hover:bg-primary/10 text-gray-600 rounded cursor-pointer border-none transition-colors"
+                  @click="insertPlaceholder('{PRECO}')" title="Preco por milheiro (ex: 18,50)">{PRECO}</button>
+                <button type="button" class="px-2 py-1 text-xs bg-gray-100 hover:bg-primary/10 text-gray-600 rounded cursor-pointer border-none transition-colors"
+                  @click="insertPlaceholder('{MENSAGEM_ORIGINAL}')" title="Texto original da mensagem do grupo">{MENSAGEM_ORIGINAL}</button>
+              </div>
+
+              <div x-show="editingTemplate.body.length > 0" class="mt-3">
+                <h6 class="text-xs text-gray-500 mb-1">Preview:</h6>
+                <pre class="text-xs text-gray-600 whitespace-pre-wrap bg-white p-3 rounded border border-gray-100 m-0" x-text="templatePreview"></pre>
+              </div>
+
+              <div class="flex gap-2 justify-end mt-3">
+                <button type="button" class="px-4 py-2 text-sm text-gray-500 bg-transparent border border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors"
+                  @click="cancelEditTemplate()">Cancelar</button>
+                <button type="button"
+                  class="px-4 py-2 text-sm text-white bg-linear-135 from-primary to-secondary border-none rounded-lg cursor-pointer transition-all disabled:opacity-60"
+                  :disabled="!editingTemplate.body.trim() || savingTemplate"
+                  @click="saveTemplate()">
+                  <span x-show="savingTemplate" class="spinner mr-1" style="width: 12px; height: 12px; border-width: 2px;"></span>
+                  Salvar
+                </button>
+              </div>
+            </div>
+          </template>
         </div>
       </div>
 
@@ -1343,6 +1769,14 @@
         },
         counterOfferTemplates: [],
         callToActionTemplates: [],
+        customCounterOfferTemplates: [],
+        customCtaTemplates: [],
+        editingTemplate: null,
+        templatePreview: '',
+        loadingTemplates: false,
+        savingTemplate: false,
+        showTemplateChooser: false,
+        templateChooserType: null,
         savingCounterOffer: false,
         counterOfferChanged: false,
         proposalSubTab: 'counterOffer', // 'counterOffer' | 'callToAction'
@@ -1515,6 +1949,8 @@
               this.fetchCallToActionTemplates(),
               this.fetchBotStatus(),
               this.fetchDelaySettings(),
+              this.fetchCustomTemplates('counter_offer'),
+              this.fetchCustomTemplates('cta'),
             ]);
 
             if (this.normalPrograms.length > 0) {
@@ -1632,6 +2068,162 @@
           }
         },
 
+        // ============================================================================
+        // Custom Message Templates
+        // ============================================================================
+        async fetchCustomTemplates(type) {
+          const res = await this.authFetch(`/dashboard/message-templates?type=${type}`);
+          const data = await res.json();
+          if (data.success) {
+            if (type === 'counter_offer') {
+              this.customCounterOfferTemplates = data.data.templates;
+            } else {
+              this.customCtaTemplates = data.data.templates;
+            }
+          }
+        },
+
+        async createTemplate(type, body) {
+          const res = await this.authFetch('/dashboard/message-templates', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ type, body }),
+          });
+          return await res.json();
+        },
+
+        async updateTemplate(id, updates) {
+          const res = await this.authFetch(`/dashboard/message-templates/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(updates),
+          });
+          return await res.json();
+        },
+
+        async deleteTemplate(id) {
+          const res = await this.authFetch(`/dashboard/message-templates/${id}`, {
+            method: 'DELETE',
+          });
+          return await res.json();
+        },
+
+        startNewTemplate(type) {
+          this.editingTemplate = { type, body: '', isNew: true };
+          this.templatePreview = '';
+        },
+
+        startEditTemplate(template) {
+          this.editingTemplate = { id: template.id, type: template.type, body: template.body, isNew: false };
+          this.updateTemplatePreview();
+        },
+
+        cancelEditTemplate() {
+          this.editingTemplate = null;
+          this.templatePreview = '';
+        },
+
+        openTemplateChooser(type) {
+          this.cancelEditTemplate();
+          this.showTemplateChooser = true;
+          this.templateChooserType = type;
+        },
+
+        closeTemplateChooser() {
+          this.showTemplateChooser = false;
+          this.templateChooserType = null;
+        },
+
+        startBlankTemplate(type) {
+          this.closeTemplateChooser();
+          this.startNewTemplate(type);
+        },
+
+        startFromDefault(type, defaultTemplate) {
+          this.closeTemplateChooser();
+          this.startNewTemplate(type);
+          this.editingTemplate.body = defaultTemplate.preview;
+          this.updateTemplatePreview();
+        },
+
+        updateTemplatePreview() {
+          if (!this.editingTemplate) return;
+          this.templatePreview = this.editingTemplate.body
+            .replaceAll('{PROGRAMA}', 'SMILES')
+            .replaceAll('{QUANTIDADE}', '50')
+            .replaceAll('{CPF_COUNT}', '2')
+            .replaceAll('{PRECO}', '18,50')
+            .replaceAll('{MENSAGEM_ORIGINAL}', 'Preciso de 100k smiles 2 CPF');
+        },
+
+        insertPlaceholder(placeholder) {
+          const textarea = this.$refs.templateTextarea || this.$refs.ctaTemplateTextarea;
+          if (!textarea) return;
+          const start = textarea.selectionStart;
+          const end = textarea.selectionEnd;
+          const text = this.editingTemplate.body;
+          this.editingTemplate.body = text.substring(0, start) + placeholder + text.substring(end);
+          this.updateTemplatePreview();
+          this.$nextTick(() => {
+            textarea.focus();
+            const newPos = start + placeholder.length;
+            textarea.setSelectionRange(newPos, newPos);
+          });
+        },
+
+        async saveTemplate() {
+          this.savingTemplate = true;
+          const type = this.editingTemplate.type;
+          try {
+            if (this.editingTemplate.isNew) {
+              const result = await this.createTemplate(type, this.editingTemplate.body);
+              if (!result.success) {
+                this.showToast(result.error || 'Erro ao criar template', 'error');
+                return;
+              }
+              this.showToast('Template criado!', 'success');
+            } else {
+              const result = await this.updateTemplate(this.editingTemplate.id, { body: this.editingTemplate.body });
+              if (!result.success) {
+                this.showToast(result.error || 'Erro ao atualizar template', 'error');
+                return;
+              }
+              this.showToast('Template atualizado!', 'success');
+            }
+            this.editingTemplate = null;
+            this.templatePreview = '';
+            await this.fetchCustomTemplates(type);
+          } catch (error) {
+            this.showToast('Erro ao salvar template: ' + error.message, 'error');
+          } finally {
+            this.savingTemplate = false;
+          }
+        },
+
+        async toggleTemplateActive(template) {
+          const result = await this.updateTemplate(template.id, { isActive: !template.isActive });
+          if (result.success) {
+            template.isActive = !template.isActive;
+          }
+        },
+
+        async removeTemplate(template) {
+          if (!confirm('Tem certeza que deseja excluir este template?')) return;
+          const result = await this.deleteTemplate(template.id);
+          if (result.success) {
+            await this.fetchCustomTemplates(template.type);
+            this.showToast('Template excluido!', 'success');
+          }
+        },
+
+        getCustomTemplates(type) {
+          return type === 'counter_offer' ? this.customCounterOfferTemplates : this.customCtaTemplates;
+        },
+
+        getActiveTemplateCount(type) {
+          return this.getCustomTemplates(type).filter(t => t.isActive).length;
+        },
+
         async fetchBotStatus() {
           const res = await this.authFetch('/dashboard/bot-status');
           const data = await res.json();
@@ -1688,7 +2280,9 @@
         },
 
         isGroupCounterOfferCustom(groupId) {
-          return this.groupCounterOfferSettings[groupId] !== null && this.groupCounterOfferSettings[groupId] !== undefined;
+          const setting = this.groupCounterOfferSettings[groupId];
+          if (!setting) return false;
+          return setting.isEnabled !== this.counterOfferSettings.isEnabled;
         },
 
         async toggleGroupCounterOffer(groupId) {

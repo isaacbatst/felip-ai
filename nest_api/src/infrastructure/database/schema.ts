@@ -575,3 +575,22 @@ export const blacklistedUsers = pgTable(
     unique('blacklisted_users_user_id_blocked_id_unique').on(table.userId, table.blockedTelegramUserId),
   ],
 );
+
+/**
+ * User message templates table - stores customizable message templates per user
+ */
+export const userMessageTemplates = pgTable(
+  'user_message_templates',
+  {
+    id: integer('id').primaryKey().generatedAlwaysAsIdentity(),
+    userId: text('user_id').notNull(),
+    type: text('type').notNull(), // 'counter_offer' | 'cta'
+    body: text('body').notNull(),
+    isActive: boolean('is_active').default(true).notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => [
+    index('user_message_templates_user_id_type_idx').on(table.userId, table.type),
+  ],
+);

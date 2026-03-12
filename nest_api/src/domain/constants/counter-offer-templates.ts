@@ -70,6 +70,32 @@ export const COUNTER_OFFER_TEMPLATE_DESCRIPTIONS: Record<number, string> = {
   7: 'Consultivo - Tom de atendimento personalizado',
 };
 
+export interface TemplatePlaceholderValues {
+  programa: string;
+  quantidade: number;
+  cpfCount: number;
+  preco: number | string;
+  mensagemOriginal?: string;
+}
+
+function formatPreco(preco: number | string): string {
+  return typeof preco === 'string'
+    ? preco
+    : Intl.NumberFormat('pt-BR', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      }).format(preco);
+}
+
+export function applyTemplatePlaceholders(template: string, values: TemplatePlaceholderValues): string {
+  return template
+    .replaceAll('{PROGRAMA}', values.programa)
+    .replaceAll('{QUANTIDADE}', String(values.quantidade))
+    .replaceAll('{CPF_COUNT}', String(values.cpfCount))
+    .replaceAll('{PRECO}', formatPreco(values.preco))
+    .replaceAll('{MENSAGEM_ORIGINAL}', values.mensagemOriginal ?? '');
+}
+
 /**
  * Build a counter offer message from a template
  * @param templateId - The template ID to use (1, 2, or 3)
@@ -87,17 +113,7 @@ export function buildCounterOfferMessage(
   preco: number | string,
 ): string {
   const template = COUNTER_OFFER_TEMPLATES[templateId] || COUNTER_OFFER_TEMPLATES[1];
-
-  const precoFormatado = typeof preco === 'string' ? preco : Intl.NumberFormat('pt-BR', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(preco);
-
-  return template
-    .replace('{PROGRAMA}', programa)
-    .replace('{QUANTIDADE}', String(quantidade))
-    .replace('{CPF_COUNT}', String(cpfCount))
-    .replace('{PRECO}', precoFormatado);
+  return applyTemplatePlaceholders(template, { programa, quantidade, cpfCount, preco });
 }
 
 /**
@@ -180,15 +196,5 @@ export function buildCallToActionMessage(
   preco: number | string,
 ): string {
   const template = CALL_TO_ACTION_TEMPLATES[templateId] || CALL_TO_ACTION_TEMPLATES[1];
-
-  const precoFormatado = typeof preco === 'string' ? preco : Intl.NumberFormat('pt-BR', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(preco);
-
-  return template
-    .replace('{PROGRAMA}', programa)
-    .replace('{QUANTIDADE}', String(quantidade))
-    .replace('{CPF_COUNT}', String(cpfCount))
-    .replace('{PRECO}', precoFormatado);
+  return applyTemplatePlaceholders(template, { programa, quantidade, cpfCount, preco });
 }
