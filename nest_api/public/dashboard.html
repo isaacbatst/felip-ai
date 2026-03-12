@@ -471,10 +471,11 @@
                   <button type="button" class="px-2 py-1 text-xs bg-gray-100 hover:bg-primary/10 text-gray-600 rounded cursor-pointer border-none transition-colors"
                     @click="insertPlaceholder('{MENSAGEM_ORIGINAL}')" title="Texto original da mensagem do grupo">{MENSAGEM_ORIGINAL}</button>
                 </div>
+                <p class="text-xs text-gray-400 mt-1.5 mb-0">Formatacao: <code>*negrito*</code> <code>_italico_</code> <code>`codigo`</code></p>
 
                 <div x-show="editingTemplate.body.length > 0" class="mt-3">
                   <h6 class="text-xs text-gray-500 mb-1">Preview:</h6>
-                  <pre class="text-xs text-gray-600 whitespace-pre-wrap bg-white p-3 rounded border border-gray-100 m-0" x-text="templatePreview"></pre>
+                  <div class="text-xs text-gray-600 whitespace-pre-wrap bg-white p-3 rounded border border-gray-100 m-0 font-sans" x-html="templatePreviewHtml"></div>
                 </div>
 
                 <div class="flex gap-2 justify-end mt-3">
@@ -616,10 +617,11 @@
                 <button type="button" class="px-2 py-1 text-xs bg-gray-100 hover:bg-primary/10 text-gray-600 rounded cursor-pointer border-none transition-colors"
                   @click="insertPlaceholder('{MENSAGEM_ORIGINAL}')" title="Texto original da mensagem do grupo">{MENSAGEM_ORIGINAL}</button>
               </div>
+              <p class="text-xs text-gray-400 mt-1.5 mb-0">Formatacao: <code>*negrito*</code> <code>_italico_</code> <code>`codigo`</code></p>
 
               <div x-show="editingTemplate.body.length > 0" class="mt-3">
                 <h6 class="text-xs text-gray-500 mb-1">Preview:</h6>
-                <pre class="text-xs text-gray-600 whitespace-pre-wrap bg-white p-3 rounded border border-gray-100 m-0" x-text="templatePreview"></pre>
+                <div class="text-xs text-gray-600 whitespace-pre-wrap bg-white p-3 rounded border border-gray-100 m-0 font-sans" x-html="templatePreviewHtml"></div>
               </div>
 
               <div class="flex gap-2 justify-end mt-3">
@@ -712,10 +714,11 @@
                   <button type="button" class="px-2 py-1 text-xs bg-gray-100 hover:bg-primary/10 text-gray-600 rounded cursor-pointer border-none transition-colors"
                     @click="insertPlaceholder('{MENSAGEM_ORIGINAL}')" title="Texto original da mensagem do grupo">{MENSAGEM_ORIGINAL}</button>
                 </div>
+                <p class="text-xs text-gray-400 mt-1.5 mb-0">Formatacao: <code>*negrito*</code> <code>_italico_</code> <code>`codigo`</code></p>
 
                 <div x-show="editingTemplate.body.length > 0" class="mt-3">
                   <h6 class="text-xs text-gray-500 mb-1">Preview:</h6>
-                  <pre class="text-xs text-gray-600 whitespace-pre-wrap bg-white p-3 rounded border border-gray-100 m-0" x-text="templatePreview"></pre>
+                  <div class="text-xs text-gray-600 whitespace-pre-wrap bg-white p-3 rounded border border-gray-100 m-0 font-sans" x-html="templatePreviewHtml"></div>
                 </div>
 
                 <div class="flex gap-2 justify-end mt-3">
@@ -857,10 +860,11 @@
                 <button type="button" class="px-2 py-1 text-xs bg-gray-100 hover:bg-primary/10 text-gray-600 rounded cursor-pointer border-none transition-colors"
                   @click="insertPlaceholder('{MENSAGEM_ORIGINAL}')" title="Texto original da mensagem do grupo">{MENSAGEM_ORIGINAL}</button>
               </div>
+              <p class="text-xs text-gray-400 mt-1.5 mb-0">Formatacao: <code>*negrito*</code> <code>_italico_</code> <code>`codigo`</code></p>
 
               <div x-show="editingTemplate.body.length > 0" class="mt-3">
                 <h6 class="text-xs text-gray-500 mb-1">Preview:</h6>
-                <pre class="text-xs text-gray-600 whitespace-pre-wrap bg-white p-3 rounded border border-gray-100 m-0" x-text="templatePreview"></pre>
+                <div class="text-xs text-gray-600 whitespace-pre-wrap bg-white p-3 rounded border border-gray-100 m-0 font-sans" x-html="templatePreviewHtml"></div>
               </div>
 
               <div class="flex gap-2 justify-end mt-3">
@@ -1773,6 +1777,7 @@
         customCtaTemplates: [],
         editingTemplate: null,
         templatePreview: '',
+        get templatePreviewHtml() { return this.formatMarkdownToHtml(this.templatePreview); },
         loadingTemplates: false,
         savingTemplate: false,
         showTemplateChooser: false,
@@ -2154,6 +2159,19 @@
             .replaceAll('{CPF_COUNT}', '2')
             .replaceAll('{PRECO}', '18,50')
             .replaceAll('{MENSAGEM_ORIGINAL}', 'Preciso de 100k smiles 2 CPF');
+        },
+
+        formatMarkdownToHtml(text) {
+          let html = text
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+          html = html.replace(/```([\s\S]*?)```/g, '<pre style="background:#f3f4f6;padding:2px 4px;border-radius:4px;display:inline">$1</pre>');
+          html = html.replace(/`([^`]+)`/g, '<code style="background:#f3f4f6;padding:1px 3px;border-radius:3px">$1</code>');
+          html = html.replace(/\*([^*]+)\*/g, '<b>$1</b>');
+          html = html.replace(/_([^_]+)_/g, '<i>$1</i>');
+          html = html.replace(/\n/g, '<br>');
+          return html;
         },
 
         insertPlaceholder(placeholder) {

@@ -200,6 +200,28 @@ export class TelegramUserClient {
   }
 
   /**
+   * Parses Telegram Markdown into a formattedText object with entities.
+   * Falls back to plain text if parsing fails.
+   */
+  private async parseMarkdown(text: string): Promise<Record<string, unknown>> {
+    try {
+      const client = await this.ensureClientReady();
+      const result = await client.invoke({
+        _: 'parseTextEntities',
+        text,
+        parse_mode: {
+          _: 'textParseModeMarkdown',
+          version: 1,
+        },
+      } as Parameters<typeof client.invoke>[0]);
+      return result as Record<string, unknown>;
+    } catch (error) {
+      console.warn('[WARN] Markdown parsing failed, sending as plain text:', error);
+      return { _: 'formattedText', text, entities: [] };
+    }
+  }
+
+  /**
    * Envia uma mensagem de texto
    */
   async sendMessage(
@@ -209,15 +231,13 @@ export class TelegramUserClient {
   ): Promise<unknown> {
     console.log('[DEBUG] Sending message:', { chatId, text, replyToMessageId });
     const client = await this.ensureClientReady();
+    const formattedText = await this.parseMarkdown(text);
     const messageParams: Record<string, unknown> = {
       _: 'sendMessage',
       chat_id: chatId,
       input_message_content: {
         _: 'inputMessageText',
-        text: {
-          _: 'formattedText',
-          text,
-        },
+        text: formattedText,
       },
     };
     console.log('[DEBUG] Message params:', JSON.stringify(messageParams, null, 2));
