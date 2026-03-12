@@ -491,7 +491,7 @@
               </div>
             </template>
 
-            <div class="flex flex-col gap-3">
+            <div class="flex flex-col gap-3" x-show="!editingTemplate && !(showTemplateChooser && templateChooserType === 'counter_offer')">
               <template x-for="template in counterOfferTemplates" :key="template.id">
                 <label class="flex items-start gap-3 p-3 border rounded-lg cursor-pointer transition-all"
                   :class="counterOfferSettings.messageTemplateId === template.id ? 'border-primary bg-primary/5' : 'border-gray-200 hover:border-gray-300'"
@@ -732,7 +732,7 @@
               </div>
             </template>
 
-            <div class="flex flex-col gap-3">
+            <div class="flex flex-col gap-3" x-show="!editingTemplate && !(showTemplateChooser && templateChooserType === 'cta')">
               <template x-for="template in callToActionTemplates" :key="template.id">
                 <label class="flex items-start gap-3 p-3 border rounded-lg cursor-pointer transition-all"
                   :class="counterOfferSettings.callToActionTemplateId === template.id ? 'border-primary bg-primary/5' : 'border-gray-200 hover:border-gray-300'"
