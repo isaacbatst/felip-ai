@@ -417,7 +417,7 @@
 
             <!-- Template Editor (inline, when no custom templates yet) -->
             <template x-if="editingTemplate && editingTemplate.type === 'counter_offer'">
-              <div class="mt-4">
+              <div class="mt-4 mb-4">
                 <textarea x-ref="templateTextarea"
                   x-init="$nextTick(() => $refs.templateTextarea?.focus())"
                   x-model="editingTemplate.body"
@@ -625,7 +625,7 @@
 
             <!-- Template Editor (inline, when no custom CTA templates yet) -->
             <template x-if="editingTemplate && editingTemplate.type === 'cta'">
-              <div class="mt-4">
+              <div class="mt-4 mb-4">
                 <textarea x-ref="ctaTemplateTextarea"
                   x-init="$nextTick(() => $refs.ctaTemplateTextarea?.focus())"
                   x-model="editingTemplate.body"
