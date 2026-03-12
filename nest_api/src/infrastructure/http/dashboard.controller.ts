@@ -666,6 +666,21 @@ export class DashboardController {
     };
   }
 
+  @Get('closing/templates')
+  @UseGuards(SessionGuard)
+  async getClosingTemplates(@Res() res: Response) {
+    const { CLOSING_TEMPLATES } = await import(
+      '../../domain/constants/counter-offer-templates.js'
+    );
+    return res.json({
+      templates: CLOSING_TEMPLATES.map((t) => ({
+        id: t.id,
+        description: t.description,
+        preview: t.preview,
+      })),
+    });
+  }
+
   /**
    * GET /dashboard/counter-offer - Get counter offer settings
    */

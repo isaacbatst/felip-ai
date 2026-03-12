@@ -180,6 +180,37 @@ export const CALL_TO_ACTION_TEMPLATE_DESCRIPTIONS: Record<number, string> = {
 };
 
 /**
+ * Closing message templates
+ * Used when confirming a closed deal
+ */
+export const CLOSING_TEMPLATES: Array<{
+  id: number;
+  description: string;
+  preview: string;
+}> = [
+  {
+    id: 1,
+    description: 'Simples',
+    preview: 'Vamos!',
+  },
+  {
+    id: 2,
+    description: 'Com programa',
+    preview: '**Fechou!** {PROGRAMA} a {PRECO}',
+  },
+  {
+    id: 3,
+    description: 'Informal',
+    preview: 'Bora! Te chamei no privado',
+  },
+  {
+    id: 4,
+    description: 'Detalhado',
+    preview: 'Fechou! {QUANTIDADE}k {PROGRAMA} a {PRECO}, chamei no PV!',
+  },
+];
+
+/**
  * Build a call to action message from a template
  * @param templateId - The template ID to use (1 or 2)
  * @param programa - The miles program name (e.g., "SMILES")
