@@ -120,7 +120,7 @@ Inside the `<template x-if="getCustomTemplates('counter_offer').length === 0">` 
               <button type="button"
                 class="w-full mb-4 py-3 px-4 border-2 border-dashed border-gray-300 rounded-lg text-sm text-gray-500 hover:border-primary hover:text-primary transition-all cursor-pointer bg-transparent"
                 @click="startNewTemplate('counter_offer')">
-                Criar meus proprios templates
+                Criar meus próprios templates
               </button>
             </template>
 ```
@@ -136,7 +136,7 @@ Delete lines 433-442 (the `<template x-if="getCustomTemplates('counter_offer').l
               <button type="button"
                 class="w-full py-3 px-4 border-2 border-dashed border-gray-300 rounded-lg text-sm text-gray-500 hover:border-primary hover:text-primary transition-all cursor-pointer bg-transparent"
                 @click="startNewTemplate('counter_offer')">
-                Criar meus proprios templates
+                Criar meus próprios templates
               </button>
             </div>
           </template>
@@ -286,7 +286,7 @@ Inside the `<template x-if="getCustomTemplates('cta').length === 0">` block (lin
               <button type="button"
                 class="w-full mb-4 py-3 px-4 border-2 border-dashed border-gray-300 rounded-lg text-sm text-gray-500 hover:border-primary hover:text-primary transition-all cursor-pointer bg-transparent"
                 @click="startNewTemplate('cta')">
-                Criar meus proprios templates
+                Criar meus próprios templates
               </button>
             </template>
 ```
@@ -302,7 +302,7 @@ Delete lines 570-579 (the `<template x-if="getCustomTemplates('cta').length === 
               <button type="button"
                 class="w-full py-3 px-4 border-2 border-dashed border-gray-300 rounded-lg text-sm text-gray-500 hover:border-primary hover:text-primary transition-all cursor-pointer bg-transparent"
                 @click="startNewTemplate('cta')">
-                Criar meus proprios templates
+                Criar meus próprios templates
               </button>
             </div>
           </template>

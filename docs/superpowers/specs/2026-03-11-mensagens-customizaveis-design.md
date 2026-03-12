@@ -6,7 +6,7 @@ Os templates de mensagem privada (counter-offer e CTA) sao pre-definidos e fixos
 
 ## Solucao
 
-Permitir que usuarios criem seus proprios templates de mensagem com placeholders, e que o bot rotacione aleatoriamente entre os templates ativos a cada envio.
+Permitir que usuarios criem seus próprios templates de mensagem com placeholders, e que o bot rotacione aleatoriamente entre os templates ativos a cada envio.
 
 ## Requisitos
 
@@ -89,7 +89,7 @@ A UI fica dentro das sub-tabs existentes ("Contra-proposta" e "Fechamento") no d
 
 ### Estado inicial (sem templates customizados)
 
-Radio de selecao dos templates pre-definidos continua como hoje. Abaixo, botao "Criar meus proprios templates" abre o modo de edicao.
+Radio de selecao dos templates pre-definidos continua como hoje. Abaixo, botao "Criar meus próprios templates" abre o modo de edicao.
 
 ### Modo customizado (com templates)
 
