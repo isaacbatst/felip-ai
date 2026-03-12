@@ -608,10 +608,6 @@
             <div>
               <div class="flex items-center justify-between mb-3">
                 <h4 class="font-semibold text-sm text-gray-800">Meus Templates</h4>
-                <button type="button" class="text-xs text-gray-400 hover:text-red-500 transition-colors cursor-pointer bg-transparent border-none"
-                  @click="resetToDefaults('cta')">
-                  Voltar aos padrões
-                </button>
               </div>
 
               <p x-show="getActiveTemplateCount('cta') > 1" class="text-xs text-gray-400 mb-3">
@@ -643,7 +639,7 @@
               <button type="button"
                 class="w-full mt-3 py-2 px-4 border-2 border-dashed border-gray-300 rounded-lg text-sm text-gray-500 hover:border-primary hover:text-primary transition-all cursor-pointer bg-transparent disabled:opacity-40 disabled:cursor-not-allowed"
                 :disabled="customCtaTemplates.length >= 5"
-                @click="startNewTemplate('cta')">
+                @click="openTemplateChooser('cta')">
                 + Adicionar template
                 <span x-show="customCtaTemplates.length >= 5" class="text-xs">(maximo atingido)</span>
               </button>
