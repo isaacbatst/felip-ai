@@ -1,18 +1,23 @@
-import { CounterOfferSettingsRepository } from '@/infrastructure/persistence/counter-offer-settings.repository';
-import { MilesProgramRepository } from '@/infrastructure/persistence/miles-program.repository';
+import { BlacklistRepository } from '@/infrastructure/persistence/blacklist.repository';
 import { BotPreferenceRepository } from '@/infrastructure/persistence/bot-status.repository';
+import { CounterOfferSettingsRepository } from '@/infrastructure/persistence/counter-offer-settings.repository';
+import { GroupCounterOfferSettingsRepository, type GroupCounterOfferSetting } from '@/infrastructure/persistence/group-counter-offer-settings.repository';
 import { GroupDelaySettingsRepository } from '@/infrastructure/persistence/group-delay-settings.repository';
+import { GroupReasoningSettingsRepository } from '@/infrastructure/persistence/group-reasoning-settings.repository';
 import { MessageTemplateRepository } from '@/infrastructure/persistence/message-template.repository';
+import { MilesProgramRepository } from '@/infrastructure/persistence/miles-program.repository';
 import { TelegramUserClientProxyService } from '@/infrastructure/tdlib/telegram-user-client-proxy.service';
 import { Injectable, Logger } from '@nestjs/common';
-import { buildCallToActionMessage, buildCounterOfferMessage, applyTemplatePlaceholders } from '../../../domain/constants/counter-offer-templates';
+import { applyTemplatePlaceholders, buildCallToActionMessage, buildCounterOfferMessage } from '../../../domain/constants/counter-offer-templates';
 import { MessageParser, type ProgramOption } from '../../../domain/interfaces/message-parser.interface';
 import { PriceTableProvider } from '../../../domain/interfaces/price-table-provider.interface';
 import { PriceCalculatorService } from '../../../domain/services/price-calculator.service';
+import type { PurchaseProposal } from '../../../domain/types/purchase.types';
+import { PriceNormalizationUtil } from '../../../domain/utils/price-normalization.util';
+import { ProviderExtractionUtil } from '../../../domain/utils/provider-extraction.util';
+import { QuantityNormalizationUtil } from '../../../domain/utils/quantity-normalization.util';
+import { QuantityPreFilterUtil } from '../../../domain/utils/quantity-pre-filter.util';
 import { PrivateMessageBufferService } from '../private-message-buffer.service';
-import { BlacklistRepository } from '@/infrastructure/persistence/blacklist.repository';
-import { GroupReasoningSettingsRepository } from '@/infrastructure/persistence/group-reasoning-settings.repository';
-import { GroupCounterOfferSettingsRepository, type GroupCounterOfferSetting } from '@/infrastructure/persistence/group-counter-offer-settings.repository';
 
 interface CalculatedPriceResult {
   price: number;
@@ -126,19 +131,102 @@ export class TelegramPurchaseHandler {
       return;
     }
 
-    // Busca todos os programas do banco para passar ao parser (melhora reconhecimento)
+    // Fetch all programs from DB
     const allPrograms = await this.milesProgramRepository.getAllPrograms();
     const programsForParser: ProgramOption[] = allPrograms.map((p) => ({ id: p.id, name: p.name }));
 
-    // Lookup per-group reasoning mode
+    // Step 3: Extract provider (no LLM)
+    const airlineId = ProviderExtractionUtil.extractProvider(text, programsForParser);
+    if (airlineId === null) {
+      this.logger.log('No provider found in message');
+      return;
+    }
+
+    const program = allPrograms.find((p) => p.id === airlineId);
+    if (!program) {
+      this.logger.warn('Program not found for airlineId', { airlineId });
+      return;
+    }
+
+    this.logger.log('Provider found via keyword matching', { airlineId, programName: program.name });
+
+    // Step 5: Check if user has config for this program (or its liminar)
+    const configuredProgramIds = await this.priceTableProvider.getConfiguredProgramIds(loggedInUserId);
+    const liminarProgram = await this.milesProgramRepository.findLiminarFor(program.id);
+
+    const hasNormalConfig = configuredProgramIds.includes(program.id);
+    const hasLiminarConfig = liminarProgram ? configuredProgramIds.includes(liminarProgram.id) : false;
+
+    if (!hasNormalConfig && !hasLiminarConfig) {
+      this.logger.log('Provider found but user has no config', {
+        airlineId,
+        programName: program.name,
+      });
+      return;
+    }
+
+    // Step 6: Pre-filter quantity check (conservative — null means proceed to LLM)
+    const estimatedQuantity = QuantityPreFilterUtil.estimate(text);
+    if (estimatedQuantity !== null) {
+      const normalHasMiles = hasNormalConfig
+        && await this.priceTableProvider.hasSufficientMiles(loggedInUserId, program.id, estimatedQuantity);
+      const liminarHasMiles = hasLiminarConfig && liminarProgram
+        && await this.priceTableProvider.hasSufficientMiles(loggedInUserId, liminarProgram.id, estimatedQuantity);
+
+      if (!normalHasMiles && !liminarHasMiles) {
+        this.logger.log('Pre-filter: insufficient miles for estimated quantity', {
+          estimatedQuantity,
+          programName: program.name,
+        });
+        return;
+      }
+    }
+
+    // Step 7: LLM extraction
     const reasoningSetting = await this.groupReasoningSettingsRepository.getGroupReasoningSetting(
       loggedInUserId,
       chatId,
     );
     const reasoningEffort = reasoningSetting?.reasoningMode === 'precise' ? 'high' as const : 'minimal' as const;
 
-    // Passa os programas como contexto para ajudar o modelo a reconhecer melhor
-    const purchaseRequests = await this.messageParser.parse(text, programsForParser, reasoningEffort);
+    const data = await this.messageParser.extractData(text, reasoningEffort);
+    if (!data) {
+      this.logger.warn('No validated request');
+      return;
+    }
+
+    // Step 8: Trap detection (precise mode only)
+    if (reasoningEffort === 'high') {
+      const isTrap = await this.messageParser.detectTrap(text);
+      if (isTrap) {
+        this.logger.warn('AI trap detection flagged message as trap', { text });
+        return;
+      }
+    }
+
+    // Step 9: Normalize proposals
+    const purchaseRequests: PurchaseProposal[] = [];
+    for (const proposal of data.proposals) {
+      const quantity = QuantityNormalizationUtil.parse(proposal.rawQuantity);
+      if (quantity === null) {
+        this.logger.warn('Skipping proposal: quantity invalid or below 1000', {
+          rawQuantity: proposal.rawQuantity,
+        });
+        continue;
+      }
+
+      const acceptedPrices = proposal.rawPrices
+        .map((r) => PriceNormalizationUtil.parse(r))
+        .filter((p): p is number => p !== null);
+
+      purchaseRequests.push({
+        isPurchaseProposal: true as const,
+        quantity,
+        cpfCount: proposal.cpfCount,
+        airlineId,
+        acceptedPrices,
+      });
+    }
 
     // Ignorar se não houver propostas ou se houver mais de uma
     if (!purchaseRequests || purchaseRequests.length !== 1) {
@@ -160,20 +248,6 @@ export class TelegramPurchaseHandler {
       });
       return;
     }
-
-    if (purchaseRequest.airlineId === undefined) {
-      this.logger.warn('No airlineId in purchase request');
-      return;
-    }
-
-    // Get the program from the ID returned by the parser
-    let program = allPrograms.find((p) => p.id === purchaseRequest.airlineId);
-    if (!program) {
-      this.logger.warn('Program not found for airlineId', { airlineId: purchaseRequest.airlineId });
-      return;
-    }
-
-    this.logger.debug('Selected program', { id: program.id, name: program.name });
 
     // cpfCount=0: tratar como 1 para programas com noCpfAllowed, rejeitar para outros
     let effectiveCpfCount = purchaseRequest.cpfCount;
@@ -208,8 +282,6 @@ export class TelegramPurchaseHandler {
         return;
       }
     }
-
-    const configuredProgramIds = await this.priceTableProvider.getConfiguredProgramIds(loggedInUserId);
 
     // Determine effective programs (normal and/or liminar) based on miles availability and min quantity
     const effectivePrograms = await this.getEffectivePrograms(
@@ -501,7 +573,7 @@ export class TelegramPurchaseHandler {
     if (min != null && max != null) {
       delaySeconds = min + Math.random() * (max - min);
     } else {
-      delaySeconds = min ?? max!;
+      delaySeconds = min ?? (max ?? 0);
     }
 
     if (delaySeconds === 0) {
