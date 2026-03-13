@@ -7,7 +7,9 @@ export class QuantityPreFilterUtil {
   static estimate(text: string): number | null {
     const lower = text.toLowerCase();
 
-    // Order matters: check kk before k, mil before m
+    // Patterns declared inside method because global regexes are stateful (lastIndex).
+    // Hoisting them to class-level would cause bugs across successive calls.
+    // Order matters: check kk before k, mil before m.
     const patterns: { regex: RegExp; multiplier: number }[] = [
       { regex: /(?<![.,\d])(\d+)\s*kk/g, multiplier: 1_000_000 },
       { regex: /(?<![.,\d])(\d+)\s*mil\b/g, multiplier: 1_000 },

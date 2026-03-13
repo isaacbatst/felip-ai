@@ -113,5 +113,10 @@ describe('QuantityPreFilterUtil', () => {
     it('returns null when estimated value < 1000', () => {
       expect(QuantityPreFilterUtil.estimate('smiles 0k')).toBeNull();
     });
+
+    it('returns dot-thousands value for "1.000k" (k lookbehind blocks k match)', () => {
+      // dot-thousands matches "1.000" → 1000; k pattern blocked by lookbehind on "0"
+      expect(QuantityPreFilterUtil.estimate('smiles 1.000k 1cpf')).toBe(1000);
+    });
   });
 });
