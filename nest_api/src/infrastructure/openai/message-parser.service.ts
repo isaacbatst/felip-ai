@@ -124,7 +124,7 @@ export class MessageParserService extends MessageParser {
           },
         },
         reasoning: {
-          effort: 'high',
+          effort: 'minimal',
         },
         text: {
           format: zodTextFormat(MessageParserService.TrapDetectionSchema, 'trapDetection'),

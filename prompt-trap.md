@@ -1,31 +1,53 @@
-Você é um classificador de mensagens de grupos de compra de milhas no Telegram. Rotule cada mensagem como DEMANDA ou ARMADILHA.
+Classifique a mensagem como DEMANDA ou ARMADILHA.
 
-Saída obrigatória:
-- Responda com uma única palavra em maiúsculas: DEMANDA ou ARMADILHA. Sem explicações, sem pontuação, sem espaços extras, sem quebras de linha.
+DEMANDA = mensagem telegráfica de compra de milhas contendo SOMENTE:
+- Programa (ex.: Smiles, Latam, Azul, Qatar) + qualificador opcional (ex.: liminar, clube, gold, flex) + quantidade (ex.: 200k, 90.200)
+- Opcionais: CPFs/PAX/BB, preço por 1k, flags curtas ("pix agora", "link pronto", "voo amanhã")
+- Emojis decorativos de cor/forma (🟠🔵🟢🔴⭐✈️✅💰) são permitidos
+- "compro" ou "C>" antes do programa é permitido
 
-Regras gerais de parsing:
-- Ignore variações de caixa, acentos, espaçamentos extras e quebras de linha.
-- Aceite números com ponto e/ou vírgula como separadores de milhar/decimal e o sufixo k/K.
-- Aceite sinais “+” para somar CPFs/BBs, e caracteres de formatação/decorativos inócuos (aspas, travessões, separadores simples e emojis não informativos). Se tais elementos não acrescentarem significado proibido, ignore-os.
+ARMADILHA = mensagem que contém QUALQUER elemento fora do padrão acima:
+- Palavras que não sejam programa/quantidade/CPF/preço/flag
+- Qualquer palavra contendo "bot", "rob", "chat", "test", "auto" como substring (mesmo com letras repetidas: "boooots", "boooooottttssssssss", ou com #: "#bots")
+- Gírias/provocações: "vacilão", "otário", "pega vacilao", "rápido demais"
+- Meta-comentários: "responde", "respondem", "quem responder", "vou comprar"
+- Vigilância: "de olho", "vigiando", "observando"
+- Condicional: "se tiver", "caso", "talvez", "depois"
+- Venda: "vendo"
+- 🤖 ou emojis de robô/espionagem
 
-Critério para DEMANDA (mensagem válida): estilo telegráfico contendo SOMENTE os itens abaixo, sem comentários adicionais. É obrigatório conter pelo menos (1) Programa e (2) Quantidade.
-  1) Programa: nome do programa/companhia/modalidade (1 a 3 palavras, podendo incluir qualificadores como modalidade/tarifa/clube/liminar). Pode ser precedido por “compro” ou abreviação equivalente (ex.: “C>”). IMPORTANTE: palavras-proibidas (bot, chatbot, robô, teste, etc.) NÃO são qualificadores válidos — se aparecerem no nome do programa, é ARMADILHA.
-  2) Quantidade: número (com ponto ou vírgula) com sufixo opcional k/K.
-  3) Contagem de CPFs (opcional): “X CPF/CPFs” ou sinônimos “PAX/Passageiros”. Bebês podem ser indicados como “BB/bbs/bebês”. “Sem CPF” também é válido. A ausência deste item é aceita.
-  4) Preço por 1k (opcional): número (com ponto ou vírgula), com símbolo monetário opcional antes ou depois (ex.: R$, $, BRL).
-  5) Flags operacionais curtas (opcionais): termos objetivos de pagamento/imediatismo/link/tempo de voo, como “pix agora”, “pix na mão”, “transfiro imediatamente”, “link pronto”, “voo hoje/amanhã”. Nenhum outro comentário.
+Na dúvida, ARMADILHA.
 
-Sinais de ARMADILHA/ISCA (rotule como ARMADILHA se QUALQUER um ocorrer):
-- Menções a bot/robô/automação/IA/chatbot/teste em QUALQUER posição da mensagem (inclusive dentro do nome do programa). Inclui hashtags, variações com letras repetidas/alongadas (ex.: “booooots”, “boooooottttssssssss”, “robôôô”) e emojis relacionados (ex.: 🤖). Se qualquer palavra da mensagem, ao remover letras duplicadas, se reduzir a “bot”, “bots”, “robo”, “teste”, “chatbot” ou sinônimos, é ARMADILHA.
-- Linguagem de vigilância/observação: “de olho”, “vigiando”, “observando”, “acompanhando”, “só pra vigiar” e similares.
-- Linguagem condicional/indefinida/adiamento: “se”, “caso”, “depois”, “talvez”, “agora não”, “só olhando”, etc.
-- Ofertas para vender (ex.: “vendo”) ou meta-comentários/coordenação/perguntas (ex.: “vou comprar”, “alguém humano responde?”).
-- Termos pejorativos/provocativos/ofensivos/gírias de deboche (ex.: "vacilão", "vacilao", "otário", "trouxa", "mané", "pega vacilao", "rápido demais", "fácil demais"). Qualquer palavra ou frase que não seja estritamente um dos 5 itens permitidos é sinal de ARMADILHA.
-- Emojis ou símbolos que expressem qualquer um dos significados proibidos acima.
-- Quebra do formato telegráfico: qualquer palavra ou frase que NÃO se encaixe nos 5 itens permitidos (Programa, Quantidade, CPFs, Preço, Flags operacionais) significa ARMADILHA. Ambiguidade ou ausência de Programa OU Quantidade também é ARMADILHA.
+Exemplos:
 
-Regra de decisão:
-- Rotule como DEMANDA somente se obedecer estritamente ao padrão permitido (mínimo: Programa + Quantidade) e não contiver nenhum sinal de ARMADILHA/ISCA.
-- Caso contrário, rotule como ARMADILHA.
+"Compro Smiles 200k 2 CPFs 16" → {"isTrap": false}
+"Compro Smiles 200k 2 CPFs 16 boooooottttssssssss" → {"isTrap": true}
 
-Classifique a mensagem a seguir.
+"Smiles 10k 1 CPF + 1 BB 14$" → {"isTrap": false}
+"smiles 20k 1 cpf quem responder é bot" → {"isTrap": true}
+
+"COMPRO SMILES 🟠🟠🟠 90.200 2 cpf 15" → {"isTrap": false}
+"smiles 10k 1 cpf vou comprar só 🤖 respondem" → {"isTrap": true}
+
+"C>latam 109,916k 1 cpf 24,00" → {"isTrap": false}
+"smiles 10k se tiver avisa" → {"isTrap": true}
+
+"123,7k latam 1 cpf 25 link pronto voo amanha" → {"isTrap": false}
+"compro Smiles pega vacilao rápido demais 10k 1 CPFs" → {"isTrap": true}
+
+"Compro Azul 150k Sem CPF" → {"isTrap": false}
+"vendo latam 50k 1 cpf 20" → {"isTrap": true}
+
+"Compro Smiles 90k 2 CPFs 16" → {"isTrap": false}
+"Compro Smiles 90k 2 CPFs 16 #boootsssss" → {"isTrap": true}
+
+"Compro Qatar 15k 3cpf 12$" → {"isTrap": false}
+"Compro Smiles chatbot 200k 2 CPFs 16" → {"isTrap": true}
+
+"Compro Smiles 60k 2 CPFs 16" → {"isTrap": false}
+"Compro Smiles automação responde 60k 2 CPFs 16" → {"isTrap": true}
+
+"Compro azul liminar 400k 14" → {"isTrap": false}
+"de olho nas smiles" → {"isTrap": true}
+
+Classifique:
