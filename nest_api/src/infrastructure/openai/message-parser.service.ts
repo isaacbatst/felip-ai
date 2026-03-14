@@ -1,15 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { zodTextFormat } from 'openai/helpers/zod';
 import { z } from 'zod';
-import { MessageParser, type ProgramOption } from '../../domain/interfaces/message-parser.interface';
+import { MessageParser } from '../../domain/interfaces/message-parser.interface';
 import {
-  type PurchaseProposal,
   RawDataExtractionRequestSchema,
   type RawDataExtractionOutput,
 } from '../../domain/types/purchase.types';
-import { ProviderExtractionUtil } from '../../domain/utils/provider-extraction.util';
-import { QuantityNormalizationUtil } from '../../domain/utils/quantity-normalization.util';
-import { PriceNormalizationUtil } from '../../domain/utils/price-normalization.util';
 import { OpenAIService } from './openai.service';
 import { PromptConfigRepository } from '../persistence/prompt-config.repository';
 
@@ -55,73 +51,11 @@ export class MessageParserService extends MessageParser {
     };
   }
 
-  async parse(text: string, programs?: ProgramOption[], reasoningEffort: 'minimal' | 'high' = 'minimal'): Promise<PurchaseProposal[] | null> {
-    try {
-      this.logger.log('Parsing message', { text });
-
-      // Step 1: Extract provider using keyword matching
-      const airlineId = ProviderExtractionUtil.extractProvider(text, programs);
-
-      if (airlineId === null) {
-        this.logger.log('No provider found in message');
-        return null;
-      }
-
-      this.logger.log('Provider found via keyword matching', { airlineId });
-
-      // Step 2: Extract other data using AI (only if provider found)
-      const data = await this.extractDataWithAI(text, reasoningEffort);
-
-      if (!data || !data.isPurchaseProposal) {
-        this.logger.log('AI extraction returned non-purchase proposal');
-        return null;
-      }
-
-      // Step 3 (precise mode only): AI trap detection after cheap extraction
-      if (reasoningEffort === 'high') {
-        const isTrap = await this.detectTrap(text);
-        if (isTrap) {
-          this.logger.warn('AI trap detection flagged message as trap', { text });
-          return null;
-        }
-      }
-
-      const proposals: PurchaseProposal[] = [];
-
-      for (const proposal of data.proposals) {
-        const quantity = QuantityNormalizationUtil.parse(proposal.rawQuantity);
-
-        if (quantity === null) {
-          this.logger.warn('Skipping proposal: quantity invalid or below 1000', {
-            rawQuantity: proposal.rawQuantity,
-          });
-          continue;
-        }
-
-        const acceptedPrices = proposal.rawPrices
-          .map((r) => PriceNormalizationUtil.parse(r))
-          .filter((p): p is number => p !== null);
-
-        proposals.push({
-          isPurchaseProposal: true as const,
-          quantity,
-          cpfCount: proposal.cpfCount,
-          airlineId,
-          acceptedPrices,
-        });
-      }
-
-      return proposals.length > 0 ? proposals : null;
-    } catch (error) {
-      this.logger.error('[ERROR] Error parsing message with GPT:', { error });
-      return null;
-    }
-  }
-
   /**
    * Extract data (quantity, cpfCount, acceptedPrices) using AI
    */
-  private async extractDataWithAI(text: string, reasoningEffort: 'minimal' | 'high' = 'minimal'): Promise<RawDataExtractionOutput | null> {
+  async extractData(text: string, reasoningEffort: 'minimal' | 'high' = 'minimal'): Promise<RawDataExtractionOutput | null> {
+    try {
     const client = this.openaiService.getClient();
 
     const promptConfig = await this.promptConfigRepository.getByKey(
@@ -157,6 +91,10 @@ export class MessageParserService extends MessageParser {
     }
 
     return parsed.output;
+    } catch (error) {
+      this.logger.error('[ERROR] Error extracting data with GPT:', { error });
+      return null;
+    }
   }
 
   /**
@@ -164,7 +102,7 @@ export class MessageParserService extends MessageParser {
    * Returns true if the message is likely a trap/bait, false if legitimate.
    * Fail-closed: returns true (blocks message) on any error.
    */
-  private async detectTrap(text: string): Promise<boolean> {
+  async detectTrap(text: string): Promise<boolean> {
     try {
       const client = this.openaiService.getClient();
 
@@ -186,7 +124,7 @@ export class MessageParserService extends MessageParser {
           },
         },
         reasoning: {
-          effort: 'high',
+          effort: 'minimal',
         },
         text: {
           format: zodTextFormat(MessageParserService.TrapDetectionSchema, 'trapDetection'),

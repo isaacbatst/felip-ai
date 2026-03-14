@@ -15,7 +15,7 @@ import { GroupReasoningSettingsRepository } from '@/infrastructure/persistence/g
 import { GroupCounterOfferSettingsRepository } from '@/infrastructure/persistence/group-counter-offer-settings.repository';
 import { MessageTemplateRepository } from '@/infrastructure/persistence/message-template.repository';
 import type { PriceTableV2 } from '@/domain/types/price.types';
-import type { PurchaseProposal } from '@/domain/types/purchase.types';
+import type { RawDataExtractionOutput } from '@/domain/types/purchase.types';
 
 describe('TelegramPurchaseHandler', () => {
   let handler: TelegramPurchaseHandler;
@@ -92,15 +92,20 @@ describe('TelegramPurchaseHandler', () => {
     { id: 18, name: 'AZUL VIAGENS', liminarOfId: null, absurdPriceMin: 9, absurdPriceMax: 25, noCpfAllowed: true, createdAt: new Date() },
   ];
 
-  // Helper to create a mock PurchaseProposal array with single element (standard case)
-  const createPurchaseProposalArray = (overrides?: Partial<Omit<PurchaseProposal, 'isPurchaseProposal'>>): PurchaseProposal[] => [{
-    isPurchaseProposal: true,
-    quantity: 30_000,
-    cpfCount: 1,
-    airlineId: PROGRAM_IDS.SMILES,
-    acceptedPrices: [],
-    ...overrides,
-  }];
+  // Helper to create a mock RawDataExtractionOutput (standard case)
+  const createRawExtractionOutput = (overrides?: Partial<{
+    rawQuantity: string;
+    cpfCount: number;
+    rawPrices: string[];
+  }>): RawDataExtractionOutput => ({
+    isPurchaseProposal: true as const,
+    proposals: [{
+      rawQuantity: '30k',
+      cpfCount: 1,
+      rawPrices: [],
+      ...overrides,
+    }],
+  });
 
   beforeEach(async () => {
     // Reset available miles and configured programs to defaults
@@ -117,7 +122,8 @@ describe('TelegramPurchaseHandler', () => {
 
     // Create mocks
     mockMessageParser = {
-      parse: jest.fn(),
+      extractData: jest.fn().mockResolvedValue(null),
+      detectTrap: jest.fn().mockResolvedValue(false),
     } as unknown as jest.Mocked<MessageParser>;
 
     mockPriceTableProvider = {
@@ -271,10 +277,9 @@ describe('TelegramPurchaseHandler', () => {
   describe('handlePurchase', () => {
     describe('Normal provider with both normal and liminar available', () => {
       it('should send both prices when user has both normal and liminar with enough miles', async () => {
-        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
-          quantity: 30_000,
+        mockMessageParser.extractData.mockResolvedValue(createRawExtractionOutput({
+          rawQuantity: '30k',
           cpfCount: 1,
-          airlineId: PROGRAM_IDS.SMILES,
         }));
 
         await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF');
@@ -288,10 +293,9 @@ describe('TelegramPurchaseHandler', () => {
         // LATAM has 40k, LATAM LIMINAR has 20000 - not enough for 30k
         availableMiles[4] = 50000; // Give LATAM LIMINAR enough
 
-        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
-          quantity: 30_000,
+        mockMessageParser.extractData.mockResolvedValue(createRawExtractionOutput({
+          rawQuantity: '30k',
           cpfCount: 1,
-          airlineId: PROGRAM_IDS.LATAM,
         }));
 
         await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'LATAM 30k 1CPF');
@@ -302,10 +306,9 @@ describe('TelegramPurchaseHandler', () => {
       });
 
       it('should send both AZUL prices when user has both', async () => {
-        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
-          quantity: 15_000,
+        mockMessageParser.extractData.mockResolvedValue(createRawExtractionOutput({
+          rawQuantity: '15k',
           cpfCount: 1,
-          airlineId: PROGRAM_IDS['AZUL/TUDO AZUL'],
         }));
 
         await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'AZUL 15k 1CPF');
@@ -320,10 +323,9 @@ describe('TelegramPurchaseHandler', () => {
       it('should send only normal price when liminar has insufficient miles', async () => {
         availableMiles[2] = 10000; // SMILES LIMINAR - not enough for 30k
 
-        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
-          quantity: 30_000,
+        mockMessageParser.extractData.mockResolvedValue(createRawExtractionOutput({
+          rawQuantity: '30k',
           cpfCount: 1,
-          airlineId: PROGRAM_IDS.SMILES,
         }));
 
         await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF');
@@ -337,10 +339,9 @@ describe('TelegramPurchaseHandler', () => {
       it('should send only normal price when liminar is not configured', async () => {
         configuredProgramIds = [1, 3, 4, 5, 6]; // No SMILES LIMINAR (id: 2)
 
-        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
-          quantity: 30_000,
+        mockMessageParser.extractData.mockResolvedValue(createRawExtractionOutput({
+          rawQuantity: '30k',
           cpfCount: 1,
-          airlineId: PROGRAM_IDS.SMILES,
         }));
 
         await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF');
@@ -357,10 +358,9 @@ describe('TelegramPurchaseHandler', () => {
         availableMiles[1] = 10000; // SMILES - not enough for 30k
         availableMiles[2] = 50000; // SMILES LIMINAR - has enough
 
-        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
-          quantity: 30_000,
+        mockMessageParser.extractData.mockResolvedValue(createRawExtractionOutput({
+          rawQuantity: '30k',
           cpfCount: 1,
-          airlineId: PROGRAM_IDS.SMILES,
         }));
 
         await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF');
@@ -374,10 +374,9 @@ describe('TelegramPurchaseHandler', () => {
         availableMiles[3] = 10000; // LATAM - not enough
         availableMiles[4] = 50000; // LATAM LIMINAR - has enough
 
-        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
-          quantity: 30_000,
+        mockMessageParser.extractData.mockResolvedValue(createRawExtractionOutput({
+          rawQuantity: '30k',
           cpfCount: 1,
-          airlineId: PROGRAM_IDS.LATAM,
         }));
 
         await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'LATAM 30k 1CPF');
@@ -393,10 +392,9 @@ describe('TelegramPurchaseHandler', () => {
         availableMiles[1] = 10000; // SMILES - not enough for 100k
         availableMiles[2] = 50000; // SMILES LIMINAR - not enough for 100k
 
-        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
-          quantity: 100_000,
+        mockMessageParser.extractData.mockResolvedValue(createRawExtractionOutput({
+          rawQuantity: '100k',
           cpfCount: 1,
-          airlineId: PROGRAM_IDS.SMILES,
         }));
 
         await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 100k 1CPF');
@@ -408,10 +406,9 @@ describe('TelegramPurchaseHandler', () => {
         availableMiles[1] = 0;     // SMILES - no miles
         availableMiles[2] = 20000; // SMILES LIMINAR - not enough for 30k
 
-        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
-          quantity: 30_000,
+        mockMessageParser.extractData.mockResolvedValue(createRawExtractionOutput({
+          rawQuantity: '30k',
           cpfCount: 1,
-          airlineId: PROGRAM_IDS.SMILES,
         }));
 
         await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF');
@@ -422,10 +419,9 @@ describe('TelegramPurchaseHandler', () => {
 
     describe('User requests liminar directly', () => {
       it('should send only liminar price when user requests SMILES LIMINAR directly', async () => {
-        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
-          quantity: 30_000,
+        mockMessageParser.extractData.mockResolvedValue(createRawExtractionOutput({
+          rawQuantity: '30k',
           cpfCount: 1,
-          airlineId: PROGRAM_IDS['SMILES Liminar'],
         }));
 
         await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES LIMINAR 30k 1CPF');
@@ -440,10 +436,9 @@ describe('TelegramPurchaseHandler', () => {
       it('should not send message when user requests liminar directly but it has insufficient miles', async () => {
         availableMiles[2] = 10000; // SMILES LIMINAR - not enough for 30k
 
-        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
-          quantity: 30_000,
+        mockMessageParser.extractData.mockResolvedValue(createRawExtractionOutput({
+          rawQuantity: '30k',
           cpfCount: 1,
-          airlineId: PROGRAM_IDS['SMILES Liminar'],
         }));
 
         await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES LIMINAR 30k 1CPF');
@@ -455,11 +450,10 @@ describe('TelegramPurchaseHandler', () => {
     describe('User accepts specific prices with dual pricing', () => {
       it('should send "Vamos!" when accepted price >= lowest of both prices', async () => {
         // Both SMILES (20) and SMILES LIMINAR (21) available
-        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
-          quantity: 30_000,
+        mockMessageParser.extractData.mockResolvedValue(createRawExtractionOutput({
+          rawQuantity: '30k',
           cpfCount: 1,
-          airlineId: PROGRAM_IDS.SMILES,
-          acceptedPrices: [25], // Higher than both
+          rawPrices: ['25'], // Higher than both
         }));
 
         await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF aceito 25');
@@ -475,11 +469,10 @@ describe('TelegramPurchaseHandler', () => {
 
       it('should send "Vamos!" when accepted price equals lowest price', async () => {
         // SMILES price is 20 (the lowest), SMILES LIMINAR is 21
-        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
-          quantity: 30_000,
+        mockMessageParser.extractData.mockResolvedValue(createRawExtractionOutput({
+          rawQuantity: '30k',
           cpfCount: 1,
-          airlineId: PROGRAM_IDS.SMILES,
-          acceptedPrices: [20], // Equals SMILES (lowest)
+          rawPrices: ['20'], // Equals SMILES (lowest)
         }));
 
         await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF aceito 20');
@@ -495,11 +488,10 @@ describe('TelegramPurchaseHandler', () => {
 
       it('should send both prices in group and counter offer with both prices in private when within threshold', async () => {
         // SMILES (20) and SMILES LIMINAR (21) both available
-        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
-          quantity: 30_000,
+        mockMessageParser.extractData.mockResolvedValue(createRawExtractionOutput({
+          rawQuantity: '30k',
           cpfCount: 1,
-          airlineId: PROGRAM_IDS.SMILES,
-          acceptedPrices: [15], // Lower than both (diff from lowest: 20-15=5)
+          rawPrices: ['15'], // Lower than both (diff from lowest: 20-15=5)
         }));
 
         mockCounterOfferSettingsRepository.getSettings.mockResolvedValueOnce({
@@ -531,11 +523,10 @@ describe('TelegramPurchaseHandler', () => {
       });
 
       it('should send CTA with both prices when accepted price >= lowest and counter offer enabled', async () => {
-        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
-          quantity: 30_000,
+        mockMessageParser.extractData.mockResolvedValue(createRawExtractionOutput({
+          rawQuantity: '30k',
           cpfCount: 1,
-          airlineId: PROGRAM_IDS.SMILES,
-          acceptedPrices: [25], // Higher than both prices
+          rawPrices: ['25'], // Higher than both prices
         }));
 
         mockCounterOfferSettingsRepository.getSettings.mockResolvedValueOnce({
@@ -570,11 +561,10 @@ describe('TelegramPurchaseHandler', () => {
 
       it('should use accepted price as floor in CTA when it is between normal and liminar prices', async () => {
         // SMILES normal = 20, SMILES LIMINAR = 21, accepted = 20.5
-        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
-          quantity: 30_000,
+        mockMessageParser.extractData.mockResolvedValue(createRawExtractionOutput({
+          rawQuantity: '30k',
           cpfCount: 1,
-          airlineId: PROGRAM_IDS.SMILES,
-          acceptedPrices: [20.5], // Between normal (20) and liminar (21)
+          rawPrices: ['20.5'], // Between normal (20) and liminar (21)
         }));
 
         mockCounterOfferSettingsRepository.getSettings.mockResolvedValueOnce({
@@ -612,11 +602,10 @@ describe('TelegramPurchaseHandler', () => {
       it('should send "Vamos!" when user accepts price higher than calculated', async () => {
         availableMiles[2] = 10000; // SMILES LIMINAR - not enough (single price scenario)
 
-        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
-          quantity: 30_000,
+        mockMessageParser.extractData.mockResolvedValue(createRawExtractionOutput({
+          rawQuantity: '30k',
           cpfCount: 1,
-          airlineId: PROGRAM_IDS.SMILES,
-          acceptedPrices: [25],
+          rawPrices: ['25'],
         }));
 
         await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF aceito 25');
@@ -633,11 +622,10 @@ describe('TelegramPurchaseHandler', () => {
       it('should send "Vamos!" when user accepts price equal to calculated', async () => {
         availableMiles[2] = 10000; // SMILES LIMINAR - not enough (single price scenario)
 
-        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
-          quantity: 30_000,
+        mockMessageParser.extractData.mockResolvedValue(createRawExtractionOutput({
+          rawQuantity: '30k',
           cpfCount: 1,
-          airlineId: PROGRAM_IDS.SMILES,
-          acceptedPrices: [20],
+          rawPrices: ['20'],
         }));
 
         await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF aceito 20');
@@ -654,11 +642,10 @@ describe('TelegramPurchaseHandler', () => {
       it('should send calculated price when user accepts price lower than calculated (counter offer enabled)', async () => {
         availableMiles[2] = 10000; // SMILES LIMINAR - not enough (single price scenario)
 
-        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
-          quantity: 30_000,
+        mockMessageParser.extractData.mockResolvedValue(createRawExtractionOutput({
+          rawQuantity: '30k',
           cpfCount: 1,
-          airlineId: PROGRAM_IDS.SMILES,
-          acceptedPrices: [15],
+          rawPrices: ['15'],
         }));
 
         mockCounterOfferSettingsRepository.getSettings.mockResolvedValueOnce({
@@ -693,11 +680,10 @@ describe('TelegramPurchaseHandler', () => {
       it('should send calculated price in group when user accepts price lower than calculated and counter offer is disabled', async () => {
         availableMiles[2] = 10000; // SMILES LIMINAR - not enough (single price scenario)
 
-        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
-          quantity: 30_000,
+        mockMessageParser.extractData.mockResolvedValue(createRawExtractionOutput({
+          rawQuantity: '30k',
           cpfCount: 1,
-          airlineId: PROGRAM_IDS.SMILES,
-          acceptedPrices: [15],
+          rawPrices: ['15'],
         }));
 
         await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF aceito 15');
@@ -715,11 +701,10 @@ describe('TelegramPurchaseHandler', () => {
       it('should send default price message in group when user accepts price lower than calculated but difference exceeds threshold', async () => {
         availableMiles[2] = 10000; // SMILES LIMINAR - not enough (single price scenario)
 
-        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
-          quantity: 30_000,
+        mockMessageParser.extractData.mockResolvedValue(createRawExtractionOutput({
+          rawQuantity: '30k',
           cpfCount: 1,
-          airlineId: PROGRAM_IDS.SMILES,
-          acceptedPrices: [10],
+          rawPrices: ['10'],
         }));
 
         mockCounterOfferSettingsRepository.getSettings.mockResolvedValueOnce({
@@ -750,11 +735,10 @@ describe('TelegramPurchaseHandler', () => {
       });
 
       it('should skip when multiple accepted prices are present (bot trap detection)', async () => {
-        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
-          quantity: 30_000,
+        mockMessageParser.extractData.mockResolvedValue(createRawExtractionOutput({
+          rawQuantity: '30k',
           cpfCount: 1,
-          airlineId: PROGRAM_IDS.SMILES,
-          acceptedPrices: [25, 22, 30],
+          rawPrices: ['25', '22', '30'],
         }));
 
         await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF aceito 22');
@@ -765,11 +749,10 @@ describe('TelegramPurchaseHandler', () => {
 
     describe('Absurd price filter', () => {
       it('should skip when accepted price is below program absurd price min', async () => {
-        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
-          quantity: 30_000,
+        mockMessageParser.extractData.mockResolvedValue(createRawExtractionOutput({
+          rawQuantity: '30k',
           cpfCount: 1,
-          airlineId: PROGRAM_IDS.SMILES,
-          acceptedPrices: [5], // Below SMILES min (10)
+          rawPrices: ['5'], // Below SMILES min (10)
         }));
 
         await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF aceito 5');
@@ -778,11 +761,10 @@ describe('TelegramPurchaseHandler', () => {
       });
 
       it('should skip when accepted price is above program absurd price max', async () => {
-        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
-          quantity: 30_000,
+        mockMessageParser.extractData.mockResolvedValue(createRawExtractionOutput({
+          rawQuantity: '30k',
           cpfCount: 1,
-          airlineId: PROGRAM_IDS.SMILES,
-          acceptedPrices: [30], // Above SMILES max (25)
+          rawPrices: ['30'], // Above SMILES max (25)
         }));
 
         await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF aceito 30');
@@ -793,11 +775,10 @@ describe('TelegramPurchaseHandler', () => {
       it('should process when accepted price is within program absurd price range', async () => {
         availableMiles[2] = 10000; // SMILES LIMINAR - not enough (single price scenario)
 
-        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
-          quantity: 30_000,
+        mockMessageParser.extractData.mockResolvedValue(createRawExtractionOutput({
+          rawQuantity: '30k',
           cpfCount: 1,
-          airlineId: PROGRAM_IDS.SMILES,
-          acceptedPrices: [15], // Within SMILES range (10-19)
+          rawPrices: ['15'], // Within SMILES range (10-19)
         }));
 
         await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF aceito 15');
@@ -808,11 +789,10 @@ describe('TelegramPurchaseHandler', () => {
       it('should process when accepted price equals absurd price min', async () => {
         availableMiles[2] = 10000;
 
-        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
-          quantity: 30_000,
+        mockMessageParser.extractData.mockResolvedValue(createRawExtractionOutput({
+          rawQuantity: '30k',
           cpfCount: 1,
-          airlineId: PROGRAM_IDS.SMILES,
-          acceptedPrices: [10], // Equals SMILES min (10)
+          rawPrices: ['10'], // Equals SMILES min (10)
         }));
 
         await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF aceito 10');
@@ -823,11 +803,10 @@ describe('TelegramPurchaseHandler', () => {
       it('should process when accepted price equals absurd price max', async () => {
         availableMiles[2] = 10000;
 
-        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
-          quantity: 30_000,
+        mockMessageParser.extractData.mockResolvedValue(createRawExtractionOutput({
+          rawQuantity: '30k',
           cpfCount: 1,
-          airlineId: PROGRAM_IDS.SMILES,
-          acceptedPrices: [25], // Equals SMILES max (25)
+          rawPrices: ['25'], // Equals SMILES max (25)
         }));
 
         await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF aceito 25');
@@ -837,11 +816,10 @@ describe('TelegramPurchaseHandler', () => {
 
       it('should not filter when program has no absurd price range configured', async () => {
         // SMILES Liminar has null absurdPriceMin/Max
-        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
-          quantity: 30_000,
+        mockMessageParser.extractData.mockResolvedValue(createRawExtractionOutput({
+          rawQuantity: '30k',
           cpfCount: 1,
-          airlineId: PROGRAM_IDS['SMILES Liminar'],
-          acceptedPrices: [999], // Any price should pass
+          rawPrices: ['999'], // Any price should pass
         }));
 
         await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES LIMINAR 30k 1CPF aceito 999');
@@ -850,11 +828,10 @@ describe('TelegramPurchaseHandler', () => {
       });
 
       it('should not filter when no accepted prices are present', async () => {
-        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
-          quantity: 30_000,
+        mockMessageParser.extractData.mockResolvedValue(createRawExtractionOutput({
+          rawQuantity: '30k',
           cpfCount: 1,
-          airlineId: PROGRAM_IDS.SMILES,
-          acceptedPrices: [],
+          rawPrices: [],
         }));
 
         await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF');
@@ -869,11 +846,10 @@ describe('TelegramPurchaseHandler', () => {
         ]);
         availableMiles[2] = 10000;
 
-        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
-          quantity: 30_000,
+        mockMessageParser.extractData.mockResolvedValue(createRawExtractionOutput({
+          rawQuantity: '30k',
           cpfCount: 1,
-          airlineId: PROGRAM_IDS.SMILES,
-          acceptedPrices: [5], // Below min, max is null
+          rawPrices: ['5'], // Below min, max is null
         }));
 
         await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF aceito 5');
@@ -888,11 +864,10 @@ describe('TelegramPurchaseHandler', () => {
         ]);
         availableMiles[2] = 10000;
 
-        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
-          quantity: 30_000,
+        mockMessageParser.extractData.mockResolvedValue(createRawExtractionOutput({
+          rawQuantity: '30k',
           cpfCount: 1,
-          airlineId: PROGRAM_IDS.SMILES,
-          acceptedPrices: [999], // Way above, but no max configured
+          rawPrices: ['999'], // Way above, but no max configured
         }));
 
         await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF aceito 999');
@@ -907,11 +882,10 @@ describe('TelegramPurchaseHandler', () => {
         ]);
         availableMiles[2] = 10000;
 
-        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
-          quantity: 30_000,
+        mockMessageParser.extractData.mockResolvedValue(createRawExtractionOutput({
+          rawQuantity: '30k',
           cpfCount: 1,
-          airlineId: PROGRAM_IDS.SMILES,
-          acceptedPrices: [30], // Above max, min is null
+          rawPrices: ['30'], // Above max, min is null
         }));
 
         await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF aceito 30');
@@ -926,11 +900,10 @@ describe('TelegramPurchaseHandler', () => {
         ]);
         availableMiles[2] = 10000;
 
-        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
-          quantity: 30_000,
+        mockMessageParser.extractData.mockResolvedValue(createRawExtractionOutput({
+          rawQuantity: '30k',
           cpfCount: 1,
-          airlineId: PROGRAM_IDS.SMILES,
-          acceptedPrices: [1], // Way below, but no min configured
+          rawPrices: ['1'], // Way below, but no min configured
         }));
 
         await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF aceito 1');
@@ -939,11 +912,10 @@ describe('TelegramPurchaseHandler', () => {
       });
 
       it('should filter based on the identified program range (LATAM)', async () => {
-        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
-          quantity: 30_000,
+        mockMessageParser.extractData.mockResolvedValue(createRawExtractionOutput({
+          rawQuantity: '30k',
           cpfCount: 1,
-          airlineId: PROGRAM_IDS.LATAM,
-          acceptedPrices: [5], // Below LATAM min (12)
+          rawPrices: ['5'], // Below LATAM min (12)
         }));
 
         await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'LATAM 30k 1CPF aceito 5');
@@ -954,14 +926,9 @@ describe('TelegramPurchaseHandler', () => {
 
     describe('Provider not found', () => {
       it('should not send message when provider is not found', async () => {
-        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
-          quantity: 30_000,
-          cpfCount: 1,
-          airlineId: 999,
-        }));
-
         await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'UNKNOWN_AIRLINE 30k 1CPF');
 
+        expect(mockMessageParser.extractData).not.toHaveBeenCalled();
         expect(mockTdlibUserClient.sendMessage).not.toHaveBeenCalled();
       });
 
@@ -969,38 +936,31 @@ describe('TelegramPurchaseHandler', () => {
 
     describe('Invalid purchase request', () => {
       it('should not send message when parser returns null', async () => {
-        mockMessageParser.parse.mockResolvedValue(null);
+        mockMessageParser.extractData.mockResolvedValue(null);
 
-        await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'random text');
+        await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF text');
 
         expect(mockTdlibUserClient.sendMessage).not.toHaveBeenCalled();
       });
 
-      it('should not send message when parser returns empty array', async () => {
-        mockMessageParser.parse.mockResolvedValue([]);
+      it('should not send message when all proposals have invalid quantity', async () => {
+        mockMessageParser.extractData.mockResolvedValue(createRawExtractionOutput({
+          rawQuantity: '0', cpfCount: 1,
+        }));
 
-        await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'random text');
+        await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF text');
 
         expect(mockTdlibUserClient.sendMessage).not.toHaveBeenCalled();
       });
 
       it('should not send message when parser returns multiple proposals', async () => {
-        mockMessageParser.parse.mockResolvedValue([
-          {
-            isPurchaseProposal: true,
-            quantity: 30_000,
-            cpfCount: 1,
-            airlineId: PROGRAM_IDS.SMILES,
-            acceptedPrices: [],
-          },
-          {
-            isPurchaseProposal: true,
-            quantity: 50_000,
-            cpfCount: 2,
-            airlineId: PROGRAM_IDS.LATAM,
-            acceptedPrices: [],
-          },
-        ]);
+        mockMessageParser.extractData.mockResolvedValue({
+          isPurchaseProposal: true as const,
+          proposals: [
+            { rawQuantity: '30k', cpfCount: 1, rawPrices: [] },
+            { rawQuantity: '50k', cpfCount: 2, rawPrices: [] },
+          ],
+        });
 
         await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF e LATAM 50k 2CPF');
 
@@ -1008,10 +968,9 @@ describe('TelegramPurchaseHandler', () => {
       });
 
       it('should not send message when quantity is zero', async () => {
-        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
-          quantity: 0,
+        mockMessageParser.extractData.mockResolvedValue(createRawExtractionOutput({
+          rawQuantity: '0',
           cpfCount: 1,
-          airlineId: PROGRAM_IDS.SMILES,
         }));
 
         await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 0k 1CPF');
@@ -1025,10 +984,9 @@ describe('TelegramPurchaseHandler', () => {
         availableMiles[1] = 100000;
         availableMiles[2] = 100000;
 
-        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
-          quantity: 60_000,
+        mockMessageParser.extractData.mockResolvedValue(createRawExtractionOutput({
+          rawQuantity: '60k',
           cpfCount: 2,
-          airlineId: PROGRAM_IDS.SMILES,
         }));
 
         await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 60k 2CPF');
@@ -1051,10 +1009,9 @@ describe('TelegramPurchaseHandler', () => {
           return Promise.resolve(maxPrices[programId] ?? null);
         });
 
-        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
-          quantity: 15_000,
+        mockMessageParser.extractData.mockResolvedValue(createRawExtractionOutput({
+          rawQuantity: '15k',
           cpfCount: 1,
-          airlineId: PROGRAM_IDS.SMILES,
         }));
 
         await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 15k 1CPF');
@@ -1074,10 +1031,9 @@ describe('TelegramPurchaseHandler', () => {
           return Promise.resolve(maxPrices[programId] ?? null);
         });
 
-        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
-          quantity: 30_000,
+        mockMessageParser.extractData.mockResolvedValue(createRawExtractionOutput({
+          rawQuantity: '30k',
           cpfCount: 1,
-          airlineId: PROGRAM_IDS.SMILES,
         }));
 
         await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF');
@@ -1096,10 +1052,9 @@ describe('TelegramPurchaseHandler', () => {
           return Promise.resolve(null);
         });
 
-        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
-          quantity: 30_000,
+        mockMessageParser.extractData.mockResolvedValue(createRawExtractionOutput({
+          rawQuantity: '30k',
           cpfCount: 1,
-          airlineId: PROGRAM_IDS.SMILES,
         }));
 
         await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF');
@@ -1113,10 +1068,9 @@ describe('TelegramPurchaseHandler', () => {
           return Promise.resolve(null);
         });
 
-        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
-          quantity: 30_000,
+        mockMessageParser.extractData.mockResolvedValue(createRawExtractionOutput({
+          rawQuantity: '30k',
           cpfCount: 1,
-          airlineId: PROGRAM_IDS.SMILES,
         }));
 
         await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF');
@@ -1132,10 +1086,9 @@ describe('TelegramPurchaseHandler', () => {
           return Promise.resolve(null);
         });
 
-        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
-          quantity: 30_000,
+        mockMessageParser.extractData.mockResolvedValue(createRawExtractionOutput({
+          rawQuantity: '30k',
           cpfCount: 1,
-          airlineId: PROGRAM_IDS.SMILES,
         }));
 
         await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF');
@@ -1152,10 +1105,9 @@ describe('TelegramPurchaseHandler', () => {
           return Promise.resolve(null);
         });
 
-        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
-          quantity: 30_000,
+        mockMessageParser.extractData.mockResolvedValue(createRawExtractionOutput({
+          rawQuantity: '30k',
           cpfCount: 1,
-          airlineId: PROGRAM_IDS.SMILES,
         }));
 
         await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF');
@@ -1164,10 +1116,9 @@ describe('TelegramPurchaseHandler', () => {
       });
 
       it('should send message when no minimum quantity is configured', async () => {
-        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
-          quantity: 15_000,
+        mockMessageParser.extractData.mockResolvedValue(createRawExtractionOutput({
+          rawQuantity: '15k',
           cpfCount: 1,
-          airlineId: PROGRAM_IDS.SMILES,
         }));
 
         await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 15k 1CPF');
@@ -1182,10 +1133,9 @@ describe('TelegramPurchaseHandler', () => {
           return Promise.resolve(null);
         });
 
-        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
-          quantity: 50_000,
+        mockMessageParser.extractData.mockResolvedValue(createRawExtractionOutput({
+          rawQuantity: '50k',
           cpfCount: 2,
-          airlineId: PROGRAM_IDS.SMILES,
         }));
 
         await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 50k 2CPF');
@@ -1200,10 +1150,9 @@ describe('TelegramPurchaseHandler', () => {
           return Promise.resolve(null);
         });
 
-        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
-          quantity: 50_000,
+        mockMessageParser.extractData.mockResolvedValue(createRawExtractionOutput({
+          rawQuantity: '50k',
           cpfCount: 2,
-          airlineId: PROGRAM_IDS.SMILES,
         }));
 
         await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 50k 2CPF');
@@ -1224,10 +1173,9 @@ describe('TelegramPurchaseHandler', () => {
           return Promise.resolve(priceTables[programId] ?? null);
         });
 
-        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
-          quantity: 30_000,
+        mockMessageParser.extractData.mockResolvedValue(createRawExtractionOutput({
+          rawQuantity: '30k',
           cpfCount: 1,
-          airlineId: PROGRAM_IDS.SMILES,
         }));
 
         await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF');
@@ -1238,10 +1186,9 @@ describe('TelegramPurchaseHandler', () => {
       it('should send liminar price when normal program is not configured but liminar is', async () => {
         configuredProgramIds = [2, 3, 4, 5, 6]; // No SMILES (id: 1), but SMILES LIMINAR (id: 2) is configured
 
-        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
-          quantity: 30_000,
+        mockMessageParser.extractData.mockResolvedValue(createRawExtractionOutput({
+          rawQuantity: '30k',
           cpfCount: 1,
-          airlineId: PROGRAM_IDS.SMILES,
         }));
 
         await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF');
@@ -1254,10 +1201,9 @@ describe('TelegramPurchaseHandler', () => {
       it('should not send message when neither normal nor liminar is configured', async () => {
         configuredProgramIds = [3, 4, 5, 6]; // No SMILES (id: 1) nor SMILES LIMINAR (id: 2)
 
-        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
-          quantity: 30_000,
+        mockMessageParser.extractData.mockResolvedValue(createRawExtractionOutput({
+          rawQuantity: '30k',
           cpfCount: 1,
-          airlineId: PROGRAM_IDS.SMILES,
         }));
 
         await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF');
@@ -1278,12 +1224,12 @@ describe('TelegramPurchaseHandler', () => {
           true,
         );
 
-        expect(mockMessageParser.parse).not.toHaveBeenCalled();
+        expect(mockMessageParser.extractData).not.toHaveBeenCalled();
         expect(mockTdlibUserClient.sendMessage).not.toHaveBeenCalled();
       });
 
       it('should process message when isReply is false', async () => {
-        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray());
+        mockMessageParser.extractData.mockResolvedValue(createRawExtractionOutput());
 
         await handler.handlePurchase(
           loggedInUserId,
@@ -1295,11 +1241,11 @@ describe('TelegramPurchaseHandler', () => {
           false,
         );
 
-        expect(mockMessageParser.parse).toHaveBeenCalled();
+        expect(mockMessageParser.extractData).toHaveBeenCalled();
       });
 
       it('should process message when isReply is omitted (defaults to false)', async () => {
-        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray());
+        mockMessageParser.extractData.mockResolvedValue(createRawExtractionOutput());
 
         await handler.handlePurchase(
           loggedInUserId,
@@ -1309,7 +1255,7 @@ describe('TelegramPurchaseHandler', () => {
           'SMILES 30k 1CPF',
         );
 
-        expect(mockMessageParser.parse).toHaveBeenCalled();
+        expect(mockMessageParser.extractData).toHaveBeenCalled();
       });
     });
 
@@ -1327,7 +1273,7 @@ describe('TelegramPurchaseHandler', () => {
           longMessage,
         );
 
-        expect(mockMessageParser.parse).not.toHaveBeenCalled();
+        expect(mockMessageParser.extractData).not.toHaveBeenCalled();
         expect(mockTdlibUserClient.sendMessage).not.toHaveBeenCalled();
       });
 
@@ -1335,7 +1281,7 @@ describe('TelegramPurchaseHandler', () => {
         const message = 'SMILES 30k 1CPF ' + 'a'.repeat(150 - 'SMILES 30k 1CPF '.length);
         expect(message.length).toBe(150);
 
-        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray());
+        mockMessageParser.extractData.mockResolvedValue(createRawExtractionOutput());
 
         await handler.handlePurchase(
           loggedInUserId,
@@ -1345,11 +1291,11 @@ describe('TelegramPurchaseHandler', () => {
           message,
         );
 
-        expect(mockMessageParser.parse).toHaveBeenCalled();
+        expect(mockMessageParser.extractData).toHaveBeenCalled();
       });
 
       it('should accept short telegraphic message (not affected by max length)', async () => {
-        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray());
+        mockMessageParser.extractData.mockResolvedValue(createRawExtractionOutput());
 
         await handler.handlePurchase(
           loggedInUserId,
@@ -1359,7 +1305,7 @@ describe('TelegramPurchaseHandler', () => {
           'SMILES 30k 1CPF',
         );
 
-        expect(mockMessageParser.parse).toHaveBeenCalled();
+        expect(mockMessageParser.extractData).toHaveBeenCalled();
       });
     });
 
@@ -1426,7 +1372,7 @@ describe('TelegramPurchaseHandler', () => {
           text,
         );
 
-        expect(mockMessageParser.parse).not.toHaveBeenCalled();
+        expect(mockMessageParser.extractData).not.toHaveBeenCalled();
         expect(mockTdlibUserClient.sendMessage).not.toHaveBeenCalled();
       });
 
@@ -1436,7 +1382,7 @@ describe('TelegramPurchaseHandler', () => {
         ['Botafogo (contains "bot" as substring)', 'SMILES 30k 1CPF Botafogo'],
         ['robotics (contains "robot" as substring)', 'SMILES 30k 1CPF robotics'],
       ])('should NOT skip message with "%s"', async (_label, text) => {
-        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray());
+        mockMessageParser.extractData.mockResolvedValue(createRawExtractionOutput());
 
         await handler.handlePurchase(
           loggedInUserId,
@@ -1446,7 +1392,7 @@ describe('TelegramPurchaseHandler', () => {
           text,
         );
 
-        expect(mockMessageParser.parse).toHaveBeenCalled();
+        expect(mockMessageParser.extractData).toHaveBeenCalled();
       });
     });
 
@@ -1466,10 +1412,9 @@ describe('TelegramPurchaseHandler', () => {
           updatedAt: new Date(),
         });
 
-        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
-          quantity: 30_000,
+        mockMessageParser.extractData.mockResolvedValue(createRawExtractionOutput({
+          rawQuantity: '30k',
           cpfCount: 1,
-          airlineId: PROGRAM_IDS.SMILES,
         }));
 
         const senderId = 999;
@@ -1479,10 +1424,9 @@ describe('TelegramPurchaseHandler', () => {
         expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledTimes(1);
 
         jest.clearAllMocks();
-        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
-          quantity: 30_000,
+        mockMessageParser.extractData.mockResolvedValue(createRawExtractionOutput({
+          rawQuantity: '30k',
           cpfCount: 1,
-          airlineId: PROGRAM_IDS.SMILES,
         }));
         mockCounterOfferSettingsRepository.getSettings.mockResolvedValue({
           userId: loggedInUserId,
@@ -1518,7 +1462,7 @@ describe('TelegramPurchaseHandler', () => {
           updatedAt: new Date(),
         });
 
-        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray());
+        mockMessageParser.extractData.mockResolvedValue(createRawExtractionOutput());
         const senderId = 999;
 
         await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF', senderId);
@@ -1542,7 +1486,7 @@ describe('TelegramPurchaseHandler', () => {
           updatedAt: new Date(),
         });
 
-        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray());
+        mockMessageParser.extractData.mockResolvedValue(createRawExtractionOutput());
 
         await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF', 999);
         await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF', 888);
@@ -1568,18 +1512,16 @@ describe('TelegramPurchaseHandler', () => {
         const senderId = 999;
 
         // First call: SMILES 30k
-        mockMessageParser.parse.mockResolvedValueOnce(createPurchaseProposalArray({
-          quantity: 30_000,
+        mockMessageParser.extractData.mockResolvedValueOnce(createRawExtractionOutput({
+          rawQuantity: '30k',
           cpfCount: 1,
-          airlineId: PROGRAM_IDS.SMILES,
         }));
         await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF', senderId);
 
         // Second call: LATAM 30k (different program)
-        mockMessageParser.parse.mockResolvedValueOnce(createPurchaseProposalArray({
-          quantity: 30_000,
+        mockMessageParser.extractData.mockResolvedValueOnce(createRawExtractionOutput({
+          rawQuantity: '30k',
           cpfCount: 1,
-          airlineId: PROGRAM_IDS.LATAM,
         }));
         await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'LATAM 30k 1CPF', senderId);
 
@@ -1589,10 +1531,9 @@ describe('TelegramPurchaseHandler', () => {
 
     describe('cpfCount=0 handling', () => {
       it('should process with cpfCount=1 when cpfCount=0 and program has noCpfAllowed=true', async () => {
-        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
-          quantity: 30_000,
+        mockMessageParser.extractData.mockResolvedValue(createRawExtractionOutput({
+          rawQuantity: '30k',
           cpfCount: 0,
-          airlineId: PROGRAM_IDS['AZUL VIAGENS'],
         }));
 
         await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'Azul Viagens 30k sem CPF');
@@ -1604,10 +1545,9 @@ describe('TelegramPurchaseHandler', () => {
       });
 
       it('should reject (no response) when cpfCount=0 and program has noCpfAllowed=false', async () => {
-        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
-          quantity: 30_000,
+        mockMessageParser.extractData.mockResolvedValue(createRawExtractionOutput({
+          rawQuantity: '30k',
           cpfCount: 0,
-          airlineId: PROGRAM_IDS.SMILES,
         }));
 
         await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k sem CPF');
@@ -1619,17 +1559,15 @@ describe('TelegramPurchaseHandler', () => {
 
     describe('Reasoning effort per group', () => {
       it('should pass reasoning effort "minimal" when no reasoning setting exists', async () => {
-        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
-          quantity: 30_000,
+        mockMessageParser.extractData.mockResolvedValue(createRawExtractionOutput({
+          rawQuantity: '30k',
           cpfCount: 1,
-          airlineId: PROGRAM_IDS.SMILES,
         }));
 
         await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF');
 
-        expect(mockMessageParser.parse).toHaveBeenCalledWith(
+        expect(mockMessageParser.extractData).toHaveBeenCalledWith(
           'SMILES 30k 1CPF',
-          expect.any(Array),
           'minimal',
         );
       });
@@ -1643,17 +1581,15 @@ describe('TelegramPurchaseHandler', () => {
           updatedAt: new Date(),
         });
 
-        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
-          quantity: 30_000,
+        mockMessageParser.extractData.mockResolvedValue(createRawExtractionOutput({
+          rawQuantity: '30k',
           cpfCount: 1,
-          airlineId: PROGRAM_IDS.SMILES,
         }));
 
         await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF');
 
-        expect(mockMessageParser.parse).toHaveBeenCalledWith(
+        expect(mockMessageParser.extractData).toHaveBeenCalledWith(
           'SMILES 30k 1CPF',
-          expect.any(Array),
           'minimal',
         );
       });
@@ -1667,17 +1603,15 @@ describe('TelegramPurchaseHandler', () => {
           updatedAt: new Date(),
         });
 
-        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
-          quantity: 30_000,
+        mockMessageParser.extractData.mockResolvedValue(createRawExtractionOutput({
+          rawQuantity: '30k',
           cpfCount: 1,
-          airlineId: PROGRAM_IDS.SMILES,
         }));
 
         await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF');
 
-        expect(mockMessageParser.parse).toHaveBeenCalledWith(
+        expect(mockMessageParser.extractData).toHaveBeenCalledWith(
           'SMILES 30k 1CPF',
-          expect.any(Array),
           'high',
         );
       });
@@ -1714,11 +1648,10 @@ describe('TelegramPurchaseHandler', () => {
         });
 
         // Buyer offers 19, our price is 20 (diff=1, within threshold=2)
-        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
-          quantity: 30_000,
+        mockMessageParser.extractData.mockResolvedValue(createRawExtractionOutput({
+          rawQuantity: '30k',
           cpfCount: 1,
-          airlineId: PROGRAM_IDS.SMILES,
-          acceptedPrices: [19],
+          rawPrices: ['19'],
         }));
 
         await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF R$19', senderId);
@@ -1756,11 +1689,10 @@ describe('TelegramPurchaseHandler', () => {
         });
 
         // Buyer offers 19, our price is 20 (diff=1, within threshold=2)
-        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
-          quantity: 30_000,
+        mockMessageParser.extractData.mockResolvedValue(createRawExtractionOutput({
+          rawQuantity: '30k',
           cpfCount: 1,
-          airlineId: PROGRAM_IDS.SMILES,
-          acceptedPrices: [19],
+          rawPrices: ['19'],
         }));
 
         await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF R$19', senderId);
@@ -1790,11 +1722,10 @@ describe('TelegramPurchaseHandler', () => {
         mockPriceTableProvider.getCounterOfferThresholdForProgram.mockResolvedValue(3);
 
         // Buyer offers 18, our price is 20 (diff=2, within per-program threshold=3 but NOT within global threshold=0.5)
-        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
-          quantity: 30_000,
+        mockMessageParser.extractData.mockResolvedValue(createRawExtractionOutput({
+          rawQuantity: '30k',
           cpfCount: 1,
-          airlineId: PROGRAM_IDS.SMILES,
-          acceptedPrices: [18],
+          rawPrices: ['18'],
         }));
 
         await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF R$18', senderId);
@@ -1823,11 +1754,10 @@ describe('TelegramPurchaseHandler', () => {
         mockPriceTableProvider.getCounterOfferThresholdForProgram.mockResolvedValue(null);
 
         // Buyer offers 19, our price is 20 (diff=1, within global threshold=2)
-        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
-          quantity: 30_000,
+        mockMessageParser.extractData.mockResolvedValue(createRawExtractionOutput({
+          rawQuantity: '30k',
           cpfCount: 1,
-          airlineId: PROGRAM_IDS.SMILES,
-          acceptedPrices: [19],
+          rawPrices: ['19'],
         }));
 
         await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF R$19', senderId);
@@ -1856,11 +1786,10 @@ describe('TelegramPurchaseHandler', () => {
         mockGroupCounterOfferSettingsRepository.getGroupSetting.mockResolvedValue(null);
 
         // Buyer offers 19, our price is 20 (diff=1, within global threshold=2)
-        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
-          quantity: 30_000,
+        mockMessageParser.extractData.mockResolvedValue(createRawExtractionOutput({
+          rawQuantity: '30k',
           cpfCount: 1,
-          airlineId: PROGRAM_IDS.SMILES,
-          acceptedPrices: [19],
+          rawPrices: ['19'],
         }));
 
         await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF R$19', senderId);
@@ -1884,11 +1813,10 @@ describe('TelegramPurchaseHandler', () => {
       });
 
       it('should apply private delay before sending counter offer when group has delay configured', async () => {
-        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
-          quantity: 30_000,
+        mockMessageParser.extractData.mockResolvedValue(createRawExtractionOutput({
+          rawQuantity: '30k',
           cpfCount: 1,
-          airlineId: PROGRAM_IDS.SMILES,
-          acceptedPrices: [19], // Within threshold (diff = 1)
+          rawPrices: ['19'], // Within threshold (diff = 1)
         }));
 
         mockCounterOfferSettingsRepository.getSettings.mockResolvedValueOnce({
@@ -1936,11 +1864,10 @@ describe('TelegramPurchaseHandler', () => {
       });
 
       it('should apply private delay before sending CTA when group has delay configured', async () => {
-        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
-          quantity: 30_000,
+        mockMessageParser.extractData.mockResolvedValue(createRawExtractionOutput({
+          rawQuantity: '30k',
           cpfCount: 1,
-          airlineId: PROGRAM_IDS.SMILES,
-          acceptedPrices: [25], // Higher than calculated price
+          rawPrices: ['25'], // Higher than calculated price
         }));
 
         mockCounterOfferSettingsRepository.getSettings.mockResolvedValueOnce({
@@ -1987,11 +1914,10 @@ describe('TelegramPurchaseHandler', () => {
       });
 
       it('should not apply private delay when group has no override', async () => {
-        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
-          quantity: 30_000,
+        mockMessageParser.extractData.mockResolvedValue(createRawExtractionOutput({
+          rawQuantity: '30k',
           cpfCount: 1,
-          airlineId: PROGRAM_IDS.SMILES,
-          acceptedPrices: [25],
+          rawPrices: ['25'],
         }));
 
         mockCounterOfferSettingsRepository.getSettings.mockResolvedValueOnce({
@@ -2020,11 +1946,10 @@ describe('TelegramPurchaseHandler', () => {
       });
 
       it('should apply fixed delay when only privateDelayMin is provided', async () => {
-        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
-          quantity: 30_000,
+        mockMessageParser.extractData.mockResolvedValue(createRawExtractionOutput({
+          rawQuantity: '30k',
           cpfCount: 1,
-          airlineId: PROGRAM_IDS.SMILES,
-          acceptedPrices: [25],
+          rawPrices: ['25'],
         }));
 
         mockCounterOfferSettingsRepository.getSettings.mockResolvedValueOnce({
@@ -2066,11 +1991,10 @@ describe('TelegramPurchaseHandler', () => {
       });
 
       it('should apply fixed delay when only privateDelayMax is provided', async () => {
-        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
-          quantity: 30_000,
+        mockMessageParser.extractData.mockResolvedValue(createRawExtractionOutput({
+          rawQuantity: '30k',
           cpfCount: 1,
-          airlineId: PROGRAM_IDS.SMILES,
-          acceptedPrices: [25],
+          rawPrices: ['25'],
         }));
 
         mockCounterOfferSettingsRepository.getSettings.mockResolvedValueOnce({
@@ -2112,11 +2036,10 @@ describe('TelegramPurchaseHandler', () => {
       });
 
       it('should not apply private delay when group delay values are null', async () => {
-        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
-          quantity: 30_000,
+        mockMessageParser.extractData.mockResolvedValue(createRawExtractionOutput({
+          rawQuantity: '30k',
           cpfCount: 1,
-          airlineId: PROGRAM_IDS.SMILES,
-          acceptedPrices: [25],
+          rawPrices: ['25'],
         }));
 
         mockCounterOfferSettingsRepository.getSettings.mockResolvedValueOnce({
@@ -2166,8 +2089,8 @@ describe('TelegramPurchaseHandler', () => {
           groupDedupEnabled: false, groupDedupWindowMinutes: 1,
           createdAt: new Date(), updatedAt: new Date(),
         });
-        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
-          quantity: 30_000, cpfCount: 1, acceptedPrices: [15],
+        mockMessageParser.extractData.mockResolvedValue(createRawExtractionOutput({
+          rawQuantity: '30k', cpfCount: 1, rawPrices: ['15'],
         }));
 
         await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'smiles 30k 1cpf aceito 15', 456);
@@ -2186,8 +2109,8 @@ describe('TelegramPurchaseHandler', () => {
           groupDedupEnabled: false, groupDedupWindowMinutes: 1,
           createdAt: new Date(), updatedAt: new Date(),
         });
-        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
-          quantity: 30_000, cpfCount: 1, acceptedPrices: [15],
+        mockMessageParser.extractData.mockResolvedValue(createRawExtractionOutput({
+          rawQuantity: '30k', cpfCount: 1, rawPrices: ['15'],
         }));
 
         await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'smiles 30k 1cpf aceito 15', 456);
@@ -2209,8 +2132,8 @@ describe('TelegramPurchaseHandler', () => {
           groupDedupEnabled: false, groupDedupWindowMinutes: 1,
           createdAt: new Date(), updatedAt: new Date(),
         });
-        mockMessageParser.parse.mockResolvedValue(createPurchaseProposalArray({
-          quantity: 30_000, cpfCount: 1, acceptedPrices: [15],
+        mockMessageParser.extractData.mockResolvedValue(createRawExtractionOutput({
+          rawQuantity: '30k', cpfCount: 1, rawPrices: ['15'],
         }));
 
         await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, originalMessage, 456);
@@ -2218,6 +2141,108 @@ describe('TelegramPurchaseHandler', () => {
         expect(mockTdlibUserClient.sendMessageToUser).toHaveBeenCalledWith(
           telegramUserId, 456, expect.stringContaining(originalMessage),
         );
+      });
+    });
+
+    describe('Closing message templates', () => {
+      it('should use custom closing template when available', async () => {
+        mockMessageTemplateRepository.findActiveByUserAndType.mockImplementation(
+          (_userId: string, type: string) => {
+            if (type === 'closing') {
+              return Promise.resolve([
+                {
+                  id: 10,
+                  userId: loggedInUserId,
+                  type: 'closing' as const,
+                  body: 'Fechou! **{PROGRAMA}** {QUANTIDADE}k',
+                  isActive: true,
+                  createdAt: new Date(),
+                  updatedAt: new Date(),
+                },
+              ]);
+            }
+            return Promise.resolve([]);
+          },
+        );
+
+        mockMessageParser.extractData.mockResolvedValue(createRawExtractionOutput({
+          rawQuantity: '30k',
+          cpfCount: 1,
+          rawPrices: ['25'], // Higher than calculated (20)
+        }));
+
+        await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF aceito 25');
+
+        expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledTimes(1);
+        expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledWith(
+          telegramUserId,
+          chatId,
+          'Fechou! **SMILES** 30000k',
+          messageId,
+        );
+      });
+
+      it('should fall back to Vamos! when no closing templates configured', async () => {
+        // Default mock already returns [] for all types
+        mockMessageParser.extractData.mockResolvedValue(createRawExtractionOutput({
+          rawQuantity: '30k',
+          cpfCount: 1,
+          rawPrices: ['25'], // Higher than calculated (20)
+        }));
+
+        await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF aceito 25');
+
+        expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledTimes(1);
+        expect(mockTdlibUserClient.sendMessage).toHaveBeenCalledWith(
+          telegramUserId,
+          chatId,
+          'Vamos!',
+          messageId,
+        );
+      });
+    });
+
+    describe('Pre-LLM short-circuits', () => {
+      describe('Provider config check', () => {
+        it('should not call LLM when provider found but user has no config for it', async () => {
+          configuredProgramIds = [3, 4, 5, 6, 18];
+          await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF');
+          expect(mockMessageParser.extractData).not.toHaveBeenCalled();
+          expect(mockTdlibUserClient.sendMessage).not.toHaveBeenCalled();
+        });
+
+        it('should proceed to LLM when normal is not configured but liminar is', async () => {
+          configuredProgramIds = [2, 3, 4, 5, 6, 18];
+          mockMessageParser.extractData.mockResolvedValue(createRawExtractionOutput({
+            rawQuantity: '30k', cpfCount: 1,
+          }));
+          await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF');
+          expect(mockMessageParser.extractData).toHaveBeenCalled();
+        });
+      });
+
+      describe('Quantity pre-filter', () => {
+        it('should not call LLM when estimated quantity exceeds available miles for all variants', async () => {
+          await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 80k 1CPF');
+          expect(mockMessageParser.extractData).not.toHaveBeenCalled();
+          expect(mockTdlibUserClient.sendMessage).not.toHaveBeenCalled();
+        });
+
+        it('should proceed to LLM when quantity cannot be estimated (conservative)', async () => {
+          mockMessageParser.extractData.mockResolvedValue(createRawExtractionOutput({
+            rawQuantity: '84000', cpfCount: 1,
+          }));
+          await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 84000 1CPF');
+          expect(mockMessageParser.extractData).toHaveBeenCalled();
+        });
+
+        it('should proceed to LLM when estimated quantity has sufficient miles for at least one variant', async () => {
+          mockMessageParser.extractData.mockResolvedValue(createRawExtractionOutput({
+            rawQuantity: '30k', cpfCount: 1,
+          }));
+          await handler.handlePurchase(loggedInUserId, telegramUserId, chatId, messageId, 'SMILES 30k 1CPF');
+          expect(mockMessageParser.extractData).toHaveBeenCalled();
+        });
       });
     });
   });

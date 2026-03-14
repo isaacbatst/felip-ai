@@ -362,7 +362,7 @@
         </div>
       </div>
 
-      <!-- Sub-abas: Contra-proposta | Fechamento -->
+      <!-- Sub-abas: Contra-proposta | Fechamento | Aceitação -->
       <div class="flex gap-0 mb-4 bg-gray-100 rounded-lg p-1" :class="{ 'opacity-50': !counterOfferSettings.isEnabled }">
         <button class="flex-1 px-4 py-2.5 border-none rounded-md text-sm font-medium cursor-pointer transition-all hover:text-primary"
           :class="proposalSubTab === 'counterOffer' ? 'bg-white text-primary shadow-sm' : 'bg-transparent text-gray-500'"
@@ -375,6 +375,12 @@
           @click="proposalSubTab = 'callToAction'"
           :disabled="!counterOfferSettings.isEnabled">
           Fechamento
+        </button>
+        <button class="flex-1 px-4 py-2.5 border-none rounded-md text-sm font-medium cursor-pointer transition-all hover:text-primary"
+          :class="proposalSubTab === 'closing' ? 'bg-white text-primary shadow-sm' : 'bg-transparent text-gray-500'"
+          @click="proposalSubTab = 'closing'"
+          :disabled="!counterOfferSettings.isEnabled">
+          Aceitação
         </button>
       </div>
 
@@ -842,6 +848,231 @@
 
               <textarea x-ref="ctaTemplateTextarea"
                 x-init="$nextTick(() => $refs.ctaTemplateTextarea?.focus())"
+                x-model="editingTemplate.body"
+                @input="updateTemplatePreview()"
+                class="w-full p-3 border border-gray-200 rounded-lg text-sm font-mono resize-y min-h-[200px] focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                placeholder="Digite seu template aqui..."></textarea>
+
+              <div class="flex flex-wrap gap-2 mt-2">
+                <span class="text-xs text-gray-500">Placeholders:</span>
+                <button type="button" class="px-2 py-1 text-xs bg-gray-100 hover:bg-primary/10 text-gray-600 rounded cursor-pointer border-none transition-colors"
+                  @click="insertPlaceholder('{PROGRAMA}')" title="Programa de milhas (ex: SMILES)">{PROGRAMA}</button>
+                <button type="button" class="px-2 py-1 text-xs bg-gray-100 hover:bg-primary/10 text-gray-600 rounded cursor-pointer border-none transition-colors"
+                  @click="insertPlaceholder('{QUANTIDADE}')" title="Quantidade em milhares (ex: 50)">{QUANTIDADE}</button>
+                <button type="button" class="px-2 py-1 text-xs bg-gray-100 hover:bg-primary/10 text-gray-600 rounded cursor-pointer border-none transition-colors"
+                  @click="insertPlaceholder('{CPF_COUNT}')" title="Numero de CPFs">{CPF_COUNT}</button>
+                <button type="button" class="px-2 py-1 text-xs bg-gray-100 hover:bg-primary/10 text-gray-600 rounded cursor-pointer border-none transition-colors"
+                  @click="insertPlaceholder('{PRECO}')" title="Preco por milheiro (ex: 18,50)">{PRECO}</button>
+                <button type="button" class="px-2 py-1 text-xs bg-gray-100 hover:bg-primary/10 text-gray-600 rounded cursor-pointer border-none transition-colors"
+                  @click="insertPlaceholder('{MENSAGEM_ORIGINAL}')" title="Texto original da mensagem do grupo">{MENSAGEM_ORIGINAL}</button>
+              </div>
+              <p class="text-xs text-gray-400 mt-1.5 mb-0">Formatação: <code>**negrito**</code> <code>__itálico__</code> <code>`código`</code></p>
+
+              <div x-show="editingTemplate.body.length > 0" class="mt-3">
+                <h6 class="text-xs text-gray-500 mb-1">Preview:</h6>
+                <div class="text-xs text-gray-600 whitespace-pre-wrap bg-white p-3 rounded border border-gray-100 m-0 font-sans" x-html="templatePreviewHtml"></div>
+              </div>
+
+              <div class="flex gap-2 justify-end mt-3">
+                <button type="button" class="px-4 py-2 text-sm text-gray-500 bg-transparent border border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors"
+                  @click="cancelEditTemplate()">Cancelar</button>
+                <button type="button"
+                  class="px-4 py-2 text-sm text-white bg-linear-135 from-primary to-secondary border-none rounded-lg cursor-pointer transition-all disabled:opacity-60"
+                  :disabled="!editingTemplate.body.trim() || savingTemplate"
+                  @click="saveTemplate()">
+                  <span x-show="savingTemplate" class="spinner mr-1" style="width: 12px; height: 12px; border-width: 2px;"></span>
+                  Salvar
+                </button>
+              </div>
+            </div>
+          </template>
+        </div>
+      </div>
+
+      <!-- Conteudo da sub-aba Aceitação -->
+      <div x-show="proposalSubTab === 'closing'">
+        <!-- Closing Message Template (pre-defined, hidden when custom templates exist) -->
+        <template x-if="getCustomTemplates('closing').length === 0">
+          <div class="data-card bg-white border border-gray-200 rounded-xl p-4 mb-4" :class="{ 'opacity-50': !counterOfferSettings.isEnabled }">
+            <div class="data-card-header mb-3">
+              <h4 class="font-semibold text-sm text-gray-800">Modelo de Mensagem</h4>
+              <p class="text-xs text-gray-500 mt-1">Quando o comprador aceita o preço, a resposta padrão é <strong>"Vamos!"</strong>. Crie templates personalizados para substituir.</p>
+            </div>
+
+            <template x-if="!editingTemplate && !(showTemplateChooser && templateChooserType === 'closing')">
+              <button type="button"
+                class="w-full mb-4 py-3 px-4 border-2 border-dashed border-gray-300 rounded-lg text-sm text-gray-500 hover:border-primary hover:text-primary transition-all cursor-pointer bg-transparent"
+                @click="openTemplateChooser('closing')">
+                Criar meus próprios templates
+              </button>
+            </template>
+
+            <!-- Template Chooser (inline, when no custom closing templates yet) -->
+            <template x-if="showTemplateChooser && templateChooserType === 'closing'">
+              <div class="mb-4 p-4 border border-gray-200 rounded-xl bg-gray-50/50">
+                <div class="flex items-center justify-between mb-3">
+                  <h5 class="font-semibold text-sm text-gray-800">Escolha uma base</h5>
+                  <button type="button" class="text-xs text-gray-400 hover:text-gray-600 cursor-pointer bg-transparent border-none"
+                    @click="closeTemplateChooser()">Cancelar</button>
+                </div>
+
+                <div class="flex flex-col gap-2">
+                  <button type="button"
+                    class="w-full text-left py-3 px-4 border-2 border-dashed border-gray-300 rounded-lg text-sm text-gray-500 hover:border-primary hover:text-primary transition-all cursor-pointer bg-white"
+                    @click="startBlankTemplate('closing')">
+                    <i class="fa-solid fa-file-circle-plus mr-2 opacity-60"></i>Em branco
+                  </button>
+
+                  <template x-for="tpl in closingTemplates" :key="tpl.id">
+                    <button type="button"
+                      class="w-full text-left p-3 border border-gray-200 rounded-lg bg-white hover:border-primary/50 hover:bg-primary/5 transition-all cursor-pointer group"
+                      @click="startFromDefault('closing', tpl)">
+                      <div class="flex items-start gap-2">
+                        <i class="fa-solid fa-copy text-gray-300 group-hover:text-primary/60 mt-0.5 text-xs transition-colors"></i>
+                        <div class="flex-1 min-w-0">
+                          <div class="font-medium text-xs text-gray-600 group-hover:text-gray-800 mb-1 transition-colors" x-text="tpl.description"></div>
+                          <pre class="text-xs text-gray-400 whitespace-pre-wrap m-0 line-clamp-3" x-text="tpl.preview"></pre>
+                        </div>
+                      </div>
+                    </button>
+                  </template>
+                </div>
+              </div>
+            </template>
+
+            <!-- Template Editor (inline, when no custom closing templates yet) -->
+            <template x-if="editingTemplate && editingTemplate.type === 'closing'">
+              <div class="mt-4 mb-4">
+                <textarea x-ref="closingTemplateTextarea"
+                  x-init="$nextTick(() => $refs.closingTemplateTextarea?.focus())"
+                  x-model="editingTemplate.body"
+                  @input="updateTemplatePreview()"
+                  class="w-full p-3 border border-gray-200 rounded-lg text-sm font-mono resize-y min-h-[200px] focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                  placeholder="Digite seu template aqui..."></textarea>
+
+                <div class="flex flex-wrap gap-2 mt-2">
+                  <span class="text-xs text-gray-500">Placeholders:</span>
+                  <button type="button" class="px-2 py-1 text-xs bg-gray-100 hover:bg-primary/10 text-gray-600 rounded cursor-pointer border-none transition-colors"
+                    @click="insertPlaceholder('{PROGRAMA}')" title="Programa de milhas (ex: SMILES)">{PROGRAMA}</button>
+                  <button type="button" class="px-2 py-1 text-xs bg-gray-100 hover:bg-primary/10 text-gray-600 rounded cursor-pointer border-none transition-colors"
+                    @click="insertPlaceholder('{QUANTIDADE}')" title="Quantidade em milhares (ex: 50)">{QUANTIDADE}</button>
+                  <button type="button" class="px-2 py-1 text-xs bg-gray-100 hover:bg-primary/10 text-gray-600 rounded cursor-pointer border-none transition-colors"
+                    @click="insertPlaceholder('{CPF_COUNT}')" title="Numero de CPFs">{CPF_COUNT}</button>
+                  <button type="button" class="px-2 py-1 text-xs bg-gray-100 hover:bg-primary/10 text-gray-600 rounded cursor-pointer border-none transition-colors"
+                    @click="insertPlaceholder('{PRECO}')" title="Preco por milheiro (ex: 18,50)">{PRECO}</button>
+                  <button type="button" class="px-2 py-1 text-xs bg-gray-100 hover:bg-primary/10 text-gray-600 rounded cursor-pointer border-none transition-colors"
+                    @click="insertPlaceholder('{MENSAGEM_ORIGINAL}')" title="Texto original da mensagem do grupo">{MENSAGEM_ORIGINAL}</button>
+                </div>
+                <p class="text-xs text-gray-400 mt-1.5 mb-0">Formatação: <code>**negrito**</code> <code>__itálico__</code> <code>`código`</code></p>
+
+                <div x-show="editingTemplate.body.length > 0" class="mt-3">
+                  <h6 class="text-xs text-gray-500 mb-1">Preview:</h6>
+                  <div class="text-xs text-gray-600 whitespace-pre-wrap bg-white p-3 rounded border border-gray-100 m-0 font-sans" x-html="templatePreviewHtml"></div>
+                </div>
+
+                <div class="flex gap-2 justify-end mt-3">
+                  <button type="button" class="px-4 py-2 text-sm text-gray-500 bg-transparent border border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors"
+                    @click="cancelEditTemplate()">Cancelar</button>
+                  <button type="button"
+                    class="px-4 py-2 text-sm text-white bg-linear-135 from-primary to-secondary border-none rounded-lg cursor-pointer transition-all disabled:opacity-60"
+                    :disabled="!editingTemplate.body.trim() || savingTemplate"
+                    @click="saveTemplate()">
+                    <span x-show="savingTemplate" class="spinner mr-1" style="width: 12px; height: 12px; border-width: 2px;"></span>
+                    Salvar
+                  </button>
+                </div>
+              </div>
+            </template>
+          </div>
+        </template>
+
+        <!-- Custom Templates Section (Closing) -->
+        <div class="data-card bg-white border border-gray-200 rounded-xl p-4 mb-4"
+          :class="{ 'opacity-50 pointer-events-none': !counterOfferSettings.isEnabled }">
+
+          <!-- If has custom templates: show list -->
+          <template x-if="getCustomTemplates('closing').length > 0">
+            <div>
+              <div class="flex items-center justify-between mb-3">
+                <h4 class="font-semibold text-sm text-gray-800">Meus Templates</h4>
+              </div>
+
+              <p x-show="getActiveTemplateCount('closing') > 1" class="text-xs text-gray-400 mb-3">
+                O bot escolhera aleatoriamente entre os <span x-text="getActiveTemplateCount('closing')"></span> templates ativos
+              </p>
+
+              <div class="flex flex-col gap-3">
+                <template x-for="template in customClosingTemplates" :key="template.id">
+                  <div class="p-3 border rounded-lg transition-all"
+                    :class="template.isActive ? 'border-primary bg-primary/5' : 'border-gray-200 opacity-60'">
+                    <div class="flex items-start justify-between gap-2">
+                      <pre class="text-xs text-gray-600 whitespace-pre-wrap bg-gray-50 p-2 rounded flex-1 m-0" x-text="template.body"></pre>
+                      <div class="flex items-center gap-2 shrink-0">
+                        <label class="relative inline-flex items-center cursor-pointer">
+                          <input type="checkbox" class="sr-only peer" :checked="template.isActive"
+                            @change="toggleTemplateActive(template)">
+                          <div class="w-9 h-5 bg-gray-200 peer-checked:bg-primary rounded-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-full"></div>
+                        </label>
+                        <button type="button" class="text-gray-400 hover:text-primary text-xs cursor-pointer bg-transparent border-none"
+                          @click="startEditTemplate(template)">Editar</button>
+                        <button type="button" class="text-gray-400 hover:text-red-500 text-xs cursor-pointer bg-transparent border-none"
+                          @click="removeTemplate(template)">Excluir</button>
+                      </div>
+                    </div>
+                  </div>
+                </template>
+              </div>
+
+              <button type="button"
+                class="w-full mt-3 py-2 px-4 border-2 border-dashed border-gray-300 rounded-lg text-sm text-gray-500 hover:border-primary hover:text-primary transition-all cursor-pointer bg-transparent disabled:opacity-40 disabled:cursor-not-allowed"
+                :disabled="customClosingTemplates.length >= 5"
+                @click="openTemplateChooser('closing')">
+                + Adicionar template
+                <span x-show="customClosingTemplates.length >= 5" class="text-xs">(maximo atingido)</span>
+              </button>
+            </div>
+          </template>
+
+          <!-- Template Chooser (Closing) -->
+          <template x-if="showTemplateChooser && templateChooserType === 'closing' && getCustomTemplates('closing').length > 0">
+            <div class="mt-3 p-4 border border-gray-200 rounded-xl bg-gray-50/50">
+              <div class="flex items-center justify-between mb-3">
+                <h5 class="font-semibold text-sm text-gray-800">Escolha uma base</h5>
+                <button type="button" class="text-xs text-gray-400 hover:text-gray-600 cursor-pointer bg-transparent border-none"
+                  @click="closeTemplateChooser()">Cancelar</button>
+              </div>
+
+              <div class="flex flex-col gap-2">
+                <button type="button"
+                  class="w-full text-left py-3 px-4 border-2 border-dashed border-gray-300 rounded-lg text-sm text-gray-500 hover:border-primary hover:text-primary transition-all cursor-pointer bg-white"
+                  @click="startBlankTemplate('closing')">
+                  <i class="fa-solid fa-file-circle-plus mr-2 opacity-60"></i>Em branco
+                </button>
+
+                <template x-for="tpl in closingTemplates" :key="tpl.id">
+                  <button type="button"
+                    class="w-full text-left p-3 border border-gray-200 rounded-lg bg-white hover:border-primary/50 hover:bg-primary/5 transition-all cursor-pointer group"
+                    @click="startFromDefault('closing', tpl)">
+                    <div class="flex items-start gap-2">
+                      <i class="fa-solid fa-copy text-gray-300 group-hover:text-primary/60 mt-0.5 text-xs transition-colors"></i>
+                      <div class="flex-1 min-w-0">
+                        <div class="font-medium text-xs text-gray-600 group-hover:text-gray-800 mb-1 transition-colors" x-text="tpl.description"></div>
+                        <pre class="text-xs text-gray-400 whitespace-pre-wrap m-0 line-clamp-3" x-text="tpl.preview"></pre>
+                      </div>
+                    </div>
+                  </button>
+                </template>
+              </div>
+            </div>
+          </template>
+
+          <!-- Template Editor (inline) for Closing (when has custom templates) -->
+          <template x-if="editingTemplate && editingTemplate.type === 'closing' && getCustomTemplates('closing').length > 0">
+            <div class="mt-3 p-4 border border-gray-200 rounded-lg bg-white">
+              <h5 class="font-semibold text-sm text-gray-800 mb-2" x-text="editingTemplate.isNew ? 'Novo Template' : 'Editar Template'"></h5>
+
+              <textarea x-ref="closingTemplateTextarea"
+                x-init="$nextTick(() => $refs.closingTemplateTextarea?.focus())"
                 x-model="editingTemplate.body"
                 @input="updateTemplatePreview()"
                 class="w-full p-3 border border-gray-200 rounded-lg text-sm font-mono resize-y min-h-[200px] focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
@@ -1775,6 +2006,8 @@
         callToActionTemplates: [],
         customCounterOfferTemplates: [],
         customCtaTemplates: [],
+        closingTemplates: [],
+        customClosingTemplates: [],
         editingTemplate: null,
         templatePreview: '',
         get templatePreviewHtml() { return this.formatMarkdownToHtml(this.templatePreview); },
@@ -1784,7 +2017,7 @@
         templateChooserType: null,
         savingCounterOffer: false,
         counterOfferChanged: false,
-        proposalSubTab: 'counterOffer', // 'counterOffer' | 'callToAction'
+        proposalSubTab: 'counterOffer', // 'counterOffer' | 'callToAction' | 'closing'
 
         // Groups state
         availableGroups: [],
@@ -1956,6 +2189,8 @@
               this.fetchDelaySettings(),
               this.fetchCustomTemplates('counter_offer'),
               this.fetchCustomTemplates('cta'),
+              this.fetchClosingTemplates(),
+              this.fetchCustomTemplates('closing'),
             ]);
 
             if (this.normalPrograms.length > 0) {
@@ -2073,6 +2308,16 @@
           }
         },
 
+        async fetchClosingTemplates() {
+          const res = await this.authFetch('/dashboard/closing/templates');
+          const data = await res.json();
+          if (data.success) {
+            this.closingTemplates = data.data.templates;
+          } else {
+            console.warn('Failed to fetch closing templates:', data.error);
+          }
+        },
+
         // ============================================================================
         // Custom Message Templates
         // ============================================================================
@@ -2082,6 +2327,8 @@
           if (data.success) {
             if (type === 'counter_offer') {
               this.customCounterOfferTemplates = data.data.templates;
+            } else if (type === 'closing') {
+              this.customClosingTemplates = data.data.templates;
             } else {
               this.customCtaTemplates = data.data.templates;
             }
@@ -2175,7 +2422,7 @@
         },
 
         insertPlaceholder(placeholder) {
-          const textarea = this.$refs.templateTextarea || this.$refs.ctaTemplateTextarea;
+          const textarea = this.$refs.templateTextarea || this.$refs.ctaTemplateTextarea || this.$refs.closingTemplateTextarea;
           if (!textarea) return;
           const start = textarea.selectionStart;
           const end = textarea.selectionEnd;
@@ -2235,7 +2482,9 @@
         },
 
         getCustomTemplates(type) {
-          return type === 'counter_offer' ? this.customCounterOfferTemplates : this.customCtaTemplates;
+          if (type === 'counter_offer') return this.customCounterOfferTemplates;
+          if (type === 'closing') return this.customClosingTemplates;
+          return this.customCtaTemplates;
         },
 
         getActiveTemplateCount(type) {

@@ -1,4 +1,4 @@
-export type MessageTemplateType = 'counter_offer' | 'cta';
+export type MessageTemplateType = 'counter_offer' | 'cta' | 'closing';
 
 export interface MessageTemplate {
   id: number;
