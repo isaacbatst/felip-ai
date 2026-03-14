@@ -832,10 +832,10 @@ export class DashboardController {
   ): Promise<void> {
     const userId = req.user.userId;
 
-    if (type !== 'counter_offer' && type !== 'cta') {
+    if (type !== 'counter_offer' && type !== 'cta' && type !== 'closing') {
       res.status(HttpStatus.BAD_REQUEST).json({
         success: false,
-        error: 'type must be "counter_offer" or "cta"',
+        error: 'type must be "counter_offer", "cta", or "closing"',
       } satisfies ApiResponse);
       return;
     }
@@ -864,10 +864,10 @@ export class DashboardController {
   ): Promise<void> {
     const userId = req.user.userId;
 
-    if (body.type !== 'counter_offer' && body.type !== 'cta') {
+    if (body.type !== 'counter_offer' && body.type !== 'cta' && body.type !== 'closing') {
       res.status(HttpStatus.BAD_REQUEST).json({
         success: false,
-        error: 'type must be "counter_offer" or "cta"',
+        error: 'type must be "counter_offer", "cta", or "closing"',
       } satisfies ApiResponse);
       return;
     }
@@ -987,10 +987,10 @@ export class DashboardController {
   ): Promise<void> {
     const userId = req.user.userId;
 
-    if (type !== 'counter_offer' && type !== 'cta') {
+    if (type !== 'counter_offer' && type !== 'cta' && type !== 'closing') {
       res.status(HttpStatus.BAD_REQUEST).json({
         success: false,
-        error: 'type must be "counter_offer" or "cta"',
+        error: 'type must be "counter_offer", "cta", or "closing"',
       } satisfies ApiResponse);
       return;
     }
